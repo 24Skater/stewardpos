@@ -7,8 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getAllServices, getAllCustomers, Service, Customer, QuoteItem } from '@/lib/db';
-import { createQuote, createCustomer } from '@/lib/db-operations';
+import { Service, Customer, QuoteItem } from '@/lib/db';
+import { getAllServices, getAllCustomers, createQuote, createCustomer } from '@/lib/db-operations';
 import { Search, Plus, UserPlus, ShoppingCart, Calendar, MapPin, Clock, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
