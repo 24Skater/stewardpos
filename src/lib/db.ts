@@ -75,6 +75,107 @@ export interface Settings {
   storeName: string;
   storeEmail: string;
   storePhone: string;
+  timezone?: string;
+  logoUrl?: string;
+  iconUrl?: string;
+  brandColor?: string;
+  storageProvider?: 'indexeddb' | 'supabase';
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+}
+
+export type AppRole = 'admin' | 'supervisor' | 'reporter' | 'standard';
+
+export interface Permission {
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+}
+
+export interface RolePermissions {
+  inventory: Permission;
+  reports: Permission;
+  exports: Permission;
+  settings: Permission;
+  users: Permission;
+  services: Permission;
+  customers: Permission;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  systemRole?: AppRole;
+  permissions: RolePermissions;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  roleIds: string[];
+  status: 'active' | 'inactive';
+  lastLoginAt?: number;
+  createdAt: number;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  userId: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  before?: any;
+  after?: any;
+}
+
+export interface Service {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  basePrice?: number;
+  unitType?: 'flat' | 'hourly' | 'per-item';
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  org?: string;
+  email?: string;
+  phone?: string;
+  notes: string;
+  tags: string[];
+  lastOrderAt?: number;
+  lifetimeValue: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface QuoteItem {
+  itemId?: string;
+  variantId?: string;
+  serviceId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Quote {
+  id: string;
+  customerId: string;
+  items: QuoteItem[];
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected';
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface PersonaPOSDB extends DBSchema {
@@ -101,6 +202,35 @@ interface PersonaPOSDB extends DBSchema {
     key: string;
     value: Settings;
   };
+  users: {
+    key: string;
+    value: User;
+    indexes: { 'by-email': string };
+  };
+  roles: {
+    key: string;
+    value: Role;
+  };
+  auditLogs: {
+    key: string;
+    value: AuditLog;
+    indexes: { 'by-user': string; 'by-timestamp': number };
+  };
+  services: {
+    key: string;
+    value: Service;
+    indexes: { 'by-category': string };
+  };
+  customers: {
+    key: string;
+    value: Customer;
+    indexes: { 'by-email': string };
+  };
+  quotes: {
+    key: string;
+    value: Quote;
+    indexes: { 'by-customer': string; 'by-status': string };
+  };
 }
 
 let dbInstance: IDBPDatabase<PersonaPOSDB> | null = null;
@@ -108,7 +238,7 @@ let dbInstance: IDBPDatabase<PersonaPOSDB> | null = null;
 export async function getDB() {
   if (dbInstance) return dbInstance;
 
-  dbInstance = await openDB<PersonaPOSDB>('persona-pos', 2, {
+  dbInstance = await openDB<PersonaPOSDB>('persona-pos', 3, {
     upgrade(db, oldVersion) {
       // Categories store
       if (!db.objectStoreNames.contains('categories')) {
@@ -139,6 +269,42 @@ export async function getDB() {
         db.createObjectStore('settings', { keyPath: 'storeName' });
       }
 
+      // Users store
+      if (!db.objectStoreNames.contains('users')) {
+        const userStore = db.createObjectStore('users', { keyPath: 'id' });
+        userStore.createIndex('by-email', 'email');
+      }
+
+      // Roles store
+      if (!db.objectStoreNames.contains('roles')) {
+        db.createObjectStore('roles', { keyPath: 'id' });
+      }
+
+      // Audit logs store
+      if (!db.objectStoreNames.contains('auditLogs')) {
+        const auditStore = db.createObjectStore('auditLogs', { keyPath: 'id' });
+        auditStore.createIndex('by-user', 'userId');
+        auditStore.createIndex('by-timestamp', 'timestamp');
+      }
+
+      // Services store
+      if (!db.objectStoreNames.contains('services')) {
+        const serviceStore = db.createObjectStore('services', { keyPath: 'id' });
+        serviceStore.createIndex('by-category', 'category');
+      }
+
+      // Customers store
+      if (!db.objectStoreNames.contains('customers')) {
+        const customerStore = db.createObjectStore('customers', { keyPath: 'id' });
+        customerStore.createIndex('by-email', 'email');
+      }
+
+      // Quotes store
+      if (!db.objectStoreNames.contains('quotes')) {
+        const quoteStore = db.createObjectStore('quotes', { keyPath: 'id' });
+        quoteStore.createIndex('by-customer', 'customerId');
+        quoteStore.createIndex('by-status', 'status');
+      }
     },
   });
 
@@ -226,6 +392,18 @@ export async function getAllOrderItems() {
   return db.getAll('orderItems');
 }
 
+// Service operations
+export async function getAllServices() {
+  const db = await getDB();
+  return db.getAll('services');
+}
+
+// Customer operations
+export async function getAllCustomers() {
+  const db = await getDB();
+  return db.getAll('customers');
+}
+
 // Settings operations
 export async function getSettings() {
   const db = await getDB();
@@ -250,6 +428,7 @@ export function calculateVariantPrice(basePrice: number, variant: ProductVariant
 export async function initializeSampleData() {
   const db = await getDB();
   const existingProducts = await db.getAll('products');
+  const existingUsers = await db.getAll('users');
   
   if (existingProducts.length === 0) {
     // Categories
@@ -415,5 +594,40 @@ export async function initializeSampleData() {
     for (const item of sampleOrderItems) {
       await db.add('orderItems', item);
     }
+  }
+
+  // Seed admin data
+  if (existingUsers.length === 0) {
+    const { hashPassword } = await import('./db-operations');
+    const { getSystemRolePermissions } = await import('./db-operations');
+    
+    // Create roles
+    const adminRole = { id: 'role-admin', name: 'Admin', systemRole: 'admin' as const, permissions: getSystemRolePermissions('admin') };
+    await db.add('roles', adminRole);
+    
+    // Create admin user
+    const adminUser = {
+      id: 'user-admin',
+      email: 'admin@demo.local',
+      passwordHash: await hashPassword('DemoPass!1'),
+      name: 'Admin User',
+      roleIds: ['role-admin'],
+      status: 'active' as const,
+      createdAt: Date.now()
+    };
+    await db.add('users', adminUser);
+
+    // Seed services
+    const services = [
+      { id: 'svc-1', name: 'Simple PA System', category: 'Audio', description: 'Basic sound system setup', basePrice: 150, unitType: 'flat' as const, isActive: true, createdAt: Date.now(), updatedAt: Date.now() },
+      { id: 'svc-2', name: 'Photography', category: 'Media', description: 'Professional photography service', basePrice: 200, unitType: 'hourly' as const, isActive: true, createdAt: Date.now(), updatedAt: Date.now() },
+    ];
+    for (const svc of services) await db.add('services', svc);
+
+    // Seed customers
+    const customers = [
+      { id: 'cust-1', name: 'John Doe', email: 'john@example.com', notes: '', tags: ['VIP'], lifetimeValue: 450, lastOrderAt: Date.now() - 86400000, createdAt: Date.now(), updatedAt: Date.now() },
+    ];
+    for (const cust of customers) await db.add('customers', cust);
   }
 }
