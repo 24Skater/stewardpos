@@ -1,0 +1,32 @@
+# Persona POS Default Configuration
+# This file contains the default configuration for all environments
+# Override these values in config/local.yml (gitignored) or via environment variables
+
+database:
+  adapter: indexeddb
+  # connection options are adapter-specific
+
+auth:
+  adapter: local
+  sessionDuration: 86400000 # 24 hours in milliseconds
+
+email:
+  adapter: console
+  from: noreply@example.com
+
+sms:
+  adapter: console
+
+storage:
+  adapter: localstorage
+
+features:
+  reports: true
+  email: false
+  sms: false
+  sso: false
+  storage: true
+
+app:
+  name: Persona POS
+  environment: development
