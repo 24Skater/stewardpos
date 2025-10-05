@@ -394,16 +394,11 @@ export default function POS() {
           <div className="flex-1 overflow-y-auto p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredProducts.map(product => (
-                <div
+                <ProductCard
                   key={product.id}
+                  product={product}
                   onClick={() => handleProductClick(product)}
-                  className="cursor-pointer"
-                >
-                  <ProductCard
-                    product={product}
-                    onAddToCart={handleAddToCart}
-                  />
-                </div>
+                />
               ))}
             </div>
             {filteredProducts.length === 0 && (

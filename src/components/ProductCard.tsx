@@ -4,17 +4,17 @@ import { ShoppingCart } from "lucide-react";
 
 interface ProductCardProps {
   product: Product;
-  onAddToCart: (productId: string, variantId: string) => void;
+  onClick?: () => void;
 }
 
-export default function ProductCard({ product, onAddToCart }: ProductCardProps) {
+export default function ProductCard({ product, onClick }: ProductCardProps) {
   const defaultVariant = product.variants[0];
   const inStock = product.variants.some(v => v.stock > 0);
 
   return (
     <Card 
       className="group overflow-hidden bg-card hover:shadow-lg transition-all duration-300 cursor-pointer border-border"
-      onClick={() => inStock && onAddToCart(product.id, defaultVariant.id)}
+      onClick={() => inStock && onClick?.()}
     >
       <div className="aspect-square bg-secondary/30 relative overflow-hidden">
         {product.image ? (
