@@ -103,19 +103,23 @@ export default function POS() {
   };
 
   const handleProductClick = (product: Product) => {
-    // Check if product has meaningful variants (multiple sizes or colors)
-    const uniqueSizes = new Set(product.variants.map(v => v.size).filter(Boolean));
-    const uniqueColors = new Set(product.variants.map(v => v.color).filter(Boolean));
-    const hasVariants = uniqueSizes.size > 1 || uniqueColors.size > 1;
-    
-    if (!hasVariants) {
-      // No real variants, just add to cart directly
-      handleAddToCart(product.id, product.variants[0].id);
-    } else {
-      // Has multiple sizes or colors, show picker
-      setSelectedProduct(product);
-      setVariantPickerOpen(true);
+    // Consider only in-stock variants when deciding if a picker is needed
+    const inStockVariants = product.variants.filter((v) => v.stock > 0);
+    const uniqueSizes = new Set(inStockVariants.map((v) => v.size).filter(Boolean));
+    const uniqueColors = new Set(inStockVariants.map((v) => v.color).filter(Boolean));
+
+    const hasChoice = uniqueSizes.size > 1 || uniqueColors.size > 1; // true only if user has something to choose
+
+    if (!hasChoice || inStockVariants.length === 1) {
+      // No real choices (or exactly one in-stock variant) -> add directly
+      const chosen = (inStockVariants[0] ?? product.variants[0]);
+      if (chosen) handleAddToCart(product.id, chosen.id);
+      return;
     }
+
+    // There are multiple sizes/colors to choose -> show picker
+    setSelectedProduct(product);
+    setVariantPickerOpen(true);
   };
 
   const handleAddToCart = async (productId: string, variantId: string) => {
