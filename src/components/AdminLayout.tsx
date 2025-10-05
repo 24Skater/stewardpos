@@ -10,7 +10,8 @@ import {
   Settings, 
   Shield, 
   FileText,
-  LogOut
+  LogOut,
+  ArrowLeft
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { logout, getCurrentSession } from '@/lib/auth';
@@ -49,6 +50,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-bold text-foreground">Admin Portal</h1>
           <p className="text-sm text-muted-foreground mt-1">{session?.user.name}</p>
+        </div>
+
+        <div className="p-4 border-b border-border">
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => navigate('/')}
+          >
+            <ArrowLeft className="w-4 h-4 mr-3" />
+            Back to POS
+          </Button>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
