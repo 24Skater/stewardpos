@@ -103,9 +103,16 @@ export default function POS() {
   };
 
   const handleProductClick = (product: Product) => {
-    if (product.variants.length === 1) {
+    // Check if product has meaningful variants (multiple sizes or colors)
+    const uniqueSizes = new Set(product.variants.map(v => v.size).filter(Boolean));
+    const uniqueColors = new Set(product.variants.map(v => v.color).filter(Boolean));
+    const hasVariants = uniqueSizes.size > 1 || uniqueColors.size > 1;
+    
+    if (!hasVariants) {
+      // No real variants, just add to cart directly
       handleAddToCart(product.id, product.variants[0].id);
     } else {
+      // Has multiple sizes or colors, show picker
       setSelectedProduct(product);
       setVariantPickerOpen(true);
     }
