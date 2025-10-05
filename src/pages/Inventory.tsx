@@ -33,7 +33,7 @@ export default function Inventory() {
       name: "",
       category: "Apparel",
       basePrice: 0,
-      variants: [{ id: `var-${Date.now()}`, price: 0, stock: 0 }],
+      variants: [{ id: `var-${Date.now()}`, priceDelta: 0, stock: 0, enabled: true }],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -84,8 +84,9 @@ export default function Inventory() {
     if (!currentProduct) return;
     const newVariant: ProductVariant = {
       id: `var-${Date.now()}`,
-      price: currentProduct.basePrice,
+      priceDelta: 0,
       stock: 0,
+      enabled: true,
     };
     setCurrentProduct({
       ...currentProduct,
@@ -295,12 +296,12 @@ export default function Inventory() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Price</Label>
+                          <Label className="text-xs text-muted-foreground">Price Delta</Label>
                           <Input
                             type="number"
                             step="0.01"
-                            value={variant.price}
-                            onChange={(e) => handleUpdateVariant(index, 'price', parseFloat(e.target.value) || 0)}
+                            value={variant.priceDelta || 0}
+                            onChange={(e) => handleUpdateVariant(index, 'priceDelta', parseFloat(e.target.value) || 0)}
                             className="bg-background border-border"
                           />
                         </div>

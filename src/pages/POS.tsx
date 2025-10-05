@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
-import { Product, CartItem, getAllProducts, getProduct, initializeSampleData, addTransaction } from "@/lib/db";
-import { LayoutGrid, Package, Search, Barcode } from "lucide-react";
+import VariantPicker from "@/components/VariantPicker";
+import ReceiptDialog from "@/components/ReceiptDialog";
+import { Product, CartItem, getAllProducts, getProduct, getProductByBarcode, initializeSampleData, addOrder, addOrderItem, getSettings, calculateVariantPrice, getAllCategories } from "@/lib/db";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,24 +18,50 @@ export default function POS() {
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState("");
+  const [variantPickerOpen, setVariantPickerOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState("");
+  const [lastOrderTotal, setLastOrderTotal] = useState(0);
+  const [categories, setCategories] = useState<string[]>(["All"]);
+  const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
     loadProducts();
+    loadCategories();
   }, []);
 
   useEffect(() => {
     filterProducts();
   }, [products, searchQuery, selectedCategory]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        barcodeRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const loadProducts = async () => {
     await initializeSampleData();
     const allProducts = await getAllProducts();
     setProducts(allProducts);
+  };
+
+  const loadCategories = async () => {
+    const cats = await getAllCategories();
+    setCategories(["All", ...cats.map(c => c.name)]);
   };
 
   const filterProducts = () => {
@@ -53,7 +81,35 @@ export default function POS() {
     setFilteredProducts(filtered);
   };
 
-  const categories = ["All", ...new Set(products.map(p => p.category))];
+  const handleBarcodeSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!barcodeInput.trim()) return;
+
+    // Try to find product by barcode
+    const product = await getProductByBarcode(barcodeInput.trim());
+    if (product) {
+      // Find variant with matching barcode
+      const variant = product.variants.find(v => v.barcode === barcodeInput.trim());
+      if (variant) {
+        await handleAddToCart(product.id, variant.id);
+        setBarcodeInput("");
+        barcodeRef.current?.focus();
+      } else {
+        toast({ title: "Variant not found", variant: "destructive" });
+      }
+    } else {
+      toast({ title: "Product not found", variant: "destructive" });
+    }
+  };
+
+  const handleProductClick = (product: Product) => {
+    if (product.variants.length === 1) {
+      handleAddToCart(product.id, product.variants[0].id);
+    } else {
+      setSelectedProduct(product);
+      setVariantPickerOpen(true);
+    }
+  };
 
   const handleAddToCart = async (productId: string, variantId: string) => {
     const product = await getProduct(productId);
@@ -88,7 +144,14 @@ export default function POS() {
           : item
       ));
     } else {
-      setCart([...cart, { productId, variantId, quantity: 1, price: variant.price }]);
+      const price = calculateVariantPrice(product.basePrice, variant);
+      setCart([...cart, { productId, variantId, quantity: 1, price, nameSnapshot: product.name, size: variant.size, color: variant.color }]);
+    }
+
+    // ARIA live region announcement
+    const announcement = document.getElementById('cart-announcement');
+    if (announcement) {
+      announcement.textContent = `${product.name} added to cart`;
     }
 
     toast({
@@ -140,24 +203,55 @@ export default function POS() {
   };
 
   const handleCompleteCheckout = async () => {
-    const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const settings = await getSettings();
+    const taxRate = settings?.taxRateDefault || 0;
     
-    await addTransaction({
-      id: `TXN-${Date.now()}`,
-      items: cart,
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discountTotal = cart.reduce((sum, item) => sum + (item.lineDiscount || 0) * item.quantity, 0);
+    const taxTotal = (subtotal - discountTotal) * taxRate;
+    const total = subtotal - discountTotal + taxTotal;
+    
+    const orderId = `ORD-${Date.now()}`;
+    
+    await addOrder({
+      id: orderId,
+      createdAt: Date.now(),
+      subtotal,
+      discountTotal,
+      taxTotal,
       total,
+      paymentMethod: 'Cash',
       customerEmail: customerEmail || undefined,
-      timestamp: Date.now(),
     });
+
+    for (const item of cart) {
+      await addOrderItem({
+        id: `OI-${Date.now()}-${Math.random()}`,
+        orderId,
+        productId: item.productId,
+        variantId: item.variantId,
+        nameSnapshot: item.nameSnapshot || '',
+        size: item.size,
+        color: item.color,
+        quantity: item.quantity,
+        unitPrice: item.price,
+        lineDiscount: item.lineDiscount || 0,
+        lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
+        notes: item.notes,
+      });
+    }
 
     toast({
       title: "Sale completed!",
-      description: `Total: $${total.toFixed(2)}${customerEmail ? ' - Receipt sent' : ''}`,
+      description: `Order ${orderId} saved successfully`,
     });
 
+    setLastOrderId(orderId);
+    setLastOrderTotal(total);
     setCart([]);
     setCustomerEmail("");
     setCheckoutOpen(false);
+    setReceiptDialogOpen(true);
     
     // Reload products to update stock
     await loadProducts();
@@ -170,6 +264,9 @@ export default function POS() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
+      {/* ARIA live region for cart announcements */}
+      <div id="cart-announcement" className="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
@@ -179,17 +276,58 @@ export default function POS() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">Persona POS</h1>
-              <p className="text-xs text-muted-foreground">Point of Sale</p>
+              <p className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={() => navigate('/inventory')}
-            className="border-border"
-          >
-            <LayoutGrid className="w-4 h-4" />
-            Inventory
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/inventory')}
+              className="border-border"
+              size="sm"
+            >
+              <LayoutGrid className="w-4 h-4 mr-1" />
+              Inventory
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/reports')}
+              className="border-border"
+              size="sm"
+            >
+              <FileBarChart className="w-4 h-4 mr-1" />
+              Reports
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/settings')}
+              className="border-border"
+              size="sm"
+            >
+              <SettingsIcon className="w-4 h-4 mr-1" />
+              Settings
+            </Button>
+          </div>
+        </div>
+
+        {/* Barcode Input Row */}
+        <div className="mt-3">
+          <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
+            <div className="flex-1 relative">
+              <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                ref={barcodeRef}
+                placeholder="Scan or enter barcode (press / to focus)"
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                className="pl-9 bg-background border-border"
+                autoFocus
+              />
+            </div>
+            <Button type="submit" variant="outline" className="border-border">
+              Add
+            </Button>
+          </form>
         </div>
       </header>
 
@@ -231,11 +369,16 @@ export default function POS() {
           <div className="flex-1 overflow-y-auto p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {filteredProducts.map(product => (
-                <ProductCard
+                <div
                   key={product.id}
-                  product={product}
-                  onAddToCart={handleAddToCart}
-                />
+                  onClick={() => handleProductClick(product)}
+                  className="cursor-pointer"
+                >
+                  <ProductCard
+                    product={product}
+                    onAddToCart={handleAddToCart}
+                  />
+                </div>
               ))}
             </div>
             {filteredProducts.length === 0 && (
@@ -268,6 +411,27 @@ export default function POS() {
           Cart ({cart.length})
         </Button>
       </div>
+
+      {/* Variant Picker */}
+      {selectedProduct && (
+        <VariantPicker
+          product={selectedProduct}
+          open={variantPickerOpen}
+          onClose={() => {
+            setVariantPickerOpen(false);
+            setSelectedProduct(null);
+          }}
+          onAddToCart={handleAddToCart}
+        />
+      )}
+
+      {/* Receipt Dialog */}
+      <ReceiptDialog
+        open={receiptDialogOpen}
+        onClose={() => setReceiptDialogOpen(false)}
+        orderId={lastOrderId}
+        total={lastOrderTotal}
+      />
 
       {/* Checkout Dialog */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
