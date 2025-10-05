@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: persona-pos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: persona_pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: persona-pos-storage
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Persona POS Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: persona-pos-app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      # Database
+      - VITE_DB_ADAPTER=postgres
+      - VITE_DB_HOST=postgres
+      - VITE_DB_PORT=5432
+      - VITE_DB_NAME=persona_pos
+      - VITE_DB_USER=postgres
+      - VITE_DB_PASSWORD=postgres
+      
+      # Storage
+      - VITE_STORAGE_ADAPTER=s3
+      - VITE_STORAGE_S3_ENDPOINT=http://minio:9000
+      - VITE_STORAGE_S3_REGION=us-east-1
+      - VITE_STORAGE_S3_BUCKET=assets
+      - VITE_STORAGE_S3_ACCESS_KEY_ID=minioadmin
+      - VITE_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+      
+      # Features
+      - VITE_FEATURE_STORAGE=true
+      - VITE_APP_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  default:
+    name: persona-pos-network
