@@ -110,6 +110,14 @@ export default function POS() {
 
     const hasChoice = uniqueSizes.size > 1 || uniqueColors.size > 1; // true only if user has something to choose
 
+    console.log('[POS] handleProductClick', {
+      product: product.name,
+      inStock: inStockVariants.length,
+      sizes: Array.from(uniqueSizes),
+      colors: Array.from(uniqueColors),
+      hasChoice,
+    });
+
     if (!hasChoice || inStockVariants.length === 1) {
       // No real choices (or exactly one in-stock variant) -> add directly
       const chosen = (inStockVariants[0] ?? product.variants[0]);

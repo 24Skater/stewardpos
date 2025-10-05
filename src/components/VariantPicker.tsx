@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Product, ProductVariant, calculateVariantPrice } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,20 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
     if (sizes.length === 1 && !selectedSize) setSelectedSize(sizes[0]);
     if (colors.length === 1 && !selectedColor) setSelectedColor(colors[0]);
   }, [product.id, open, sizes.length, colors.length]);
+
+  // Auto-add and close when there's no real choice or only one enabled in-stock variant
+  useEffect(() => {
+    if (!open) return;
+    const enabledInStock = product.variants.filter(v => v.enabled && v.stock > 0);
+    const noChoice = sizes.length <= 1 && colors.length <= 1;
+    if (enabledInStock.length === 1 || noChoice) {
+      const first = (enabledInStock[0] ?? product.variants.find(v => v.enabled));
+      if (first) {
+        onAddToCart(product.id, first.id);
+        onClose();
+      }
+    }
+  }, [open, product.id]);
 
   // When there are multiple options, default to the first valid enabled variant so the Add button works
   useEffect(() => {
@@ -70,6 +84,7 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
       <DialogContent className="bg-card border-border max-w-md">
         <DialogHeader>
           <DialogTitle className="text-foreground text-xl">{product.name}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">Select options then add to cart.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
