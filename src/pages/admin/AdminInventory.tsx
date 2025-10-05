@@ -4,15 +4,17 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getAllProducts, Product } from '@/lib/db';
-import { Search, Plus, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Upload } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
+import ImportInventoryDialog from '@/components/ImportInventoryDialog';
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const session = getCurrentSession();
 
   useEffect(() => {
@@ -50,10 +52,16 @@ export default function AdminInventory() {
                 Export CSV
               </Button>
               {canWrite && (
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Product
-                </Button>
+                <>
+                  <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import
+                  </Button>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Product
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -127,6 +135,12 @@ export default function AdminInventory() {
               </TableBody>
             </Table>
           </div>
+
+          <ImportInventoryDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
+            onImportComplete={loadProducts}
+          />
         </div>
       </AdminLayout>
     </ProtectedRoute>
