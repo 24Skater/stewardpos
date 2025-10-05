@@ -7,6 +7,7 @@ import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import ServicesPos from "./pages/ServicesPos";
 import Login from "./pages/Login";
 import Dashboard from "./pages/admin/Dashboard";
 import AdminInventory from "./pages/admin/AdminInventory";
@@ -33,6 +34,7 @@ const App = () => (
           <Route path="/inventory" element={<Inventory />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/services" element={<ServicesPos />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<Dashboard />} />
           <Route path="/admin/inventory" element={<AdminInventory />} />

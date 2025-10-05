@@ -6,7 +6,7 @@ import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { Product, CartItem, getAllProducts, getProduct, getProductByBarcode, initializeSampleData, addOrder, addOrderItem, getSettings, calculateVariantPrice, getAllCategories } from "@/lib/db";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -280,6 +280,15 @@ export default function POS() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => navigate('/services')}
+              className="border-border"
+              size="sm"
+            >
+              <Briefcase className="w-4 h-4 mr-1" />
+              Services
+            </Button>
             <Button 
               variant="outline" 
               onClick={() => navigate('/inventory')}
