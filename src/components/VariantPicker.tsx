@@ -25,6 +25,23 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
     if (colors.length === 1 && !selectedColor) setSelectedColor(colors[0]);
   }, [product.id, open, sizes.length, colors.length]);
 
+  // When there are multiple options, default to the first valid enabled variant so the Add button works
+  useEffect(() => {
+    if (!open) return;
+    // If we already have a valid combination, do nothing
+    const alreadyValid = product.variants.some(v => v.enabled &&
+      (sizes.length === 0 || v.size === selectedSize) &&
+      (colors.length === 0 || v.color === selectedColor)
+    );
+    if (alreadyValid) return;
+
+    const first = product.variants.find(v => v.enabled && v.stock > 0) || product.variants.find(v => v.enabled);
+    if (first) {
+      if (first.size) setSelectedSize(first.size);
+      if (first.color) setSelectedColor(first.color);
+    }
+  }, [open, product.id]);
+
   // Find matching variant based on current selections
   const matchingVariant = product.variants.find(v => {
     if (!v.enabled) return false;
@@ -71,7 +88,18 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
                   <Button
                     key={size}
                     variant={selectedSize === size ? "default" : "outline"}
-                    onClick={() => setSelectedSize(size)}
+                    onClick={() => {
+                      setSelectedSize(size);
+                      // Ensure a valid color for this size if needed
+                      if (colors.length > 0) {
+                        const validForSize = product.variants.filter(v => v.enabled && v.size === size);
+                        const stillValid = selectedColor && validForSize.some(v => v.color === selectedColor);
+                        if (!stillValid) {
+                          const fallback = validForSize.find(v => v.color)?.color as string | undefined;
+                          if (fallback) setSelectedColor(fallback);
+                        }
+                      }
+                    }}
                     className="min-w-[60px]"
                   >
                     {size}
@@ -90,7 +118,18 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
                   <Button
                     key={color}
                     variant={selectedColor === color ? "default" : "outline"}
-                    onClick={() => setSelectedColor(color)}
+                    onClick={() => {
+                      setSelectedColor(color);
+                      // Ensure a valid size for this color if needed
+                      if (sizes.length > 0) {
+                        const validForColor = product.variants.filter(v => v.enabled && v.color === color);
+                        const stillValid = selectedSize && validForColor.some(v => v.size === selectedSize);
+                        if (!stillValid) {
+                          const fallback = validForColor.find(v => v.size)?.size as string | undefined;
+                          if (fallback) setSelectedSize(fallback);
+                        }
+                      }
+                    }}
                     className="min-w-[80px]"
                   >
                     {color}
