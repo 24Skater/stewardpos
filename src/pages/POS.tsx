@@ -6,7 +6,7 @@ import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { Product, CartItem, getAllProducts, getProduct, getProductByBarcode, initializeSampleData, addOrder, addOrderItem, getSettings, calculateVariantPrice, getAllCategories } from "@/lib/db";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -306,6 +306,15 @@ export default function POS() {
             >
               <SettingsIcon className="w-4 h-4 mr-1" />
               Settings
+            </Button>
+            <Button 
+              variant="default" 
+              onClick={() => navigate('/login')}
+              className="bg-primary hover:bg-primary/90"
+              size="sm"
+            >
+              <ShieldCheck className="w-4 h-4 mr-1" />
+              Admin
             </Button>
           </div>
         </div>
