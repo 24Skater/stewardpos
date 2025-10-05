@@ -4,6 +4,7 @@ import { getAllOrders, getAllProducts } from '@/lib/db';
 import { DollarSign, ShoppingCart, Package, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -12,6 +13,7 @@ export default function Dashboard() {
     lowStock: 0,
     totalProducts: 0,
   });
+  const [salesData, setSalesData] = useState<{ date: string; sales: number; orders: number }[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -39,6 +41,28 @@ export default function Dashboard() {
       lowStock,
       totalProducts: products.length,
     });
+
+    // Generate last 7 days data for charts
+    const chartData = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      date.setHours(0, 0, 0, 0);
+      
+      const dayStart = date.getTime();
+      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+      
+      const dayOrders = orders.filter(o => o.createdAt >= dayStart && o.createdAt < dayEnd);
+      const daySales = dayOrders.reduce((sum, o) => sum + o.total, 0);
+      
+      chartData.push({
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        sales: parseFloat(daySales.toFixed(2)),
+        orders: dayOrders.length,
+      });
+    }
+    
+    setSalesData(chartData);
   };
 
   const cards = [
@@ -94,6 +118,83 @@ export default function Dashboard() {
                 </Card>
               );
             })}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {/* Sales Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Sales Trend (Last 7 Days)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={salesData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis 
+                      dataKey="date" 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="sales" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2}
+                      name="Sales ($)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Orders Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Orders (Last 7 Days)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={salesData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis 
+                      dataKey="date" 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <YAxis 
+                      className="text-xs"
+                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar 
+                      dataKey="orders" 
+                      fill="hsl(var(--primary))"
+                      name="Orders"
+                      radius={[8, 8, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </AdminLayout>
