@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Product, ProductVariant, calculateVariantPrice } from "@/lib/db";
@@ -16,14 +16,24 @@ export default function VariantPicker({ product, open, onClose, onAddToCart }: V
   const [selectedSize, setSelectedSize] = useState<string | undefined>();
   const [selectedColor, setSelectedColor] = useState<string | undefined>();
 
-  const sizes = [...new Set(product.variants.filter(v => v.enabled && v.size).map(v => v.size))];
-  const colors = [...new Set(product.variants.filter(v => v.enabled && v.color).map(v => v.color))];
+  const sizes = [...new Set(product.variants.filter(v => v.enabled && v.size).map(v => v.size as string))];
+  const colors = [...new Set(product.variants.filter(v => v.enabled && v.color).map(v => v.color as string))];
 
-  const matchingVariant = product.variants.find(
-    v => v.enabled && 
-    (sizes.length === 0 || v.size === selectedSize) &&
-    (colors.length === 0 || v.color === selectedColor)
-  );
+  // Auto-select defaults when only one option exists
+  useEffect(() => {
+    if (sizes.length === 1 && !selectedSize) setSelectedSize(sizes[0]);
+    if (colors.length === 1 && !selectedColor) setSelectedColor(colors[0]);
+  }, [product.id, open, sizes.length, colors.length]);
+
+  // Find matching variant based on current selections
+  const matchingVariant = product.variants.find(v => {
+    if (!v.enabled) return false;
+    if (sizes.length > 1 && !selectedSize) return false; // require size when multiple
+    if (colors.length > 1 && !selectedColor) return false; // require color when multiple
+    if (sizes.length > 0 && selectedSize && v.size !== selectedSize) return false;
+    if (colors.length > 0 && selectedColor && v.color !== selectedColor) return false;
+    return true;
+  });
 
   const displayPrice = matchingVariant 
     ? calculateVariantPrice(product.basePrice, matchingVariant)
