@@ -1,33 +1,113 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { ValidationError, NotFoundError } from '../../utils/errors';
+import db from '../../services/database';
+import logger from '../../utils/logger';
 
 const router = Router();
+
+// All order routes require authentication
 router.use(authenticate);
 
+/**
+ * Order API Routes
+ * 
+ * GET    /api/orders          - List all orders
+ * GET    /api/orders/:id      - Get order by ID
+ * POST   /api/orders          - Create new order
+ */
+
+// Validation schemas
+const orderItemSchema = z.object({
+  productId: z.string(),
+  variantId: z.string().optional(),
+  nameSnapshot: z.string(),
+  size: z.string().optional(),
+  color: z.string().optional(),
+  quantity: z.number().int().min(1),
+  unitPrice: z.number().min(0),
+  lineDiscount: z.number().min(0).default(0),
+  lineTotal: z.number().min(0),
+  notes: z.string().optional(),
+});
+
+const createOrderSchema = z.object({
+  items: z.array(orderItemSchema).min(1),
+  subtotal: z.number().min(0),
+  discountTotal: z.number().min(0).default(0),
+  taxTotal: z.number().min(0).default(0),
+  total: z.number().min(0),
+  paymentMethod: z.string(),
+  customerEmail: z.string().email().optional(),
+  customerPhone: z.string().optional(),
+});
+
+/**
+ * GET /api/orders
+ * List all orders
+ */
 router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement
-    res.json({ success: true, data: [] });
+    const adapter = db.getAdapter();
+    const orders = await adapter.getAllOrders();
+
+    logger.info(`Retrieved ${orders.length} orders`);
+
+    res.json({
+      success: true,
+      data: orders,
+    });
   } catch (error) {
     next(error);
   }
 });
 
+/**
+ * GET /api/orders/:id
+ * Get order by ID
+ */
 router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement
-    res.json({ success: true, data: {} });
+    const { id } = req.params;
+    const adapter = db.getAdapter();
+    const order = await adapter.getOrderById(id);
+
+    if (!order) {
+      throw new NotFoundError('Order not found');
+    }
+
+    res.json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
     next(error);
   }
 });
 
+/**
+ * POST /api/orders
+ * Create new order
+ */
 router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement
-    res.status(201).json({ success: true, data: {} });
+    const orderData = createOrderSchema.parse(req.body);
+    const adapter = db.getAdapter();
+    const order = await adapter.createOrder(orderData);
+
+    logger.info(`Created order: ${order.id} - Total: $${order.total}`);
+
+    res.status(201).json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
-    next(error);
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors[0].message));
+    } else {
+      next(error);
+    }
   }
 });
 

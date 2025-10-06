@@ -1,15 +1,21 @@
 # Persona POS Backend API
 
-Production-ready backend API for Persona POS.
+Production-ready backend API for Persona POS with PostgreSQL and SQLite support.
+
+## 🎯 Status
+
+- ✅ **Phase 1**: Backend API Foundation (Complete)
+- ✅ **Phase 2**: Database Implementation (Complete)
+- 🔄 **Phase 3**: Installation & Deployment (In Progress)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- PostgreSQL 14+ or SQLite 3+
+- PostgreSQL 14+ (optional, SQLite works out of the box)
 
-### Installation
+### Installation (5 minutes)
 
 ```bash
 # Install dependencies
@@ -21,14 +27,20 @@ cp .env.example .env
 # Edit .env with your configuration
 nano .env
 
-# Run database migrations
-npm run migrate
+# Setup database (migrations + seed data)
+npm run setup-db
 
 # Start development server
 npm run dev
 ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `http://localhost:3001`
+
+**Default Admin:**
+- Email: `admin@example.com`
+- Password: `admin123`
+
+📖 **See [PHASE2-QUICKSTART.md](./PHASE2-QUICKSTART.md) for detailed setup and API examples**
 
 ## 📝 Environment Variables
 

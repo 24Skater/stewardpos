@@ -6,6 +6,7 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import db from '../../services/database';
 
 const router = Router();
 
@@ -24,39 +25,35 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     // Validate input
     const { email, password } = loginSchema.parse(req.body);
 
-    // TODO: Get user from database
-    // For now, use mock data for development
-    const mockUser = {
-      id: '1',
-      email: 'admin@example.com',
-      passwordHash: await bcrypt.hash('admin123', 10),
-      name: 'Admin User',
-      roleIds: ['admin-role-id'],
-      status: 'active',
-    };
+    // Get user from database
+    const adapter = db.getAdapter();
+    const user = await adapter.getUserByEmail(email);
 
     // Check if user exists
-    if (email !== mockUser.email) {
+    if (!user) {
       throw new AuthenticationError('Invalid credentials');
     }
 
     // Verify password
-    const isValidPassword = await bcrypt.compare(password, mockUser.passwordHash);
+    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       throw new AuthenticationError('Invalid credentials');
     }
 
     // Check if user is active
-    if (mockUser.status !== 'active') {
+    if (user.status !== 'active') {
       throw new AuthenticationError('Account is inactive');
     }
+
+    // Update last login
+    await adapter.updateUserLastLogin(user.id);
 
     // Generate JWT token
     const token = jwt.sign(
       {
-        id: mockUser.id,
-        email: mockUser.email,
-        roleIds: mockUser.roleIds,
+        id: user.id,
+        email: user.email,
+        roleIds: user.roleIds,
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
@@ -69,10 +66,11 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       data: {
         token,
         user: {
-          id: mockUser.id,
-          email: mockUser.email,
-          name: mockUser.name,
-          roleIds: mockUser.roleIds,
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roleIds: user.roleIds,
+          roles: user.roles,
         },
       },
     });
@@ -108,19 +106,25 @@ router.get('/session', authenticate, async (req: AuthRequest, res: Response, nex
       throw new AuthenticationError('No active session');
     }
 
-    // TODO: Get full user data from database
-    const mockUser = {
-      id: req.user.id,
-      email: req.user.email,
-      name: 'Admin User',
-      roleIds: req.user.roleIds,
-      status: 'active',
-    };
+    // Get full user data from database
+    const adapter = db.getAdapter();
+    const user = await adapter.getUserByEmail(req.user.email);
+
+    if (!user) {
+      throw new AuthenticationError('User not found');
+    }
 
     res.json({
       success: true,
       data: {
-        user: mockUser,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roleIds: user.roleIds,
+          status: user.status,
+          roles: user.roles,
+        },
       },
     });
   } catch (error) {
