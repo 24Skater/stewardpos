@@ -1,0 +1,61 @@
+{
+  "name": "persona-pos-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Persona POS",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "migrate": "node dist/services/migrator.js",
+    "migrate:rollback": "node dist/services/migrator.js rollback",
+    "seed": "node dist/services/seeder.js"
+  },
+  "keywords": [
+    "pos",
+    "point-of-sale",
+    "backend",
+    "api"
+  ],
+  "author": "Persona POS Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "zod": "^3.22.4",
+    "pg": "^8.11.3",
+    "better-sqlite3": "^9.2.2",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1",
+    "js-yaml": "^4.1.0",
+    "nodemailer": "^6.9.7",
+    "twilio": "^4.20.0",
+    "@aws-sdk/client-s3": "^3.478.0",
+    "@azure/storage-blob": "^12.17.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.10.6",
+    "@types/nodemailer": "^6.4.14",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "@typescript-eslint/eslint-plugin": "^6.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
