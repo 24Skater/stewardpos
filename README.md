@@ -88,33 +88,86 @@ Persona POS is a modern, production-ready point of sale system that you can run 
 
 ## 🚀 Quick Start
 
-### One-Command Installation
+### Backend API (5 minutes)
 
-**Linux (Ubuntu/Debian/CentOS/RHEL):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourorg/persona-pos/main/install-linux.sh | bash
-```
-
-**Windows (PowerShell as Administrator):**
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/yourorg/persona-pos/main/install-windows.ps1'))
-```
-
-**Docker:**
-```bash
+# Clone the repository
 git clone https://github.com/yourorg/persona-pos.git
-cd persona-pos
-cp .env.example .env
-# Edit .env with your settings
-docker-compose up -d
+cd persona-pos/backend
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp env.example .env
+# Edit .env (SQLite works out of the box)
+
+# Setup database (migrations + seed data)
+npm run setup-db
+
+# Start the server
+npm run dev
 ```
+
+Server runs at: `http://localhost:3001`
 
 **Default Login:**
 - Email: `admin@example.com`
 - Password: `admin123`
 - ⚠️ **Change immediately after first login!**
 
-📖 **Full installation guide:** [INSTALL.md](INSTALL.md)
+### Frontend (Development)
+
+```bash
+# In the project root
+npm install
+npm run dev
+```
+
+Frontend runs at: `http://localhost:5173`
+
+### Docker (Full Stack)
+
+```bash
+git clone https://github.com/yourorg/persona-pos.git
+cd persona-pos
+docker-compose up -d
+```
+
+📖 **Full guides:** [Backend Quick Start](backend/PHASE2-QUICKSTART.md) | [Installation Guide](INSTALL.md)
+
+---
+
+## 🔌 API Endpoints
+
+The backend API is fully functional with the following endpoints:
+
+### Authentication
+- `POST /api/auth/login` - User login
+- `GET /api/auth/session` - Get current session
+- `POST /api/auth/logout` - User logout
+- `POST /api/auth/refresh` - Refresh JWT token
+
+### Products
+- `GET /api/products` - List all products with variants
+- `GET /api/products/:id` - Get single product
+- `POST /api/products` - Create new product
+- `PUT /api/products/:id` - Update product
+- `DELETE /api/products/:id` - Delete product
+
+### Orders
+- `GET /api/orders` - List all orders
+- `GET /api/orders/:id` - Get order with items
+- `POST /api/orders` - Create new order
+
+### Customers
+- `GET /api/customers` - List all customers
+- `POST /api/customers` - Create new customer
+
+### Health
+- `GET /api/health` - API health check
+
+📖 **Full API documentation:** [Backend README](backend/README.md) | [Testing Guide](backend/TESTING-PHASE2.md)
 
 ---
 
@@ -145,11 +198,13 @@ docker-compose up -d
 - React Router
 
 **Backend:**
-- Node.js + Express (planned)
-- TypeScript
-- PostgreSQL / SQLite
-- Redis (sessions)
-- JWT authentication
+- ✅ Node.js + Express
+- ✅ TypeScript
+- ✅ PostgreSQL / SQLite (production-ready)
+- ✅ JWT authentication
+- ✅ bcrypt password hashing
+- Winston logging
+- Redis (sessions - planned)
 
 **Architecture:**
 - Clean Architecture (Hexagonal)
@@ -161,11 +216,21 @@ docker-compose up -d
 
 ## 📚 Documentation
 
+### User Guides
 - **[Installation Guide](INSTALL.md)** - Step-by-step installation for Linux, Windows, and Docker
 - **[Configuration Guide](CONFIGURATION.md)** - Complete configuration reference
+- **[Quick Start](backend/PHASE2-QUICKSTART.md)** - Get started in 5 minutes
+
+### Developer Guides
+- **[Backend README](backend/README.md)** - Backend API documentation
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
-- **[Security Policy](SECURITY.md)** - Security best practices and reporting
 - **[Development Roadmap](ROADMAP.md)** - Future plans and timeline
+- **[Testing Guide](backend/TESTING-PHASE2.md)** - How to test the application
+
+### Reference
+- **[Security Policy](SECURITY.md)** - Security best practices and reporting
+- **[Changelog](CHANGELOG.md)** - Version history and changes
+- **[Phase 2 Complete](PHASE2-COMPLETE.md)** - Database implementation details
 
 ---
 
@@ -173,16 +238,29 @@ docker-compose up -d
 
 We're actively working towards a production-ready v1.0 release. See our [detailed roadmap](ROADMAP.md) for the complete plan.
 
-**Current Status:** Beta (v0.9.x)
+**Current Status:** Beta (v0.9.x) - ~40% complete to v1.0
 
-**v1.0 Goals (Target: Q2 2025):**
-- ✅ Complete backend API
-- ✅ PostgreSQL & SQLite adapters
-- ✅ Database migrations
-- ✅ One-command installers
-- ✅ Production hardening
+**Completed (Phase 1 & 2):**
+- ✅ Backend API foundation (Express + TypeScript)
+- ✅ PostgreSQL & SQLite adapters (production-ready)
+- ✅ Database migrations system
+- ✅ Authentication (JWT + bcrypt)
+- ✅ Products, Orders, Customers APIs
+- ✅ Seed data and setup scripts
+- ✅ Security hardening (rate limiting, input validation)
 - ✅ Comprehensive documentation
-- ✅ Automated testing
+
+**In Progress (Phase 3):**
+- 🔄 One-command installers (Linux/Windows)
+- 🔄 Docker improvements
+- 🔄 Backup utilities
+- 🔄 API documentation (Swagger)
+
+**Planned (Phase 4-7):**
+- 📋 Automated testing suite
+- 📋 Frontend-backend integration
+- 📋 Production deployment guides
+- 📋 Performance optimization
 
 **Future Plans:**
 - Mobile app (iOS/Android)
@@ -214,14 +292,27 @@ We welcome contributions! Whether it's:
 git clone https://github.com/YOUR_USERNAME/persona-pos.git
 cd persona-pos
 
-# Install dependencies
+# Install frontend dependencies
 npm install
+
+# Install backend dependencies
+cd backend
+npm install
+
+# Setup backend database
+npm run setup-db
+
+# Start backend (in backend/)
+npm run dev
+
+# Start frontend (in root)
+cd ..
+npm run dev
 
 # Create a branch
 git checkout -b feature/your-feature-name
 
 # Make changes and test
-npm run dev
 npm run lint
 npm run typecheck
 
@@ -241,21 +332,29 @@ Persona POS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 ```
 ┌─────────────────────────────────────────────┐
 │           Frontend (React)                  │
+│     • Vite + TypeScript                     │
+│     • shadcn/ui + Tailwind                  │
 ├─────────────────────────────────────────────┤
 │           Backend API (Express)             │
+│     • Node.js + TypeScript                  │
+│     • JWT Authentication                    │
+│     • Input Validation (Zod)                │
 ├─────────────────────────────────────────────┤
 │         Core Business Logic                 │
 │         (Domain Models & Ports)             │
 ├─────────────────────────────────────────────┤
-│              Adapters                       │
+│              Adapters (Pluggable)           │
 │  ┌──────────┬──────────┬──────────────┐   │
 │  │ Database │   Auth   │    Email     │   │
 │  │          │          │              │   │
-│  │ • IndexDB│ • Local  │ • Console    │   │
-│  │ • Postgres│ • Google │ • SMTP      │   │
-│  │ • SQLite │ • OIDC   │ • Resend    │   │
+│  │ ✅ Postgres│ ✅ Local │ • Console   │   │
+│  │ ✅ SQLite  │ • Google │ • SMTP      │   │
+│  │ • IndexDB│ • OIDC   │ • Resend    │   │
 │  └──────────┴──────────┴──────────────┘   │
 └─────────────────────────────────────────────┘
+
+✅ = Production Ready
+• = Planned
 ```
 
 **Benefits:**
@@ -360,8 +459,26 @@ If you find this project useful, please consider giving it a star! ⭐
 
 - **Version:** 0.9.x (Beta)
 - **Status:** Active Development
+- **Progress:** ~40% to v1.0
 - **Target v1.0:** Q2 2025
-- **Production Ready:** Not yet (see [roadmap](ROADMAP.md))
+- **Backend API:** ✅ Production Ready
+- **Database Layer:** ✅ Production Ready
+- **Frontend:** 🔄 In Development
+- **Deployment:** 🔄 In Progress
+
+### What's Working Now
+- ✅ Complete backend API with PostgreSQL/SQLite
+- ✅ Authentication and authorization
+- ✅ Product, order, and customer management
+- ✅ Database migrations and seed data
+- ✅ Security features (JWT, bcrypt, rate limiting)
+- ✅ Comprehensive API documentation
+
+### What's Next
+- 🔄 Automated installation scripts
+- 🔄 Frontend-backend integration
+- 🔄 Complete testing suite
+- 🔄 Production deployment guides
 
 ---
 
