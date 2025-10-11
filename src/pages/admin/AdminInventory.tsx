@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getAllProducts, Product, resetDatabase } from '@/lib/db';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { getAllProducts, Product, resetDatabase, updateProduct, deleteProduct } from '@/lib/db';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -16,6 +18,8 @@ export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const session = getCurrentSession();
   const { toast } = useToast();
 
@@ -45,6 +49,36 @@ export default function AdminInventory() {
       await resetDatabase();
       await loadProducts();
       toast({ title: 'Database reset complete', description: 'Fresh inventory loaded' });
+    }
+  };
+
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProduct) return;
+    
+    await updateProduct(editingProduct.id, {
+      name: editingProduct.name,
+      description: editingProduct.description,
+      category: editingProduct.category,
+      basePrice: editingProduct.basePrice,
+      barcode: editingProduct.barcode,
+    });
+    
+    setEditDialogOpen(false);
+    setEditingProduct(null);
+    await loadProducts();
+    toast({ title: 'Product updated' });
+  };
+
+  const handleDelete = async (productId: string) => {
+    if (confirm('Delete this product? This cannot be undone.')) {
+      await deleteProduct(productId);
+      await loadProducts();
+      toast({ title: 'Product deleted' });
     }
   };
 
@@ -131,12 +165,12 @@ export default function AdminInventory() {
                         <TableCell>
                           <div className="flex gap-2">
                             {canWrite && (
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
                                 <Edit className="w-4 h-4" />
                               </Button>
                             )}
                             {canDelete && (
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>
                             )}
@@ -155,6 +189,59 @@ export default function AdminInventory() {
             onOpenChange={setImportDialogOpen}
             onImportComplete={loadProducts}
           />
+
+          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Product</DialogTitle>
+              </DialogHeader>
+              {editingProduct && (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Name</Label>
+                    <Input
+                      value={editingProduct.name}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Input
+                      value={editingProduct.description || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Category</Label>
+                    <Input
+                      value={editingProduct.category}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Base Price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editingProduct.basePrice}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, basePrice: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Barcode</Label>
+                    <Input
+                      value={editingProduct.barcode || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveEdit}>Save Changes</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </AdminLayout>
     </ProtectedRoute>

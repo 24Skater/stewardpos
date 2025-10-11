@@ -317,9 +317,20 @@ export async function addProduct(product: Product) {
   await db.add('products', product);
 }
 
-export async function updateProduct(product: Product) {
+export async function updateProduct(id: string, updates: Partial<Product>) {
   const db = await getDB();
-  await db.put('products', product);
+  const product = await db.get('products', id);
+  if (!product) throw new Error('Product not found');
+  
+  const updated = {
+    ...product,
+    ...updates,
+    id: product.id, // Ensure ID doesn't change
+    updatedAt: Date.now(),
+  };
+  
+  await db.put('products', updated);
+  return updated;
 }
 
 export async function deleteProduct(id: string) {

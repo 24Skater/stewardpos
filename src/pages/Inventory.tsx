@@ -63,7 +63,14 @@ export default function Inventory() {
       await addProduct(currentProduct);
       toast({ title: "Product added successfully" });
     } else {
-      await updateProduct(currentProduct);
+      await updateProduct(currentProduct.id, {
+        name: currentProduct.name,
+        description: currentProduct.description,
+        category: currentProduct.category,
+        basePrice: currentProduct.basePrice,
+        barcode: currentProduct.barcode,
+        image: currentProduct.image,
+      });
       toast({ title: "Product updated successfully" });
     }
 
