@@ -66,6 +66,7 @@ export default function AdminInventory() {
       category: editingProduct.category,
       basePrice: editingProduct.basePrice,
       barcode: editingProduct.barcode,
+      image: editingProduct.image,
     });
     
     setEditDialogOpen(false);
@@ -225,6 +226,14 @@ export default function AdminInventory() {
                       step="0.01"
                       value={editingProduct.basePrice}
                       onChange={(e) => setEditingProduct({ ...editingProduct, basePrice: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Image URL</Label>
+                    <Input
+                      value={editingProduct.image || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                      placeholder="https://example.com/image.jpg or /path/to/image.png"
                     />
                   </div>
                   <div>
