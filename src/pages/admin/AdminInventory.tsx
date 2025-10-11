@@ -3,19 +3,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getAllProducts, Product } from '@/lib/db';
-import { Search, Plus, Edit, Trash2, Upload } from 'lucide-react';
+import { getAllProducts, Product, resetDatabase } from '@/lib/db';
+import { Search, Plus, Edit, Trash2, Upload, RefreshCw } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
 import ImportInventoryDialog from '@/components/ImportInventoryDialog';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const session = getCurrentSession();
+  const { toast } = useToast();
 
   useEffect(() => {
     loadProducts();
@@ -38,6 +40,14 @@ export default function AdminInventory() {
     exportInventoryToCSV(products);
   };
 
+  const handleReset = async () => {
+    if (confirm('This will delete all current data and load fresh inventory. Continue?')) {
+      await resetDatabase();
+      await loadProducts();
+      toast({ title: 'Database reset complete', description: 'Fresh inventory loaded' });
+    }
+  };
+
   return (
     <ProtectedRoute>
       <AdminLayout>
@@ -53,6 +63,10 @@ export default function AdminInventory() {
               </Button>
               {canWrite && (
                 <>
+                  <Button variant="outline" onClick={handleReset}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Reset Data
+                  </Button>
                   <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
                     <Upload className="w-4 h-4 mr-2" />
                     Import

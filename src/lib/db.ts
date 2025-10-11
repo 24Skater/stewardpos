@@ -424,6 +424,27 @@ export function calculateVariantPrice(basePrice: number, variant: ProductVariant
   return basePrice + (variant.priceDelta || 0);
 }
 
+// Clear all data and reinitialize
+export async function resetDatabase() {
+  const db = await getDB();
+  
+  // Clear all stores
+  const tx = db.transaction(['products', 'categories', 'orders', 'orderItems', 'customers', 'services', 'users', 'roles', 'settings'], 'readwrite');
+  await tx.objectStore('products').clear();
+  await tx.objectStore('categories').clear();
+  await tx.objectStore('orders').clear();
+  await tx.objectStore('orderItems').clear();
+  await tx.objectStore('customers').clear();
+  await tx.objectStore('services').clear();
+  await tx.objectStore('users').clear();
+  await tx.objectStore('roles').clear();
+  await tx.objectStore('settings').clear();
+  await tx.done;
+  
+  // Reinitialize with new data
+  await initializeSampleData();
+}
+
 // Initialize with sample data
 export async function initializeSampleData() {
   const db = await getDB();
