@@ -248,11 +248,9 @@ export class Seeder {
     logger.info('Seeding sample categories...');
 
     const categories = [
-      { name: 'Electronics', icon: 'laptop' },
-      { name: 'Clothing', icon: 'shirt' },
-      { name: 'Food & Beverage', icon: 'coffee' },
-      { name: 'Books', icon: 'book' },
-      { name: 'Home & Garden', icon: 'home' },
+      { name: 'Chips & Snacks', icon: 'package' },
+      { name: 'Drinks', icon: 'coffee' },
+      { name: 'Candy', icon: 'candy' },
     ];
 
     for (const category of categories) {
@@ -277,27 +275,23 @@ export class Seeder {
     logger.info('Seeding sample products...');
 
     const products = [
-      {
-        name: 'Laptop',
-        description: 'High-performance laptop',
-        category: 'Electronics',
-        base_price: 999.99,
-        barcode: '123456789',
-      },
-      {
-        name: 'T-Shirt',
-        description: 'Cotton t-shirt',
-        category: 'Clothing',
-        base_price: 19.99,
-        barcode: '987654321',
-      },
-      {
-        name: 'Coffee Beans',
-        description: 'Premium coffee beans',
-        category: 'Food & Beverage',
-        base_price: 12.99,
-        barcode: '456789123',
-      },
+      // Chips & Snacks
+      { name: 'Takis', category: 'Chips & Snacks', base_price: 1.00, barcode: '101' },
+      { name: 'Pringles', category: 'Chips & Snacks', base_price: 2.00, barcode: '102' },
+      { name: 'Oreo', category: 'Chips & Snacks', base_price: 1.00, barcode: '103' },
+      { name: 'Cookies (2 for $1)', category: 'Chips & Snacks', base_price: 0.50, barcode: '104' },
+      { name: 'Peanut', category: 'Chips & Snacks', base_price: 1.00, barcode: '105' },
+      
+      // Drinks
+      { name: 'SunnyD', category: 'Drinks', base_price: 1.00, barcode: '201' },
+      { name: 'Apple Juice', category: 'Drinks', base_price: 1.00, barcode: '202' },
+      { name: 'Small Juice', category: 'Drinks', base_price: 1.00, barcode: '203' },
+      { name: 'Payaso', category: 'Drinks', base_price: 2.00, barcode: '204' },
+      
+      // Candy
+      { name: 'Ring Pop', category: 'Candy', base_price: 1.00, barcode: '301' },
+      { name: 'Chocolate (2 for $1)', category: 'Candy', base_price: 0.50, barcode: '302' },
+      { name: 'Lollipop (2 for $1)', category: 'Candy', base_price: 0.50, barcode: '303' },
     ];
 
     for (const product of products) {
