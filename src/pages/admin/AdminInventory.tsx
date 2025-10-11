@@ -5,8 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAllProducts, Product, resetDatabase, updateProduct, deleteProduct } from '@/lib/db';
-import { Search, Plus, Edit, Trash2, Upload, RefreshCw } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission } from '@/lib/auth';
@@ -20,6 +21,7 @@ export default function AdminInventory() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const session = getCurrentSession();
   const { toast } = useToast();
 
@@ -54,7 +56,37 @@ export default function AdminInventory() {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    setUploadedImage(null);
     setEditDialogOpen(true);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Error', description: 'Image must be less than 5MB', variant: 'destructive' });
+      return;
+    }
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Error', description: 'Please upload an image file', variant: 'destructive' });
+      return;
+    }
+
+    // Convert to base64 for storage
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setUploadedImage(base64String);
+      if (editingProduct) {
+        setEditingProduct({ ...editingProduct, image: base64String });
+      }
+      toast({ title: 'Image uploaded successfully' });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveEdit = async () => {
@@ -229,12 +261,42 @@ export default function AdminInventory() {
                     />
                   </div>
                   <div>
-                    <Label>Image URL</Label>
-                    <Input
-                      value={editingProduct.image || ''}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                      placeholder="https://example.com/image.jpg or /path/to/image.png"
-                    />
+                    <Label>Product Image</Label>
+                    <Tabs defaultValue="upload" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="upload">Upload Image</TabsTrigger>
+                        <TabsTrigger value="url">Image URL</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="upload" className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="cursor-pointer"
+                          />
+                          <Button type="button" variant="outline" size="icon">
+                            <ImagePlus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        {(uploadedImage || editingProduct.image) && (
+                          <div className="mt-2 border rounded p-2">
+                            <img 
+                              src={uploadedImage || editingProduct.image} 
+                              alt="Preview" 
+                              className="max-h-32 object-contain mx-auto"
+                            />
+                          </div>
+                        )}
+                      </TabsContent>
+                      <TabsContent value="url">
+                        <Input
+                          value={editingProduct.image || ''}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                          placeholder="https://example.com/image.jpg"
+                        />
+                      </TabsContent>
+                    </Tabs>
                   </div>
                   <div>
                     <Label>Barcode</Label>
