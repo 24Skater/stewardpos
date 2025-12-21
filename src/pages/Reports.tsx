@@ -2,15 +2,17 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getAllOrders, getAllOrderItems, OrderItem } from "@/lib/db";
+import { apiClient } from "@/lib/api-client";
+import type { Order, OrderItem } from "@/lib/api-types";
 import { ArrowLeft, DollarSign, ShoppingCart, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 
 export default function Reports() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [dateRange, setDateRange] = useState(7);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -18,17 +20,33 @@ export default function Reports() {
   }, [dateRange]);
 
   const loadData = async () => {
-    const now = Date.now();
-    const startDate = now - dateRange * 86400000;
+    try {
+      setLoading(true);
+      const now = Date.now();
+      const startDate = now - dateRange * 86400000;
 
-    const allOrders = await getAllOrders();
-    const filteredOrders = allOrders.filter(o => o.createdAt >= startDate);
-    setOrders(filteredOrders);
+      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      if (response.success) {
+        const filteredOrders = response.data.filter(o => o.createdAt >= startDate);
+        setOrders(filteredOrders);
 
-    const allItems = await getAllOrderItems();
-    const relevantOrderIds = new Set(filteredOrders.map(o => o.id));
-    const filteredItems = allItems.filter(i => relevantOrderIds.has(i.orderId));
-    setOrderItems(filteredItems);
+        // Extract order items from orders (if included in response)
+        const allItems: OrderItem[] = [];
+        filteredOrders.forEach(order => {
+          if (order.items) {
+            allItems.push(...order.items);
+          }
+        });
+        setOrderItems(allItems);
+      }
+    } catch (error: any) {
+      console.error('Failed to load orders:', error);
+      // Set empty arrays on error
+      setOrders([]);
+      setOrderItems([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);

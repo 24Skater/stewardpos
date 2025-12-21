@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { getAllOrders, getAllOrderItems } from '@/lib/db';
+import { apiClient } from '@/lib/api-client';
+import type { Order, OrderItem } from '@/lib/api-types';
 import { Calendar } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -22,8 +23,17 @@ export default function AdminReports() {
   }, [period]);
 
   const loadReports = async () => {
-    const orders = await getAllOrders();
-    const orderItems = await getAllOrderItems();
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      const orders = response.success ? response.data : [];
+      
+      // Extract order items from orders
+      const orderItems: OrderItem[] = [];
+      orders.forEach(order => {
+        if (order.items) {
+          orderItems.push(...order.items);
+        }
+      });
 
     const now = Date.now();
     let startDate = now;
@@ -42,30 +52,33 @@ export default function AdminReports() {
         break;
     }
 
-    const filteredOrders = orders.filter(o => o.createdAt >= startDate);
-    const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
-    const filteredItems = orderItems.filter(item => filteredOrderIds.has(item.orderId));
+      const filteredOrders = orders.filter(o => o.createdAt >= startDate);
+      const filteredOrderIds = new Set(filteredOrders.map(o => o.id));
+      const filteredItems = orderItems.filter(item => filteredOrderIds.has(item.orderId));
 
-    const grossSales = filteredOrders.reduce((sum, o) => sum + o.total, 0);
-    const taxCollected = filteredOrders.reduce((sum, o) => sum + o.taxTotal, 0);
-    const orderCount = filteredOrders.length;
-    const avgTicket = orderCount > 0 ? grossSales / orderCount : 0;
+      const grossSales = filteredOrders.reduce((sum, o) => sum + o.total, 0);
+      const taxCollected = filteredOrders.reduce((sum, o) => sum + o.taxTotal, 0);
+      const orderCount = filteredOrders.length;
+      const avgTicket = orderCount > 0 ? grossSales / orderCount : 0;
 
-    // Top items
-    const itemMap = new Map<string, { name: string; qty: number; gross: number }>();
-    filteredItems.forEach(item => {
-      const existing = itemMap.get(item.nameSnapshot) || { name: item.nameSnapshot, qty: 0, gross: 0 };
-      existing.qty += item.quantity;
-      existing.gross += item.lineTotal;
-      itemMap.set(item.nameSnapshot, existing);
-    });
+      // Top items
+      const itemMap = new Map<string, { name: string; qty: number; gross: number }>();
+      filteredItems.forEach(item => {
+        const existing = itemMap.get(item.nameSnapshot) || { name: item.nameSnapshot, qty: 0, gross: 0 };
+        existing.qty += item.quantity;
+        existing.gross += item.lineTotal;
+        itemMap.set(item.nameSnapshot, existing);
+      });
 
-    const topItemsArray = Array.from(itemMap.values())
-      .sort((a, b) => b.gross - a.gross)
-      .slice(0, 10);
+      const topItemsArray = Array.from(itemMap.values())
+        .sort((a, b) => b.gross - a.gross)
+        .slice(0, 10);
 
-    setStats({ grossSales, orderCount, avgTicket, taxCollected });
-    setTopItems(topItemsArray);
+      setStats({ grossSales, orderCount, avgTicket, taxCollected });
+      setTopItems(topItemsArray);
+    } catch (error) {
+      console.error('Failed to load reports:', error);
+    }
   };
 
   return (

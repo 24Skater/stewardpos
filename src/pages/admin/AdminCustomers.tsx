@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { getAllCustomers, Customer } from '@/lib/db';
+import { apiClient } from '@/lib/api-client';
+import type { Customer } from '@/lib/api-types';
 import { Search, Plus, Eye } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -19,8 +20,15 @@ export default function AdminCustomers() {
   }, []);
 
   const loadCustomers = async () => {
-    const data = await getAllCustomers();
-    setCustomers(data.sort((a, b) => (b.lastOrderAt || 0) - (a.lastOrderAt || 0)));
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers');
+      if (response.success) {
+        // Note: lastOrderAt may not be in API response, adjust sorting if needed
+        setCustomers(response.data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      }
+    } catch (error) {
+      console.error('Failed to load customers:', error);
+    }
   };
 
   const filteredCustomers = customers.filter(c =>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getAllOrders, getAllProducts } from '@/lib/db';
+import { apiClient } from '@/lib/api-client';
+import type { Order, Product } from '@/lib/api-types';
 import { DollarSign, ShoppingCart, Package, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -20,49 +21,58 @@ export default function Dashboard() {
   }, []);
 
   const loadStats = async () => {
-    const orders = await getAllOrders();
-    const products = await getAllProducts();
+    try {
+      const [ordersResponse, productsResponse] = await Promise.all([
+        apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
+        apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
+      ]);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime();
+      const orders = ordersResponse.success ? ordersResponse.data : [];
+      const products = productsResponse.success ? productsResponse.data : [];
 
-    const todayOrders = orders.filter(o => o.createdAt >= todayTimestamp);
-    const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTimestamp = today.getTime();
 
-    const lowStock = products.reduce((count, p) => {
-      const hasLowStock = p.variants.some(v => v.enabled && v.stock < 10);
-      return hasLowStock ? count + 1 : count;
-    }, 0);
+      const todayOrders = orders.filter(o => o.createdAt >= todayTimestamp);
+      const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
 
-    setStats({
-      todaySales,
-      todayOrders: todayOrders.length,
-      lowStock,
-      totalProducts: products.length,
-    });
+      const lowStock = products.reduce((count, p) => {
+        const hasLowStock = p.variants.some(v => v.enabled && v.stock < 10);
+        return hasLowStock ? count + 1 : count;
+      }, 0);
 
-    // Generate last 7 days data for charts
-    const chartData = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      
-      const dayStart = date.getTime();
-      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-      
-      const dayOrders = orders.filter(o => o.createdAt >= dayStart && o.createdAt < dayEnd);
-      const daySales = dayOrders.reduce((sum, o) => sum + o.total, 0);
-      
-      chartData.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        sales: parseFloat(daySales.toFixed(2)),
-        orders: dayOrders.length,
+      setStats({
+        todaySales,
+        todayOrders: todayOrders.length,
+        lowStock,
+        totalProducts: products.length,
       });
+
+      // Generate last 7 days data for charts
+      const chartData = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        
+        const dayStart = date.getTime();
+        const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+        
+        const dayOrders = orders.filter(o => o.createdAt >= dayStart && o.createdAt < dayEnd);
+        const daySales = dayOrders.reduce((sum, o) => sum + o.total, 0);
+        
+        chartData.push({
+          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          sales: parseFloat(daySales.toFixed(2)),
+          orders: dayOrders.length,
+        });
+      }
+      
+      setSalesData(chartData);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
     }
-    
-    setSalesData(chartData);
   };
 
   const cards = [

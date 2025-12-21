@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getAllProducts, Product, resetDatabase, updateProduct, deleteProduct } from '@/lib/db';
+import { apiClient } from '@/lib/api-client';
+import type { Product, CreateProductRequest, UpdateProductRequest } from '@/lib/api-types';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -22,6 +23,7 @@ export default function AdminInventory() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const session = getCurrentSession();
   const { toast } = useToast();
 
@@ -30,8 +32,21 @@ export default function AdminInventory() {
   }, []);
 
   const loadProducts = async () => {
-    const data = await getAllProducts();
-    setProducts(data);
+    try {
+      setLoading(true);
+      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
+      if (response.success) {
+        setProducts(response.data);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load products',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredProducts = products.filter(p =>
@@ -48,9 +63,13 @@ export default function AdminInventory() {
 
   const handleReset = async () => {
     if (confirm('This will delete all current data and load fresh inventory. Continue?')) {
-      await resetDatabase();
-      await loadProducts();
-      toast({ title: 'Database reset complete', description: 'Fresh inventory loaded' });
+      // TODO: Implement reset endpoint in backend if needed
+      toast({ 
+        title: 'Reset not available', 
+        description: 'Database reset functionality requires backend endpoint',
+        variant: 'destructive'
+      });
+      // await loadProducts();
     }
   };
 
@@ -92,26 +111,50 @@ export default function AdminInventory() {
   const handleSaveEdit = async () => {
     if (!editingProduct) return;
     
-    await updateProduct(editingProduct.id, {
-      name: editingProduct.name,
-      description: editingProduct.description,
-      category: editingProduct.category,
-      basePrice: editingProduct.basePrice,
-      barcode: editingProduct.barcode,
-      image: editingProduct.image,
-    });
-    
-    setEditDialogOpen(false);
-    setEditingProduct(null);
-    await loadProducts();
-    toast({ title: 'Product updated' });
+    try {
+      const updateData: UpdateProductRequest = {
+        name: editingProduct.name,
+        description: editingProduct.description,
+        category: editingProduct.category,
+        basePrice: editingProduct.basePrice,
+        barcode: editingProduct.barcode,
+        image: editingProduct.image,
+      };
+      const response = await apiClient.put<{ success: boolean; data: Product }>(
+        `/api/products/${editingProduct.id}`,
+        updateData
+      );
+      
+      if (response.success) {
+        setEditDialogOpen(false);
+        setEditingProduct(null);
+        await loadProducts();
+        toast({ title: 'Product updated' });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update product',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleDelete = async (productId: string) => {
     if (confirm('Delete this product? This cannot be undone.')) {
-      await deleteProduct(productId);
-      await loadProducts();
-      toast({ title: 'Product deleted' });
+      try {
+        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${productId}`);
+        if (response.success) {
+          await loadProducts();
+          toast({ title: 'Product deleted' });
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to delete product',
+          variant: 'destructive',
+        });
+      }
     }
   };
 

@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Download, FileText, Table } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { getAllOrders, getAllOrderItems, getAllProducts, getSettings } from '@/lib/db';
+import { apiClient } from '@/lib/api-client';
+import type { Order, OrderItem, Product } from '@/lib/api-types';
 import { exportToCSV, exportOrdersToPDF, exportInventoryToCSV } from '@/lib/export-utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,8 +17,10 @@ export default function AdminExports() {
   const { toast } = useToast();
 
   const handleExportOrdersCSV = async () => {
-    const orders = await getAllOrders();
-    const filteredOrders = filterByDateRange(orders);
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      const orders = response.success ? response.data : [];
+      const filteredOrders = filterByDateRange(orders);
     
     const data = filteredOrders.map(order => ({
       'Order ID': order.id,
@@ -30,29 +33,67 @@ export default function AdminExports() {
       'Customer Phone': order.customerPhone || '',
     }));
 
-    exportToCSV(data, `orders-${new Date().toISOString().split('T')[0]}.csv`);
-    toast({ title: 'Orders exported to CSV' });
+      exportToCSV(data, `orders-${new Date().toISOString().split('T')[0]}.csv`);
+      toast({ title: 'Orders exported to CSV' });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to export orders',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleExportOrdersPDF = async () => {
-    const orders = await getAllOrders();
-    const orderItems = await getAllOrderItems();
-    const settings = await getSettings();
-    
-    const filteredOrders = filterByDateRange(orders);
-    const start = startDate ? new Date(startDate).getTime() : 0;
-    const end = endDate ? new Date(endDate).getTime() : Date.now();
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      const orders = response.success ? response.data : [];
+      
+      // Extract order items from orders
+      const orderItems: OrderItem[] = [];
+      orders.forEach(order => {
+        if (order.items) {
+          orderItems.push(...order.items);
+        }
+      });
+      
+      const filteredOrders = filterByDateRange(orders);
+      const start = startDate ? new Date(startDate).getTime() : 0;
+      const end = endDate ? new Date(endDate).getTime() : Date.now();
 
-    if (settings) {
-      exportOrdersToPDF(filteredOrders, orderItems, settings, { start, end });
-      toast({ title: 'Orders exported to PDF' });
+      // TODO: Get settings from API when available
+      const settings = null; // await getSettings();
+      if (settings) {
+        exportOrdersToPDF(filteredOrders, orderItems, settings, { start, end });
+        toast({ title: 'Orders exported to PDF' });
+      } else {
+        // Export without settings for now
+        exportOrdersToPDF(filteredOrders, orderItems, {} as any, { start, end });
+        toast({ title: 'Orders exported to PDF' });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to export orders',
+        variant: 'destructive',
+      });
     }
   };
 
   const handleExportInventory = async () => {
-    const products = await getAllProducts();
-    exportInventoryToCSV(products);
-    toast({ title: 'Inventory exported to CSV' });
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
+      if (response.success) {
+        exportInventoryToCSV(response.data);
+        toast({ title: 'Inventory exported to CSV' });
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to export inventory',
+        variant: 'destructive',
+      });
+    }
   };
 
   const filterByDateRange = <T extends { createdAt: number }>(items: T[]) => {
