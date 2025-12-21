@@ -1,3 +1,6 @@
+import { apiClient } from './api-client';
+import type { LoginResponse } from './api-types';
+
 interface AuthToken {
   token: string;
   expiresAt: number;
@@ -35,7 +38,30 @@ export const authStore = {
     const timeUntilExpiry = parseInt(expiry, 10) - Date.now();
     return timeUntilExpiry < REFRESH_THRESHOLD;
   },
+
+  async refreshToken(): Promise<boolean> {
+    try {
+      const response = await apiClient.post<LoginResponse>('/api/auth/refresh');
+      if (response.success && response.data.token) {
+        this.setToken(response.data.token, '7d');
+        return true;
+      }
+    } catch (error) {
+      this.clearToken();
+      return false;
+    }
+    return false;
+  },
 };
+
+// Auto-refresh token before expiry (check every minute)
+if (typeof window !== 'undefined') {
+  setInterval(async () => {
+    if (authStore.shouldRefreshToken() && authStore.getToken()) {
+      await authStore.refreshToken();
+    }
+  }, 60000); // Check every minute
+}
 
 function parseExpiresIn(expiresIn: string): number {
   const match = expiresIn.match(/^(\d+)([dhms])$/);

@@ -7,59 +7,103 @@ on:
     branches: [main, develop]
 
 jobs:
-  test:
-    name: Test & Build
+  lint-and-typecheck:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run TypeScript type check
-        run: npm run typecheck
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm run test
-        if: false  # Enable when tests are added
-
-      - name: Build application
-        run: npm run build
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
-
-  security:
-    name: Security Audit
+  test-frontend:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Run npm audit
-        run: npm audit --audit-level=moderate
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:coverage
         continue-on-error: true
 
-      - name: Check for outdated dependencies
-        run: npm outdated || true
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stewardpos_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - working-directory: ./backend
+        run: npm ci
+      - working-directory: ./backend
+        run: npm run migrate
+        env:
+          DB_ADAPTER: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: stewardpos_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET: test-secret-min-32-characters-long-for-ci
+      - working-directory: ./backend
+        run: npm run test:coverage
+        continue-on-error: true
+        env:
+          DB_ADAPTER: postgres
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: stewardpos_test
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          JWT_SECRET: test-secret-min-32-characters-long-for-ci
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - working-directory: ./backend
+        run: npm ci
+      - working-directory: ./backend
+        run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+        continue-on-error: true
+      - working-directory: ./backend
+        run: npm ci
+      - working-directory: ./backend
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
