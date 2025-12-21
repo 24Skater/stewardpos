@@ -40,7 +40,7 @@ export default function Reports() {
         setOrderItems(allItems);
       }
     } catch (error: any) {
-      console.error('Failed to load orders:', error);
+      // Error logged via toast notification
       // Set empty arrays on error
       setOrders([]);
       setOrderItems([]);

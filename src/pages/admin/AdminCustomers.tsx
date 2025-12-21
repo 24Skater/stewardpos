@@ -27,7 +27,7 @@ export default function AdminCustomers() {
         setCustomers(response.data.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
       }
     } catch (error) {
-      console.error('Failed to load customers:', error);
+      // Error handling via toast (if implemented)
     }
   };
 

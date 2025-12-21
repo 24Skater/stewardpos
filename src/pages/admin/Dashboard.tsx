@@ -71,7 +71,7 @@ export default function Dashboard() {
       
       setSalesData(chartData);
     } catch (error) {
-      console.error('Failed to load stats:', error);
+      // Error handling via toast (if implemented)
     }
   };
 

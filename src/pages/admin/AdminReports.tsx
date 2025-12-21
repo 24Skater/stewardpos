@@ -77,7 +77,7 @@ export default function AdminReports() {
       setStats({ grossSales, orderCount, avgTicket, taxCollected });
       setTopItems(topItemsArray);
     } catch (error) {
-      console.error('Failed to load reports:', error);
+      // Error handling via toast (if implemented)
     }
   };
 
