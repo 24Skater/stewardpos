@@ -5,7 +5,9 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import { Product, CartItem, getAllProducts, getProduct, getProductByBarcode, initializeSampleData, addOrder, addOrderItem, getSettings, calculateVariantPrice, getAllCategories } from "@/lib/db";
+import { CartItem } from "@/lib/db";
+import { apiClient } from "@/lib/api-client";
+import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
 import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 
 export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,14 +57,29 @@ export default function POS() {
   }, []);
 
   const loadProducts = async () => {
-    await initializeSampleData();
-    const allProducts = await getAllProducts();
-    setProducts(allProducts);
+    try {
+      setLoading(true);
+      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
+      if (response.success) {
+        setProducts(response.data);
+        // Extract unique categories from products
+        const uniqueCategories = new Set(response.data.map(p => p.category).filter(Boolean));
+        setCategories(["All", ...Array.from(uniqueCategories)]);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load products',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadCategories = async () => {
-    const cats = await getAllCategories();
-    setCategories(["All", ...cats.map(c => c.name)]);
+    // Categories are now derived from products in loadProducts
+    // This function is kept for compatibility but does nothing
   };
 
   const filterProducts = () => {
@@ -85,11 +103,15 @@ export default function POS() {
     e?.preventDefault();
     if (!barcodeInput.trim()) return;
 
-    // Try to find product by barcode
-    const product = await getProductByBarcode(barcodeInput.trim());
+    // Try to find product by barcode in loaded products
+    const product = products.find(p => 
+      p.barcode === barcodeInput.trim() ||
+      p.variants.some(v => v.barcode === barcodeInput.trim())
+    );
+    
     if (product) {
       // Find variant with matching barcode
-      const variant = product.variants.find(v => v.barcode === barcodeInput.trim());
+      const variant = product.variants.find(v => v.barcode === barcodeInput.trim()) || product.variants[0];
       if (variant) {
         await handleAddToCart(product.id, variant.id);
         setBarcodeInput("");
@@ -131,7 +153,7 @@ export default function POS() {
   };
 
   const handleAddToCart = async (productId: string, variantId: string) => {
-    const product = await getProduct(productId);
+    const product = products.find(p => p.id === productId);
     if (!product) return;
 
     const variant = product.variants.find(v => v.id === variantId);
@@ -148,6 +170,9 @@ export default function POS() {
       item => item.productId === productId && item.variantId === variantId
     );
 
+    // Calculate price (use variant priceOverride or priceDelta, or basePrice)
+    const price = variant.priceOverride ?? (product.basePrice + (variant.priceDelta || 0));
+
     if (existingItem) {
       if (existingItem.quantity >= variant.stock) {
         toast({
@@ -163,7 +188,6 @@ export default function POS() {
           : item
       ));
     } else {
-      const price = calculateVariantPrice(product.basePrice, variant);
       setCart([...cart, { productId, variantId, quantity: 1, price, nameSnapshot: product.name, size: variant.size, color: variant.color }]);
     }
 
@@ -180,7 +204,7 @@ export default function POS() {
   };
 
   const handleUpdateQuantity = async (productId: string, variantId: string, change: number) => {
-    const product = await getProduct(productId);
+    const product = products.find(p => p.id === productId);
     if (!product) return;
 
     const variant = product.variants.find(v => v.id === variantId);
@@ -222,58 +246,61 @@ export default function POS() {
   };
 
   const handleCompleteCheckout = async () => {
-    const settings = await getSettings();
-    const taxRate = settings?.taxRateDefault || 0;
-    
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const discountTotal = cart.reduce((sum, item) => sum + (item.lineDiscount || 0) * item.quantity, 0);
-    const taxTotal = (subtotal - discountTotal) * taxRate;
-    const total = subtotal - discountTotal + taxTotal;
-    
-    const orderId = `ORD-${Date.now()}`;
-    
-    await addOrder({
-      id: orderId,
-      createdAt: Date.now(),
-      subtotal,
-      discountTotal,
-      taxTotal,
-      total,
-      paymentMethod: 'Cash',
-      customerEmail: customerEmail || undefined,
-    });
+    try {
+      // TODO: Get settings from API when settings endpoint is available
+      const taxRate = 0; // Default to 0 for now
+      
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const discountTotal = cart.reduce((sum, item) => sum + (item.lineDiscount || 0) * item.quantity, 0);
+      const taxTotal = (subtotal - discountTotal) * taxRate;
+      const total = subtotal - discountTotal + taxTotal;
+      
+      const orderData: CreateOrderRequest = {
+        items: cart.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          nameSnapshot: item.nameSnapshot || '',
+          size: item.size,
+          color: item.color,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          lineDiscount: item.lineDiscount || 0,
+          lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
+          notes: item.notes,
+        })),
+        subtotal,
+        discountTotal,
+        taxTotal,
+        total,
+        paymentMethod: 'Cash',
+        customerEmail: customerEmail || undefined,
+      };
 
-    for (const item of cart) {
-      await addOrderItem({
-        id: `OI-${Date.now()}-${Math.random()}`,
-        orderId,
-        productId: item.productId,
-        variantId: item.variantId,
-        nameSnapshot: item.nameSnapshot || '',
-        size: item.size,
-        color: item.color,
-        quantity: item.quantity,
-        unitPrice: item.price,
-        lineDiscount: item.lineDiscount || 0,
-        lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
-        notes: item.notes,
+      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+      
+      if (response.success) {
+        toast({
+          title: "Sale completed!",
+          description: `Order ${response.data.id} saved successfully`,
+        });
+
+        setLastOrderId(response.data.id);
+        setLastOrderTotal(total);
+        setCart([]);
+        setCustomerEmail("");
+        setCheckoutOpen(false);
+        setReceiptDialogOpen(true);
+        
+        // Reload products to update stock
+        await loadProducts();
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create order',
+        variant: 'destructive',
       });
     }
-
-    toast({
-      title: "Sale completed!",
-      description: `Order ${orderId} saved successfully`,
-    });
-
-    setLastOrderId(orderId);
-    setLastOrderTotal(total);
-    setCart([]);
-    setCustomerEmail("");
-    setCheckoutOpen(false);
-    setReceiptDialogOpen(true);
-    
-    // Reload products to update stock
-    await loadProducts();
   };
 
   const cartWithProducts = cart.map(item => ({

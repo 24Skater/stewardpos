@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { login } from '@/lib/auth';
+import { apiClient } from '@/lib/api-client';
+import { authStore } from '@/lib/auth-store';
+import type { LoginRequest, LoginResponse } from '@/lib/api-types';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn } from 'lucide-react';
 
@@ -20,10 +22,17 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const session = await login(email, password);
-      
-      if (session) {
-        toast({ title: 'Login successful' });
+      const response = await apiClient.post<LoginResponse>('/api/auth/login', {
+        email,
+        password,
+      } as LoginRequest);
+
+      if (response.success && response.data.token) {
+        authStore.setToken(response.data.token, '7d');
+        toast({ 
+          title: 'Success',
+          description: 'Logged in successfully',
+        });
         navigate('/admin');
       } else {
         toast({ 
@@ -32,10 +41,10 @@ export default function Login() {
           variant: 'destructive'
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({ 
         title: 'Error', 
-        description: 'An error occurred during login',
+        description: error.message || 'Login failed',
         variant: 'destructive'
       });
     } finally {
