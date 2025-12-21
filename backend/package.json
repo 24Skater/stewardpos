@@ -11,7 +11,10 @@
     "lint": "eslint src --ext .ts",
     "migrate": "tsx src/services/migrator.ts",
     "seed": "tsx src/services/seeder.ts",
-    "setup-db": "tsx scripts/setup-database.ts"
+    "setup-db": "tsx scripts/setup-database.ts",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "keywords": [
     "pos",
