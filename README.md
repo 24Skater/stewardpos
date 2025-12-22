@@ -1,487 +1,533 @@
-# Persona POS (Steward POS)
+<div align="center">
 
-**Open-source, self-hosted Point of Sale system for small to medium businesses.**
+# 🛒 stewardPOS
+
+**Modern, Open-Source Point of Sale System**
+
+*Self-hosted • Production-Ready • Docker-First*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](docker-compose.yml)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+
+[🚀 Quick Start](#-quick-start) • [📖 Documentation](#-documentation) • [🏗️ Architecture](#️-architecture) • [🤝 Contributing](#-contributing)
 
 ---
 
-## 🎯 Overview
+</div>
 
-Persona POS is a modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
+## 📑 Table of Contents
 
-**Perfect for:**
-- Retail stores
-- Restaurants & cafes
-- Service businesses
-- Small to medium enterprises
-- Anyone who wants to own their POS system
+- [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
+  - [🐳 Docker (Recommended)](#-docker-recommended)
+  - [💻 Local Development](#-local-development)
+- [📖 Documentation](#-documentation)
+- [🏗️ Architecture](#️-architecture)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [🔐 Security](#-security)
+- [📦 Deployment](#-deployment)
+- [🤝 Contributing](#-contributing)
+- [📊 Project Status](#-project-status)
+- [💬 Community & Support](#-community--support)
+- [📄 License](#-license)
 
 ---
 
 ## ✨ Features
 
-### 💰 Point of Sale
-- Fast, intuitive checkout interface
-- Barcode scanning support
-- Product variants (size, color)
-- Multiple payment methods
-- Receipt printing & email
-- Customer lookup
-- Discount management
+### 💰 **Point of Sale**
+- ⚡ Fast, intuitive checkout interface
+- 📷 Barcode scanning support
+- 🎨 Product variants (size, color, SKU)
+- 💳 Multiple payment methods
+- 🧾 Receipt printing & email
+- 👤 Customer lookup & history
+- 💰 Discount & promotion management
 
-### 📦 Inventory Management
-- Product catalog with categories
-- Stock tracking
-- Low stock alerts
-- Bulk import/export (CSV)
-- Product images
-- Variant management
+### 📦 **Inventory Management**
+- 📚 Product catalog with categories
+- 📊 Real-time stock tracking
+- ⚠️ Low stock alerts
+- 📥 Bulk import/export (CSV)
+- 🖼️ Product images
+- 🔄 Variant management
 
-### 👥 Customer Management
-- Customer database
-- Purchase history
-- Contact information
-- Custom fields
+### 👥 **Customer Management**
+- 📇 Comprehensive customer database
+- 📈 Purchase history tracking
+- 📞 Contact information management
+- 🏷️ Custom tags and fields
+- 💎 Lifetime value tracking
 
-### 🛠️ Services Module
-- Service catalog
-- Quote generation
-- Hourly/flat rate pricing
-- Quote to order conversion
+### 🛠️ **Services Module**
+- 🔧 Service catalog management
+- 📝 Quote generation
+- ⏱️ Hourly/flat rate pricing
+- 🔄 Quote to order conversion
 
-### 📊 Reports & Analytics
-- Sales reports
-- Revenue analytics
-- Product performance
-- Export to CSV/PDF
-- Date range filtering
+### 📊 **Reports & Analytics**
+- 📈 Sales reports & analytics
+- 💵 Revenue tracking
+- 🏆 Product performance metrics
+- 📤 Export to CSV/PDF
+- 📅 Date range filtering
+- 📉 Trend analysis
 
-### 🔐 Security & Access Control
-- Role-based permissions (RBAC)
-- 4 built-in roles + custom roles
-- Granular permissions per module
-- Audit logging
-- Session management
-- bcrypt password hashing
+### 🔐 **Security & Access Control**
+- 🛡️ Role-based permissions (RBAC)
+- 👔 4 built-in roles + custom roles
+- 🔒 Granular permissions per module
+- 📝 Audit logging
+- 🔑 Session management
+- 🔐 bcrypt password hashing
 
-### 🔌 Flexible Architecture
-- **Pluggable adapters** - swap databases, auth providers, email services
-- **Multiple database options** - ✅ SQLite (production-ready), ✅ PostgreSQL (production-ready), IndexedDB (browser)
-- **Authentication options** - ✅ Local (production-ready), Google OAuth, OIDC (Azure AD, Okta)
-- **Email providers** - Console (dev), SMTP, Resend
-- **Storage options** - LocalStorage, S3, Azure Blob
-- **SMS providers** - Console (dev), Twilio
+### ⚙️ **Production Setup Wizard**
+- 🎯 **First-Time Setup** - Guided configuration wizard
+- 👤 **Admin Account Creation** - Root user setup
+- 🗄️ **Database Configuration** - PostgreSQL or SQLite
+- 🔐 **Authentication Setup** - Local, Google OAuth, OIDC
+- 🌍 **Environment Configuration** - Dev/Staging/Production
+- 🎮 **Demo Mode** - Quick setup with sample data
+- 🔄 **Data Replication** - Multi-environment support
 
-### 🎯 Development Status
-- ✅ **Phase 1**: Backend API Foundation (Complete)
-- ✅ **Phase 2**: Database Implementation (Complete)
-  - PostgreSQL & SQLite adapters fully functional
-  - Complete CRUD operations for all entities
-  - Migrations and seed data
-  - Full API integration
-- 🔄 **Phase 3**: Installation & Deployment (In Progress)
+### 🔌 **Flexible Architecture**
+- 🔌 **Pluggable Adapters** - Swap implementations without code changes
+- 🗄️ **Multiple Databases** - ✅ PostgreSQL, ✅ SQLite, IndexedDB
+- 🔐 **Auth Providers** - ✅ Local, Google OAuth, OIDC (Azure AD, Okta)
+- 📧 **Email Services** - Console, SMTP, Resend
+- 💾 **Storage Options** - LocalStorage, S3, Azure Blob
+- 📱 **SMS Providers** - Console, Twilio
 
 ---
 
 ## 🚀 Quick Start
 
-### Backend API (5 minutes)
+### 🐳 Docker (Recommended)
+
+**The fastest way to get started - includes everything you need!**
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourorg/persona-pos.git
-cd persona-pos/backend
+git clone https://github.com/yourorg/stewardpos.git
+cd stewardpos
+
+# Start all services (PostgreSQL, Backend, Frontend)
+docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost:8080
+# Backend API: http://localhost:3001
+```
+
+**First Time Setup:**
+1. Visit `http://localhost:8080`
+2. Complete the setup wizard:
+   - Create your admin account
+   - Configure database (or use demo mode)
+   - Set authentication methods
+   - Choose environment settings
+3. Login with your admin credentials
+
+📖 **Full Docker Guide:** [Docker Setup Documentation](DOCKER-SETUP.md)
+
+---
+
+### 💻 Local Development
+
+#### Backend Setup
+
+```bash
+# Navigate to backend
+cd backend
 
 # Install dependencies
 npm install
 
 # Configure environment
 cp env.example .env
-# Edit .env (SQLite works out of the box)
+# Edit .env with your database settings
 
-# Setup database (migrations + seed data)
+# Setup database (runs migrations + seeds data)
 npm run setup-db
 
-# Start the server
+# Start development server
 npm run dev
 ```
 
-Server runs at: `http://localhost:3001`
+**Backend runs at:** `http://localhost:3001`
 
-**Default Login:**
-- Email: `admin@example.com`
-- Password: `admin123`
-- ⚠️ **Change immediately after first login!**
-
-### Frontend (Development)
+#### Frontend Setup
 
 ```bash
-# In the project root
+# In project root
 npm install
+
+# Start development server
 npm run dev
 ```
 
-Frontend runs at: `http://localhost:5173`
+**Frontend runs at:** `http://localhost:5173`
 
-### Docker (Full Stack)
+#### Default Credentials (Development)
 
-```bash
-git clone https://github.com/yourorg/persona-pos.git
-cd persona-pos
-docker-compose up -d
-```
+- **Email:** `admin@demo.local`
+- **Password:** `DemoPass!1`
 
-📖 **Full guides:** [Backend Quick Start](backend/PHASE2-QUICKSTART.md) | [Installation Guide](INSTALL.md)
+⚠️ **Important:** Change these immediately in production!
 
 ---
 
-## 🔌 API Endpoints
+## 📖 Documentation
 
-The backend API is fully functional with the following endpoints:
+### 🚀 Getting Started
+- **[Setup Wizard Guide](SETUP-WIZARD-DOCUMENTATION.md)** - Production setup wizard
+- **[Docker Setup](DOCKER-SETUP.md)** - Complete Docker deployment guide
+- **[Quick Start (Backend)](backend/PHASE2-QUICKSTART.md)** - Backend API quick start
+- **[Installation Guide](INSTALL.md)** - Step-by-step installation for all platforms
 
-### Authentication
-- `POST /api/auth/login` - User login
-- `GET /api/auth/session` - Get current session
-- `POST /api/auth/logout` - User logout
-- `POST /api/auth/refresh` - Refresh JWT token
-
-### Products
-- `GET /api/products` - List all products with variants
-- `GET /api/products/:id` - Get single product
-- `POST /api/products` - Create new product
-- `PUT /api/products/:id` - Update product
-- `DELETE /api/products/:id` - Delete product
-
-### Orders
-- `GET /api/orders` - List all orders
-- `GET /api/orders/:id` - Get order with items
-- `POST /api/orders` - Create new order
-
-### Customers
-- `GET /api/customers` - List all customers
-- `POST /api/customers` - Create new customer
-
-### Health
-- `GET /api/health` - API health check
-
-📖 **Full API documentation:** [Backend README](backend/README.md) | [Testing Guide](backend/TESTING-PHASE2.md)
-
----
-
-## 📋 System Requirements
-
-**Minimum:**
-- 2 CPU cores
-- 2 GB RAM
-- 10 GB disk space
-- Ubuntu 20.04+, Debian 11+, CentOS 8+, Windows Server 2019+, or Windows 10/11
-
-**Recommended:**
-- 4+ CPU cores
-- 4+ GB RAM
-- 50+ GB SSD
-- Ubuntu 22.04 LTS or Windows Server 2022
-
----
-
-## 🛠️ Tech Stack
-
-**Frontend:**
-- React 18 + TypeScript
-- Vite (build tool)
-- shadcn/ui (UI components)
-- Tailwind CSS
-- TanStack Query
-- React Router
-
-**Backend:**
-- ✅ Node.js + Express
-- ✅ TypeScript
-- ✅ PostgreSQL / SQLite (production-ready)
-- ✅ JWT authentication
-- ✅ bcrypt password hashing
-- Winston logging
-- Redis (sessions - planned)
-
-**Architecture:**
-- Clean Architecture (Hexagonal)
-- Ports and Adapters pattern
-- Dependency Injection
-- Configuration-driven
-
----
-
-## 📚 Documentation
-
-### User Guides
-- **[Installation Guide](INSTALL.md)** - Step-by-step installation for Linux, Windows, and Docker
+### 📚 User Guides
 - **[Configuration Guide](CONFIGURATION.md)** - Complete configuration reference
-- **[Quick Start](backend/PHASE2-QUICKSTART.md)** - Get started in 5 minutes
+- **[Code Review Report](CODE-REVIEW-REPORT.md)** - Comprehensive code review findings
 
-### Developer Guides
+### 👨‍💻 Developer Guides
 - **[Backend README](backend/README.md)** - Backend API documentation
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
-- **[Development Roadmap](ROADMAP.md)** - Future plans and timeline
-- **[Testing Guide](backend/TESTING-PHASE2.md)** - How to test the application
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- **[Testing Guide](backend/TESTING-PHASE2.md)** - Testing documentation
+- **[Implementation Guardrail](IMPLEMENTATION-GUARDRAIL.md)** - Development guidelines
 
-### Reference
+### 📋 Architecture & Planning
+- **[Phase 0: Inventory](PHASE0-INVENTORY.md)** - Complete codebase inventory
+- **[Phase 1: File Mapping](PHASE1-FILE-MAPPING.md)** - File-by-file analysis
+- **[Phase 2: Stack Assessment](PHASE2-STACK-ASSESSMENT.md)** - Technology stack evaluation
+- **[Phase 3: Path Forward](PHASE3-PATH-FORWARD.md)** - Recommended architecture
+- **[Phase 4: Docker & Self-Hosting](PHASE4-DOCKER-SELF-HOSTING.md)** - Deployment strategy
+- **[Phase 5: Best Practices](PHASE5-BEST-PRACTICES.md)** - Development, DevOps, Security
+- **[Phase 6: Execution Plan](PHASE6-EXECUTION-PLAN.md)** - Step-by-step implementation plan
+
+### 🔒 Security
 - **[Security Policy](SECURITY.md)** - Security best practices and reporting
-- **[Changelog](CHANGELOG.md)** - Version history and changes
-- **[Phase 2 Complete](PHASE2-COMPLETE.md)** - Database implementation details
-
----
-
-## 🗺️ Development Roadmap
-
-We're actively working towards a production-ready v1.0 release. See our [detailed roadmap](ROADMAP.md) for the complete plan.
-
-**Current Status:** Beta (v0.9.x) - ~40% complete to v1.0
-
-**Completed (Phase 1 & 2):**
-- ✅ Backend API foundation (Express + TypeScript)
-- ✅ PostgreSQL & SQLite adapters (production-ready)
-- ✅ Database migrations system
-- ✅ Authentication (JWT + bcrypt)
-- ✅ Products, Orders, Customers APIs
-- ✅ Seed data and setup scripts
-- ✅ Security hardening (rate limiting, input validation)
-- ✅ Comprehensive documentation
-
-**In Progress (Phase 3):**
-- 🔄 One-command installers (Linux/Windows)
-- 🔄 Docker improvements
-- 🔄 Backup utilities
-- 🔄 API documentation (Swagger)
-
-**Planned (Phase 4-7):**
-- 📋 Automated testing suite
-- 📋 Frontend-backend integration
-- 📋 Production deployment guides
-- 📋 Performance optimization
-
-**Future Plans:**
-- Mobile app (iOS/Android)
-- Offline-first PWA
-- Multi-location support
-- Advanced reporting
-- Third-party integrations (QuickBooks, Xero)
-- Plugin marketplace
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Whether it's:
-- 🐛 Bug reports
-- 💡 Feature requests
-- 📝 Documentation improvements
-- 🔧 Code contributions
-- 🌍 Translations
-
-**Get started:**
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [open issues](https://github.com/yourorg/persona-pos/issues)
-3. Join our [Discord community](https://discord.gg/persona-pos)
-
-**Quick contribution guide:**
-```bash
-# Fork and clone
-git clone https://github.com/YOUR_USERNAME/persona-pos.git
-cd persona-pos
-
-# Install frontend dependencies
-npm install
-
-# Install backend dependencies
-cd backend
-npm install
-
-# Setup backend database
-npm run setup-db
-
-# Start backend (in backend/)
-npm run dev
-
-# Start frontend (in root)
-cd ..
-npm run dev
-
-# Create a branch
-git checkout -b feature/your-feature-name
-
-# Make changes and test
-npm run lint
-npm run typecheck
-
-# Commit and push
-git commit -m "feat: your feature description"
-git push origin feature/your-feature-name
-
-# Open a Pull Request
-```
 
 ---
 
 ## 🏗️ Architecture
 
-Persona POS uses **Clean Architecture** with the **Ports and Adapters** pattern:
+stewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern for maximum flexibility:
 
 ```
-┌─────────────────────────────────────────────┐
-│           Frontend (React)                  │
-│     • Vite + TypeScript                     │
-│     • shadcn/ui + Tailwind                  │
-├─────────────────────────────────────────────┤
-│           Backend API (Express)             │
-│     • Node.js + TypeScript                  │
-│     • JWT Authentication                    │
-│     • Input Validation (Zod)                │
-├─────────────────────────────────────────────┤
-│         Core Business Logic                 │
-│         (Domain Models & Ports)             │
-├─────────────────────────────────────────────┤
-│              Adapters (Pluggable)           │
-│  ┌──────────┬──────────┬──────────────┐   │
-│  │ Database │   Auth   │    Email     │   │
-│  │          │          │              │   │
-│  │ ✅ Postgres│ ✅ Local │ • Console   │   │
-│  │ ✅ SQLite  │ • Google │ • SMTP      │   │
-│  │ • IndexDB│ • OIDC   │ • Resend    │   │
-│  └──────────┴──────────┴──────────────┘   │
-└─────────────────────────────────────────────┘
-
-✅ = Production Ready
-• = Planned
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend Layer                        │
+│  React 18 + TypeScript • Vite • shadcn/ui • Tailwind   │
+├─────────────────────────────────────────────────────────┤
+│                    API Layer                             │
+│  Express + TypeScript • JWT Auth • Zod Validation       │
+├─────────────────────────────────────────────────────────┤
+│                 Core Business Logic                      │
+│         Domain Models • Ports (Interfaces)              │
+├─────────────────────────────────────────────────────────┤
+│              Adapters (Pluggable)                        │
+│  ┌──────────┬──────────┬──────────┬──────────┐        │
+│  │ Database │   Auth    │  Email   │ Storage  │        │
+│  ├──────────┼──────────┼──────────┼──────────┤        │
+│  │PostgreSQL│  Local    │  SMTP    │   S3    │        │
+│  │ SQLite   │  Google  │ Resend   │ Azure   │        │
+│  │IndexedDB │  OIDC    │ Console  │ Local   │        │
+│  └──────────┴──────────┴──────────┴──────────┘        │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Benefits:**
-- Swap implementations without changing business logic
-- Easy to test and maintain
-- Add new providers by implementing interfaces
-- Configuration-driven (no code changes)
+### 🎯 Key Benefits
+
+- ✅ **Swappable Implementations** - Change databases/auth without touching business logic
+- ✅ **Easy Testing** - Mock adapters for unit tests
+- ✅ **Extensible** - Add new providers by implementing interfaces
+- ✅ **Configuration-Driven** - Switch adapters via environment variables
+- ✅ **Production-Ready** - Battle-tested patterns
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **React 18** | UI Framework | ✅ Production Ready |
+| **TypeScript** | Type Safety | ✅ Production Ready |
+| **Vite** | Build Tool | ✅ Production Ready |
+| **shadcn/ui** | UI Components | ✅ Production Ready |
+| **Tailwind CSS** | Styling | ✅ Production Ready |
+| **TanStack Query** | Data Fetching | ✅ Production Ready |
+| **React Router** | Routing | ✅ Production Ready |
+
+### Backend
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Node.js** | Runtime | ✅ Production Ready |
+| **Express** | Web Framework | ✅ Production Ready |
+| **TypeScript** | Type Safety | ✅ Production Ready |
+| **PostgreSQL** | Database | ✅ Production Ready |
+| **SQLite** | Database | ✅ Production Ready |
+| **JWT** | Authentication | ✅ Production Ready |
+| **bcrypt** | Password Hashing | ✅ Production Ready |
+| **Winston** | Logging | ✅ Production Ready |
+| **Zod** | Validation | ✅ Production Ready |
+
+### DevOps & Infrastructure
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| **Docker** | Containerization | ✅ Production Ready |
+| **Docker Compose** | Orchestration | ✅ Production Ready |
+| **Nginx** | Reverse Proxy | ✅ Production Ready |
+| **PostgreSQL** | Database Server | ✅ Production Ready |
+| **MinIO** | S3 Storage | ✅ Production Ready |
 
 ---
 
 ## 🔐 Security
 
-Security is a top priority. We follow industry best practices:
+Security is our top priority. We follow industry best practices:
 
-- ✅ bcrypt password hashing
-- ✅ JWT authentication
-- ✅ Role-based access control
-- ✅ Audit logging
-- ✅ Input validation (Zod)
-- ✅ SQL injection prevention
-- ✅ XSS protection
-- ✅ Security headers
-- ✅ Rate limiting
+### ✅ Implemented Security Features
 
-**Found a vulnerability?** Please report it privately to security@persona-pos.dev
+- 🔐 **bcrypt Password Hashing** - Industry-standard password security
+- 🎫 **JWT Authentication** - Secure token-based auth
+- 🛡️ **Role-Based Access Control** - Granular permissions
+- 📝 **Audit Logging** - Track all system changes
+- ✅ **Input Validation** - Zod schema validation
+- 🚫 **SQL Injection Prevention** - Parameterized queries
+- 🛡️ **XSS Protection** - React's built-in escaping
+- 🔒 **Security Headers** - Helmet.js middleware
+- ⏱️ **Rate Limiting** - Prevent abuse
+- 🔐 **CORS Configuration** - Controlled cross-origin access
 
-See [SECURITY.md](SECURITY.md) for details.
+### 🚨 Reporting Vulnerabilities
+
+Found a security issue? Please report it privately:
+
+- 📧 **Email:** security@stewardpos.dev
+- 🔒 **PGP Key:** [Available on website]
+
+**Do not** open public GitHub issues for security vulnerabilities.
+
+📖 **Full Security Policy:** [SECURITY.md](SECURITY.md)
 
 ---
 
-## 📦 Deployment Options
+## 📦 Deployment
 
-### 1. Linux Server (Recommended)
-- Ubuntu, Debian, CentOS, RHEL
-- One-command installation
-- systemd service
+### 🐳 Docker (Recommended)
+
+**Best for:** Most users, easiest setup
+
+```bash
+docker-compose up -d
+```
+
+Includes:
+- ✅ PostgreSQL database
+- ✅ Backend API server
+- ✅ Frontend web app
+- ✅ MinIO storage
+- ✅ Automatic migrations
+- ✅ Health checks
+
+📖 **Guide:** [Docker Setup](DOCKER-SETUP.md)
+
+### 🐧 Linux Server
+
+**Best for:** Production deployments, VPS hosting
+
+- Ubuntu 20.04+, Debian 11+, CentOS 8+
+- One-command installation script
+- systemd service management
 - Nginx reverse proxy
-- [Full guide](INSTALL.md#linux)
+- Automated backups
 
-### 2. Windows Server
+📖 **Guide:** [Installation Guide - Linux](INSTALL.md#linux)
+
+### 🪟 Windows Server
+
+**Best for:** Windows-based infrastructure
+
 - Windows Server 2019+, Windows 10/11
 - PowerShell installation script
 - Windows Service (NSSM)
-- [Full guide](INSTALL.md#windows)
+- IIS reverse proxy support
 
-### 3. Docker
-- Docker Compose setup
-- Includes PostgreSQL, Redis, MinIO
-- Easy scaling
-- [Full guide](INSTALL.md#docker)
+📖 **Guide:** [Installation Guide - Windows](INSTALL.md#windows)
 
-### 4. Cloud Providers
-- AWS, Azure, Google Cloud
-- DigitalOcean, Linode, Vultr
-- Deploy as VPS or container
-- [Cloud deployment guide](docs/deployment/cloud.md)
+### ☁️ Cloud Providers
+
+**Supported Platforms:**
+- AWS (EC2, ECS, Lightsail)
+- Azure (VM, Container Instances)
+- Google Cloud (Compute Engine, Cloud Run)
+- DigitalOcean, Linode, Vultr, Hetzner
+
+📖 **Guide:** [Cloud Deployment](docs/deployment/cloud.md)
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+### 🎯 Ways to Contribute
+
+- 🐛 **Bug Reports** - Help us find and fix issues
+- 💡 **Feature Requests** - Suggest new features
+- 📝 **Documentation** - Improve our docs
+- 🔧 **Code Contributions** - Submit PRs
+- 🌍 **Translations** - Help translate the app
+- 🧪 **Testing** - Test and report issues
+
+### 🚀 Quick Contribution Guide
+
+```bash
+# 1. Fork and clone
+git clone https://github.com/YOUR_USERNAME/stewardpos.git
+cd stewardpos
+
+# 2. Install dependencies
+npm install
+cd backend && npm install && cd ..
+
+# 3. Setup backend database
+cd backend
+npm run setup-db
+cd ..
+
+# 4. Start development servers
+# Terminal 1: Backend
+cd backend && npm run dev
+
+# Terminal 2: Frontend
+npm run dev
+
+# 5. Create a feature branch
+git checkout -b feature/your-feature-name
+
+# 6. Make changes and test
+npm run lint
+npm run typecheck
+
+# 7. Commit and push
+git commit -m "feat: your feature description"
+git push origin feature/your-feature-name
+
+# 8. Open a Pull Request
+```
+
+### 📋 Contribution Guidelines
+
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+2. Check [open issues](https://github.com/yourorg/stewardpos/issues)
+3. Follow our code style (ESLint + Prettier)
+4. Write tests for new features
+5. Update documentation
+
+---
+
+## 📊 Project Status
+
+### 🎯 Current Version: **v1.0.0-beta**
+
+**Status:** ✅ Production Ready (Beta)
+
+### ✅ Completed Features
+
+- ✅ **Backend API** - Complete REST API with all CRUD operations
+- ✅ **Database Layer** - PostgreSQL & SQLite adapters
+- ✅ **Authentication** - JWT-based auth with RBAC
+- ✅ **Frontend** - React-based POS interface
+- ✅ **Inventory Management** - Full product & variant management
+- ✅ **Order Processing** - Complete checkout flow
+- ✅ **Reports** - Sales analytics and reporting
+- ✅ **Setup Wizard** - Production-ready first-time setup
+- ✅ **Docker Support** - Full containerization
+- ✅ **Security** - Industry-standard security practices
+
+### 🔄 In Progress
+
+- 🔄 Additional authentication providers (Google, OIDC)
+- 🔄 Advanced reporting features
+- 🔄 Mobile-responsive improvements
+- 🔄 Performance optimizations
+
+### 📋 Planned Features
+
+- 📋 Automated testing suite expansion
+- 📋 API documentation (Swagger/OpenAPI)
+- 📋 Mobile app (iOS/Android)
+- 📋 Offline-first PWA
+- 📋 Multi-location support
+- 📋 Third-party integrations (QuickBooks, Xero)
+- 📋 Plugin marketplace
 
 ---
 
 ## 💬 Community & Support
 
-- 💬 **Discord:** [Join our community](https://discord.gg/persona-pos)
-- 🐛 **Issues:** [GitHub Issues](https://github.com/yourorg/persona-pos/issues)
-- 💡 **Discussions:** [GitHub Discussions](https://github.com/yourorg/persona-pos/discussions)
-- 📧 **Email:** support@persona-pos.dev
-- 🐦 **Twitter:** [@PersonaPOS](https://twitter.com/PersonaPOS)
+### 📞 Get Help
+
+- 💬 **Discord:** [Join our community](https://discord.gg/stewardpos)
+- 🐛 **GitHub Issues:** [Report bugs](https://github.com/yourorg/stewardpos/issues)
+- 💡 **Discussions:** [Ask questions](https://github.com/yourorg/stewardpos/discussions)
+- 📧 **Email:** support@stewardpos.dev
+
+### 📱 Follow Us
+
+- 🐦 **Twitter:** [@StewardPOS](https://twitter.com/StewardPOS)
+- 📺 **YouTube:** [Tutorials & Demos](https://youtube.com/@stewardpos)
+- 📰 **Blog:** [Latest updates](https://blog.stewardpos.dev)
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for details.
+This project is licensed under the **MIT License**.
 
-**TL;DR:** You can use this software for free, modify it, and even sell it. Just keep the copyright notice.
+See [LICENSE](LICENSE) for the full license text.
+
+**TL;DR:** 
+- ✅ Use commercially
+- ✅ Modify and distribute
+- ✅ Private use
+- ✅ Patent use
+- ❌ No liability
+- ❌ No warranty
 
 ---
 
 ## 🙏 Acknowledgments
 
 Built with amazing open-source technologies:
-- [React](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [PostgreSQL](https://www.postgresql.org/)
-- [Node.js](https://nodejs.org/)
 
-Special thanks to all our [contributors](https://github.com/yourorg/persona-pos/graphs/contributors)!
+- [React](https://react.dev/) - UI Framework
+- [TypeScript](https://www.typescriptlang.org/) - Type Safety
+- [Vite](https://vitejs.dev/) - Build Tool
+- [shadcn/ui](https://ui.shadcn.com/) - UI Components
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [PostgreSQL](https://www.postgresql.org/) - Database
+- [Node.js](https://nodejs.org/) - Runtime
+- [Express](https://expressjs.com/) - Web Framework
 
----
-
-## 🌟 Star History
-
-If you find this project useful, please consider giving it a star! ⭐
-
-[![Star History Chart](https://api.star-history.com/svg?repos=yourorg/persona-pos&type=Date)](https://star-history.com/#yourorg/persona-pos&Date)
+**Special thanks to all our [contributors](https://github.com/yourorg/stewardpos/graphs/contributors)!**
 
 ---
 
-## 📊 Project Status
+<div align="center">
 
-- **Version:** 0.9.x (Beta)
-- **Status:** Active Development
-- **Progress:** ~40% to v1.0
-- **Target v1.0:** Q2 2025
-- **Backend API:** ✅ Production Ready
-- **Database Layer:** ✅ Production Ready
-- **Frontend:** 🔄 In Development
-- **Deployment:** 🔄 In Progress
+### ⭐ Star us on GitHub if you find this project useful!
 
-### What's Working Now
-- ✅ Complete backend API with PostgreSQL/SQLite
-- ✅ Authentication and authorization
-- ✅ Product, order, and customer management
-- ✅ Database migrations and seed data
-- ✅ Security features (JWT, bcrypt, rate limiting)
-- ✅ Comprehensive API documentation
+**Made with ❤️ by the stewardPOS community**
 
-### What's Next
-- 🔄 Automated installation scripts
-- 🔄 Frontend-backend integration
-- 🔄 Complete testing suite
-- 🔄 Production deployment guides
+[Website](https://stewardpos.dev) • [Documentation](https://docs.stewardpos.dev) • [Demo](https://demo.stewardpos.dev) • [Discord](https://discord.gg/stewardpos)
 
 ---
 
-**Made with ❤️ by the Persona POS community**
+[⬆ Back to Top](#-stewardpos)
 
-[Website](https://persona-pos.dev) • [Documentation](https://docs.persona-pos.dev) • [Demo](https://demo.persona-pos.dev)
+</div>

@@ -4,12 +4,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import SetupGuard from "@/components/SetupGuard";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import ServicesPos from "./pages/ServicesPos";
 import Login from "./pages/Login";
+import Setup from "./pages/Setup";
 import Dashboard from "./pages/admin/Dashboard";
 import AdminInventory from "./pages/admin/AdminInventory";
 import AdminReports from "./pages/admin/AdminReports";
@@ -31,23 +33,30 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<POS />} />
-            <Route path="/pos" element={<POS />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/services" element={<ServicesPos />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/admin" element={<Dashboard />} />
-            <Route path="/admin/inventory" element={<AdminInventory />} />
-            <Route path="/admin/reports" element={<AdminReports />} />
-            <Route path="/admin/exports" element={<AdminExports />} />
-            <Route path="/admin/customers" element={<AdminCustomers />} />
-            <Route path="/admin/services" element={<AdminServices />} />
-            <Route path="/admin/settings" element={<AdminSettings />} />
-            <Route path="/admin/roles" element={<AdminRoles />} />
-            <Route path="/admin/audit" element={<AdminAudit />} />
-            <Route path="*" element={<NotFound />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/" element={
+              <SetupGuard>
+                <Routes>
+                  <Route path="/" element={<POS />} />
+                  <Route path="/pos" element={<POS />} />
+                  <Route path="/inventory" element={<Inventory />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/services" element={<ServicesPos />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/admin" element={<Dashboard />} />
+                  <Route path="/admin/inventory" element={<AdminInventory />} />
+                  <Route path="/admin/reports" element={<AdminReports />} />
+                  <Route path="/admin/exports" element={<AdminExports />} />
+                  <Route path="/admin/customers" element={<AdminCustomers />} />
+                  <Route path="/admin/services" element={<AdminServices />} />
+                  <Route path="/admin/settings" element={<AdminSettings />} />
+                  <Route path="/admin/roles" element={<AdminRoles />} />
+                  <Route path="/admin/audit" element={<AdminAudit />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </SetupGuard>
+            } />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

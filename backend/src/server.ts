@@ -16,6 +16,7 @@ import customersRoutes from './api/routes/customers';
 import servicesRoutes from './api/routes/services';
 import adminRoutes from './api/routes/admin';
 import healthRoutes from './api/routes/health';
+import setupRoutes from './api/routes/setup';
 
 const app: Application = express();
 
@@ -63,6 +64,9 @@ app.use(requestLogger);
 
 // Health check (no auth required)
 app.use('/api/health', healthRoutes);
+
+// Setup routes (no auth required - must be before other routes)
+app.use('/api/setup', setupRoutes);
 
 // API routes
 app.use('/api/auth', authRoutes);
