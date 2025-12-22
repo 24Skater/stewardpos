@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install dependencies (use npm install if package-lock.json doesn't exist)
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
@@ -39,7 +39,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production && \
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --production; fi && \
     npm cache clean --force
 
 # Copy built application from builder
@@ -47,6 +47,10 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
 # Copy migrations (needed at runtime)
 COPY --chown=nodejs:nodejs migrations ./migrations
+
+# Copy entrypoint script
+COPY --chown=nodejs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
@@ -61,6 +65,6 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start application
-CMD ["node", "dist/server.js"]
+# Start application (entrypoint handles migrations)
+ENTRYPOINT ["./docker-entrypoint.sh"]
 

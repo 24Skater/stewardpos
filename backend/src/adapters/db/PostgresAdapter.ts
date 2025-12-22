@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import logger from '../../utils/logger';
 import { DatabaseError } from '../../utils/errors';
 
@@ -398,6 +398,146 @@ export class PostgresAdapter {
       throw new DatabaseError('Failed to create order');
     } finally {
       client.release();
+    }
+  }
+
+  async getAllOrders(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM orders ORDER BY created_at DESC`
+      );
+
+      return result.rows.map((order) => ({
+        id: order.id,
+        createdAt: new Date(order.created_at).getTime(),
+        subtotal: parseFloat(order.subtotal),
+        discountTotal: parseFloat(order.discount_total),
+        taxTotal: parseFloat(order.tax_total),
+        total: parseFloat(order.total),
+        paymentMethod: order.payment_method,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone,
+      }));
+    } catch (error) {
+      logger.error('Error getting all orders:', error);
+      throw new DatabaseError('Failed to get orders');
+    }
+  }
+
+  async getOrderById(id: string): Promise<any | null> {
+    try {
+      const orderResult = await this.pool.query(
+        'SELECT * FROM orders WHERE id = $1',
+        [id]
+      );
+
+      if (orderResult.rows.length === 0) {
+        return null;
+      }
+
+      const order = orderResult.rows[0];
+
+      const itemsResult = await this.pool.query(
+        'SELECT * FROM order_items WHERE order_id = $1',
+        [id]
+      );
+
+      return {
+        id: order.id,
+        createdAt: new Date(order.created_at).getTime(),
+        subtotal: parseFloat(order.subtotal),
+        discountTotal: parseFloat(order.discount_total),
+        taxTotal: parseFloat(order.tax_total),
+        total: parseFloat(order.total),
+        paymentMethod: order.payment_method,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone,
+        items: itemsResult.rows.map((item) => ({
+          id: item.id,
+          productId: item.product_id,
+          variantId: item.variant_id,
+          nameSnapshot: item.name_snapshot,
+          size: item.size,
+          color: item.color,
+          quantity: item.quantity,
+          unitPrice: parseFloat(item.unit_price),
+          lineDiscount: parseFloat(item.line_discount),
+          lineTotal: parseFloat(item.line_total),
+          notes: item.notes,
+        })),
+      };
+    } catch (error) {
+      logger.error('Error getting order by ID:', error);
+      throw new DatabaseError('Failed to get order');
+    }
+  }
+
+  async getAllCustomers(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM customers ORDER BY name ASC'
+      );
+
+      return result.rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        org: c.org,
+        email: c.email,
+        phone: c.phone,
+        address: c.address,
+        city: c.city,
+        state: c.state,
+        zip: c.zip,
+        country: c.country,
+        notes: c.notes,
+        createdAt: new Date(c.created_at).getTime(),
+        updatedAt: new Date(c.updated_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error getting all customers:', error);
+      throw new DatabaseError('Failed to get customers');
+    }
+  }
+
+  async createCustomer(customer: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO customers (name, org, email, phone, address, city, state, zip, country, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
+        [
+          customer.name,
+          customer.org,
+          customer.email,
+          customer.phone,
+          customer.address,
+          customer.city,
+          customer.state,
+          customer.zip,
+          customer.country,
+          customer.notes,
+        ]
+      );
+
+      const created = result.rows[0];
+      return {
+        id: created.id,
+        name: created.name,
+        org: created.org,
+        email: created.email,
+        phone: created.phone,
+        address: created.address,
+        city: created.city,
+        state: created.state,
+        zip: created.zip,
+        country: created.country,
+        notes: created.notes,
+        createdAt: new Date(created.created_at).getTime(),
+        updatedAt: new Date(created.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error creating customer:', error);
+      throw new DatabaseError('Failed to create customer');
     }
   }
 

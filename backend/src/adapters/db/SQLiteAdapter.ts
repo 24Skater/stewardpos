@@ -29,7 +29,7 @@ export class SQLiteAdapter {
 
   async testConnection(): Promise<boolean> {
     try {
-      const result = this.db.prepare('SELECT 1 as test').get();
+      this.db.prepare('SELECT 1 as test').get();
       logger.info('SQLite connection test successful');
       return true;
     } catch (error) {

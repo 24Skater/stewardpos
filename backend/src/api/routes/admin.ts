@@ -1,11 +1,11 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
 
 // Users
-router.get('/users', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/users', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement
     res.json({ success: true, data: [] });
@@ -15,7 +15,7 @@ router.get('/users', async (req: AuthRequest, res: Response, next: NextFunction)
 });
 
 // Roles
-router.get('/roles', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/roles', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement
     res.json({ success: true, data: [] });
@@ -25,7 +25,7 @@ router.get('/roles', async (req: AuthRequest, res: Response, next: NextFunction)
 });
 
 // Settings
-router.get('/settings', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/settings', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement
     res.json({ success: true, data: {} });
@@ -35,7 +35,7 @@ router.get('/settings', async (req: AuthRequest, res: Response, next: NextFuncti
 });
 
 // Audit logs
-router.get('/audit', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/audit', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement
     res.json({ success: true, data: [] });

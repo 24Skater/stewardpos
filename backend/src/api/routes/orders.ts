@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { ValidationError, NotFoundError } from '../../utils/errors';
@@ -47,7 +47,7 @@ const createOrderSchema = z.object({
  * GET /api/orders
  * List all orders
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const orders = await adapter.getAllOrders();

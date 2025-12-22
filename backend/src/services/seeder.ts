@@ -276,22 +276,22 @@ export class Seeder {
 
     const products = [
       // Chips & Snacks
-      { name: 'Takis', category: 'Chips & Snacks', base_price: 1.00, barcode: '101' },
-      { name: 'Pringles', category: 'Chips & Snacks', base_price: 2.00, barcode: '102' },
-      { name: 'Oreo', category: 'Chips & Snacks', base_price: 1.00, barcode: '103' },
-      { name: 'Cookies (2 for $1)', category: 'Chips & Snacks', base_price: 0.50, barcode: '104' },
-      { name: 'Peanut', category: 'Chips & Snacks', base_price: 1.00, barcode: '105' },
+      { name: 'Takis', description: 'Spicy rolled tortilla chips', category: 'Chips & Snacks', base_price: 1.00, barcode: '101' },
+      { name: 'Pringles', description: 'Stackable potato crisps', category: 'Chips & Snacks', base_price: 2.00, barcode: '102' },
+      { name: 'Oreo', description: 'Chocolate sandwich cookies', category: 'Chips & Snacks', base_price: 1.00, barcode: '103' },
+      { name: 'Cookies (2 for $1)', description: 'Assorted cookies', category: 'Chips & Snacks', base_price: 0.50, barcode: '104' },
+      { name: 'Peanut', description: 'Salted peanuts', category: 'Chips & Snacks', base_price: 1.00, barcode: '105' },
       
       // Drinks
-      { name: 'SunnyD', category: 'Drinks', base_price: 1.00, barcode: '201' },
-      { name: 'Apple Juice', category: 'Drinks', base_price: 1.00, barcode: '202' },
-      { name: 'Small Juice', category: 'Drinks', base_price: 1.00, barcode: '203' },
-      { name: 'Payaso', category: 'Drinks', base_price: 2.00, barcode: '204' },
+      { name: 'SunnyD', description: 'Orange flavored drink', category: 'Drinks', base_price: 1.00, barcode: '201' },
+      { name: 'Apple Juice', description: '100% apple juice', category: 'Drinks', base_price: 1.00, barcode: '202' },
+      { name: 'Small Juice', description: 'Small fruit juice', category: 'Drinks', base_price: 1.00, barcode: '203' },
+      { name: 'Payaso', description: 'Flavored drink', category: 'Drinks', base_price: 2.00, barcode: '204' },
       
       // Candy
-      { name: 'Ring Pop', category: 'Candy', base_price: 1.00, barcode: '301' },
-      { name: 'Chocolate (2 for $1)', category: 'Candy', base_price: 0.50, barcode: '302' },
-      { name: 'Lollipop (2 for $1)', category: 'Candy', base_price: 0.50, barcode: '303' },
+      { name: 'Ring Pop', description: 'Ring-shaped lollipop', category: 'Candy', base_price: 1.00, barcode: '301' },
+      { name: 'Chocolate (2 for $1)', description: 'Assorted chocolate bars', category: 'Candy', base_price: 0.50, barcode: '302' },
+      { name: 'Lollipop (2 for $1)', description: 'Assorted lollipops', category: 'Candy', base_price: 0.50, barcode: '303' },
     ];
 
     for (const product of products) {

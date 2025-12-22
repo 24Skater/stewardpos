@@ -11,7 +11,7 @@ export interface AuthRequest extends Request {
   };
 }
 
-export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
+export function authenticate(req: AuthRequest, _res: Response, next: NextFunction) {
   try {
     // Get token from header
     const authHeader = req.headers.authorization;
@@ -42,7 +42,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
   }
 }
 
-export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction) {
+export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
