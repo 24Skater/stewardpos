@@ -20,15 +20,27 @@ const router = Router();
 // Validation schemas
 const orderItemSchema = z.object({
   productId: z.string(),
-  variantId: z.string().optional(),
+  variantId: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   nameSnapshot: z.string(),
-  size: z.string().optional(),
-  color: z.string().optional(),
+  size: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
+  color: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   quantity: z.number().int().min(1),
   unitPrice: z.number().min(0),
   lineDiscount: z.number().min(0).default(0),
   lineTotal: z.number().min(0),
-  notes: z.string().optional(),
+  notes: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
 });
 
 const createOrderSchema = z.object({

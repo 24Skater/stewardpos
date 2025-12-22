@@ -250,18 +250,24 @@ export default function POS() {
       const total = subtotal - discountTotal + taxTotal;
       
       const orderData: CreateOrderRequest = {
-        items: cart.map(item => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          nameSnapshot: item.nameSnapshot || '',
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity,
-          unitPrice: item.price,
-          lineDiscount: item.lineDiscount || 0,
-          lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
-          notes: item.notes,
-        })),
+        items: cart.map(item => {
+          const orderItem: any = {
+            productId: item.productId,
+            nameSnapshot: item.nameSnapshot || '',
+            quantity: item.quantity,
+            unitPrice: item.price,
+            lineDiscount: item.lineDiscount || 0,
+            lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
+          };
+          
+          // Only include optional fields if they have valid values
+          if (item.variantId) orderItem.variantId = item.variantId;
+          if (item.size) orderItem.size = item.size;
+          if (item.color) orderItem.color = item.color;
+          if (item.notes) orderItem.notes = item.notes;
+          
+          return orderItem;
+        }),
         subtotal,
         discountTotal,
         taxTotal,
