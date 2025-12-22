@@ -38,8 +38,15 @@ const createOrderSchema = z.object({
   taxTotal: z.number().min(0).default(0),
   total: z.number().min(0),
   paymentMethod: z.string(),
-  customerEmail: z.string().email().optional(),
-  customerPhone: z.string().optional(),
+  // Customer information is optional - can be omitted, empty string, or valid email
+  customerEmail: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().email().optional()
+  ),
+  customerPhone: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
 });
 
 /**
@@ -103,7 +110,9 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      logger.error('Order validation error:', JSON.stringify(error.errors, null, 2));
+      const errorMessage = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      next(new ValidationError(errorMessage));
     } else {
       next(error);
     }

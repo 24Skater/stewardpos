@@ -267,7 +267,8 @@ export default function POS() {
         taxTotal,
         total,
         paymentMethod: 'Cash',
-        customerEmail: customerEmail || undefined,
+        // Customer information is optional - only include if provided and not empty
+        ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
 
       const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
@@ -492,20 +493,25 @@ export default function POS() {
           <DialogHeader>
             <DialogTitle className="text-foreground">Complete Sale</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Enter customer details to send a receipt (optional)
+              Customer information is optional. Leave blank for walk-in customers.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">Customer Email</Label>
+              <Label htmlFor="email" className="text-foreground">
+                Customer Email <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
+              </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="customer@example.com"
+                placeholder="customer@example.com (optional)"
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 className="bg-background border-border"
               />
+              <p className="text-xs text-muted-foreground">
+                Leave blank to complete sale without customer information
+              </p>
             </div>
             <div className="bg-secondary/30 p-4 rounded-lg border border-border">
               <div className="flex justify-between items-center">
