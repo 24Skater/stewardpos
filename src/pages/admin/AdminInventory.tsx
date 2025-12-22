@@ -22,6 +22,7 @@ export default function AdminInventory() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isNewProduct, setIsNewProduct] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -70,19 +71,49 @@ export default function AdminInventory() {
   };
 
   const handleReset = async () => {
-    if (confirm('This will delete all current data and load fresh inventory. Continue?')) {
-      // TODO: Implement reset endpoint in backend if needed
+    if (!confirm('This will delete all current data and load fresh inventory. Continue?')) {
+      return;
+    }
+
+    try {
+      const response = await apiClient.post<{ success: boolean; message?: string }>('/api/admin/reset-database');
+      if (response.success) {
+        toast({ 
+          title: 'Database Reset', 
+          description: response.message || 'Database reset successfully. Fresh inventory loaded.',
+        });
+        await loadProducts();
+      }
+    } catch (error: any) {
       toast({ 
-        title: 'Reset not available', 
-        description: 'Database reset functionality requires backend endpoint',
+        title: 'Error', 
+        description: error.message || 'Failed to reset database',
         variant: 'destructive'
       });
-      // await loadProducts();
     }
+  };
+
+  const handleAddProduct = () => {
+    setEditingProduct({
+      id: '',
+      name: '',
+      description: '',
+      category: '',
+      basePrice: 0,
+      image: '',
+      barcode: '',
+      variants: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    setIsNewProduct(true);
+    setUploadedImage(null);
+    setEditDialogOpen(true);
   };
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    setIsNewProduct(false);
     setUploadedImage(null);
     setEditDialogOpen(true);
   };
@@ -117,32 +148,68 @@ export default function AdminInventory() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editingProduct) return;
+    if (!editingProduct || !editingProduct.name) {
+      toast({
+        title: 'Error',
+        description: 'Product name is required',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     try {
-      const updateData: UpdateProductRequest = {
-        name: editingProduct.name,
-        description: editingProduct.description,
-        category: editingProduct.category,
-        basePrice: editingProduct.basePrice,
-        barcode: editingProduct.barcode,
-        image: editingProduct.image,
-      };
-      const response = await apiClient.put<{ success: boolean; data: Product }>(
-        `/api/products/${editingProduct.id}`,
-        updateData
-      );
-      
-      if (response.success) {
-        setEditDialogOpen(false);
-        setEditingProduct(null);
-        await loadProducts();
-        toast({ title: 'Product updated' });
+      if (isNewProduct) {
+        // Create new product
+        const createData: CreateProductRequest = {
+          name: editingProduct.name,
+          description: editingProduct.description,
+          category: editingProduct.category || 'Uncategorized',
+          basePrice: editingProduct.basePrice || 0,
+          barcode: editingProduct.barcode,
+          image: uploadedImage || editingProduct.image,
+          variants: editingProduct.variants || [],
+        };
+        const response = await apiClient.post<{ success: boolean; data: Product }>(
+          '/api/products',
+          createData
+        );
+        
+        if (response.success) {
+          setEditDialogOpen(false);
+          setEditingProduct(null);
+          setIsNewProduct(false);
+          setUploadedImage(null);
+          await loadProducts();
+          toast({ title: 'Product added successfully' });
+        }
+      } else {
+        // Update existing product
+        const updateData: UpdateProductRequest = {
+          name: editingProduct.name,
+          description: editingProduct.description,
+          category: editingProduct.category,
+          basePrice: editingProduct.basePrice,
+          barcode: editingProduct.barcode,
+          image: uploadedImage || editingProduct.image,
+        };
+        const response = await apiClient.put<{ success: boolean; data: Product }>(
+          `/api/products/${editingProduct.id}`,
+          updateData
+        );
+        
+        if (response.success) {
+          setEditDialogOpen(false);
+          setEditingProduct(null);
+          setIsNewProduct(false);
+          setUploadedImage(null);
+          await loadProducts();
+          toast({ title: 'Product updated' });
+        }
       }
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update product',
+        description: error.message || `Failed to ${isNewProduct ? 'create' : 'update'} product`,
         variant: 'destructive',
       });
     }
@@ -189,7 +256,7 @@ export default function AdminInventory() {
                     <Upload className="w-4 h-4 mr-2" />
                     Import
                   </Button>
-                  <Button>
+                  <Button onClick={handleAddProduct}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add Product
                   </Button>
@@ -274,10 +341,17 @@ export default function AdminInventory() {
             onImportComplete={loadProducts}
           />
 
-          <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <Dialog open={editDialogOpen} onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) {
+              setEditingProduct(null);
+              setIsNewProduct(false);
+              setUploadedImage(null);
+            }
+          }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Edit Product</DialogTitle>
+                <DialogTitle>{isNewProduct ? 'Add Product' : 'Edit Product'}</DialogTitle>
               </DialogHeader>
               {editingProduct && (
                 <div className="space-y-4">
@@ -359,8 +433,13 @@ export default function AdminInventory() {
                 </div>
               )}
               <DialogFooter>
-                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleSaveEdit}>Save Changes</Button>
+                <Button variant="outline" onClick={() => {
+                  setEditDialogOpen(false);
+                  setEditingProduct(null);
+                  setIsNewProduct(false);
+                  setUploadedImage(null);
+                }}>Cancel</Button>
+                <Button onClick={handleSaveEdit}>{isNewProduct ? 'Create Product' : 'Save Changes'}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

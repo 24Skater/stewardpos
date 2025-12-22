@@ -363,7 +363,7 @@ export class PostgresAdapter {
 
       const newOrder = orderResult.rows[0];
 
-      // Insert order items
+      // Insert order items and update stock
       const items = [];
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
@@ -387,6 +387,16 @@ export class PostgresAdapter {
             ]
           );
           items.push(itemResult.rows[0]);
+
+          // Update variant stock if variantId is provided
+          if (item.variantId) {
+            await client.query(
+              `UPDATE product_variants 
+               SET stock = GREATEST(0, stock - $1)
+               WHERE id = $2`,
+              [item.quantity, item.variantId]
+            );
+          }
         }
       }
 
@@ -419,6 +429,39 @@ export class PostgresAdapter {
         `SELECT * FROM orders ORDER BY created_at DESC`
       );
 
+      // Get all order items in one query for efficiency
+      const orderIds = result.rows.map(o => o.id);
+      let itemsMap = new Map<string, any[]>();
+      
+      if (orderIds.length > 0) {
+        const itemsResult = await this.pool.query(
+          `SELECT * FROM order_items WHERE order_id = ANY($1::uuid[])`,
+          [orderIds]
+        );
+        
+        // Group items by order_id
+        itemsResult.rows.forEach((item) => {
+          const orderId = item.order_id;
+          if (!itemsMap.has(orderId)) {
+            itemsMap.set(orderId, []);
+          }
+          itemsMap.get(orderId)!.push({
+            id: item.id,
+            orderId: item.order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            nameSnapshot: item.name_snapshot,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity,
+            unitPrice: parseFloat(item.unit_price),
+            lineDiscount: parseFloat(item.line_discount),
+            lineTotal: parseFloat(item.line_total),
+            notes: item.notes,
+          });
+        });
+      }
+
       return result.rows.map((order) => ({
         id: order.id,
         createdAt: new Date(order.created_at).getTime(),
@@ -429,6 +472,7 @@ export class PostgresAdapter {
         paymentMethod: order.payment_method,
         customerEmail: order.customer_email,
         customerPhone: order.customer_phone,
+        items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
       logger.error('Error getting all orders:', error);
@@ -466,6 +510,7 @@ export class PostgresAdapter {
         customerPhone: order.customer_phone,
         items: itemsResult.rows.map((item) => ({
           id: item.id,
+          orderId: item.order_id,
           productId: item.product_id,
           variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,

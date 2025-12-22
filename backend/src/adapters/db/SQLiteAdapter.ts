@@ -363,7 +363,7 @@ export class SQLiteAdapter {
         .prepare('SELECT * FROM orders WHERE rowid = ?')
         .get(orderResult.lastInsertRowid) as any;
 
-      // Insert order items
+      // Insert order items and update stock
       const items = [];
       if (order.items && order.items.length > 0) {
         for (const item of order.items) {
@@ -392,6 +392,17 @@ export class SQLiteAdapter {
             .get(itemResult.lastInsertRowid) as any;
 
           items.push(createdItem);
+
+          // Update variant stock if variantId is provided
+          if (item.variantId) {
+            this.db
+              .prepare(
+                `UPDATE product_variants 
+                 SET stock = MAX(0, stock - ?)
+                 WHERE id = ?`
+              )
+              .run(item.quantity, item.variantId);
+          }
         }
       }
 
@@ -423,6 +434,39 @@ export class SQLiteAdapter {
         .prepare('SELECT * FROM orders ORDER BY created_at DESC')
         .all() as any[];
 
+      // Get all order items
+      const itemsMap = new Map<string, any[]>();
+      const orderIds = orders.map(o => o.id);
+      
+      if (orderIds.length > 0) {
+        const placeholders = orderIds.map(() => '?').join(',');
+        const items = this.db
+          .prepare(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`)
+          .all(...orderIds) as any[];
+        
+        // Group items by order_id
+        items.forEach((item) => {
+          const orderId = item.order_id;
+          if (!itemsMap.has(orderId)) {
+            itemsMap.set(orderId, []);
+          }
+          itemsMap.get(orderId)!.push({
+            id: item.id,
+            orderId: item.order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            nameSnapshot: item.name_snapshot,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            lineDiscount: item.line_discount,
+            lineTotal: item.line_total,
+            notes: item.notes,
+          });
+        });
+      }
+
       return orders.map((order) => ({
         id: order.id,
         createdAt: order.created_at,
@@ -433,6 +477,7 @@ export class SQLiteAdapter {
         paymentMethod: order.payment_method,
         customerEmail: order.customer_email,
         customerPhone: order.customer_phone,
+        items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
       logger.error('Error getting all orders:', error);
@@ -466,6 +511,7 @@ export class SQLiteAdapter {
         customerPhone: order.customer_phone,
         items: items.map((item) => ({
           id: item.id,
+          orderId: item.order_id,
           productId: item.product_id,
           variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,
