@@ -7,12 +7,20 @@ import { getAllServices, Service } from '@/lib/db';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { getCurrentSession, hasPermission } from '@/lib/auth';
+import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 
 export default function AdminServices() {
   const [services, setServices] = useState<Service[]>([]);
   const [search, setSearch] = useState('');
-  const session = getCurrentSession();
+  const [session, setSession] = useState<AuthSession | null>(null);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const currentSession = await getCurrentSession();
+      setSession(currentSession);
+    };
+    loadSession();
+  }, []);
 
   useEffect(() => {
     loadServices();

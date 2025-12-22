@@ -11,7 +11,7 @@ import type { Product, CreateProductRequest, UpdateProductRequest } from '@/lib/
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { getCurrentSession, hasPermission } from '@/lib/auth';
+import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
 import ImportInventoryDialog from '@/components/ImportInventoryDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -24,8 +24,16 @@ export default function AdminInventory() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const session = getCurrentSession();
+  const [session, setSession] = useState<AuthSession | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const loadSession = async () => {
+      const currentSession = await getCurrentSession();
+      setSession(currentSession);
+    };
+    loadSession();
+  }, []);
 
   useEffect(() => {
     loadProducts();

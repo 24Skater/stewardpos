@@ -2,6 +2,7 @@ import { apiClient } from './api-client';
 import { authStore } from './auth-store';
 import type { SessionResponse } from './api-types';
 import type { RolePermissions } from './db';
+import { logger } from './logger';
 
 export interface AuthSession {
   user: {
@@ -35,14 +36,30 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 
   try {
     const response = await apiClient.get<SessionResponse>('/api/auth/session');
-    if (response.success && response.data.user) {
+    if (response.success && response.data?.user) {
+      const user = response.data.user;
+      
+      // Ensure user has required properties
+      if (!user.id || !user.email || !user.name) {
+        logger.warn('Session response missing required user fields');
+        authStore.clearToken();
+        currentSession = null;
+        return null;
+      }
+
       // Merge permissions from roles
       const permissions = mergePermissions(
-        response.data.user.roles.map((r: any) => r.permissions || {})
+        (user.roles || []).map((r: any) => r.permissions || {})
       );
 
       currentSession = {
-        user: response.data.user,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roleIds: user.roleIds || [],
+          roles: user.roles || [],
+        },
         permissions,
       };
       return currentSession;

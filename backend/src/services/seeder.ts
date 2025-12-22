@@ -134,47 +134,57 @@ export class Seeder {
   private async seedAdminUser(): Promise<void> {
     logger.info('Seeding admin user...');
 
-    const passwordHash = await bcrypt.hash('admin123', 10);
+    const passwordHash = await bcrypt.hash('DemoPass!1', 10);
 
     if (this.adapter === 'postgres' && this.pgPool) {
-      // Insert user
+      // Update or insert user
       const userResult = await this.pgPool.query(
         `INSERT INTO users (email, password_hash, name, status) 
          VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (email) DO NOTHING
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, name = EXCLUDED.name, status = EXCLUDED.status
          RETURNING id`,
-        ['admin@example.com', passwordHash, 'Admin User', 'active']
+        ['admin@demo.local', passwordHash, 'Admin User', 'active']
       );
 
+      // Get user ID (either from insert or existing user)
+      let userId: string;
       if (userResult.rows.length > 0) {
-        const userId = userResult.rows[0].id;
-        
-        // Get admin role
-        const roleResult = await this.pgPool.query(
-          `SELECT id FROM roles WHERE system_role = $1`,
-          ['admin']
+        userId = userResult.rows[0].id;
+      } else {
+        // If no rows returned (shouldn't happen with RETURNING, but just in case)
+        const existingUser = await this.pgPool.query(
+          'SELECT id FROM users WHERE email = $1',
+          ['admin@demo.local']
         );
+        userId = existingUser.rows[0].id;
+      }
+      
+      // Get admin role
+      const roleResult = await this.pgPool.query(
+        `SELECT id FROM roles WHERE system_role = $1`,
+        ['admin']
+      );
 
-        if (roleResult.rows.length > 0) {
-          const roleId = roleResult.rows[0].id;
-          
-          // Assign role to user
-          await this.pgPool.query(
-            `INSERT INTO user_roles (user_id, role_id) 
-             VALUES ($1, $2) 
-             ON CONFLICT DO NOTHING`,
-            [userId, roleId]
-          );
-        }
+      if (roleResult.rows.length > 0) {
+        const roleId = roleResult.rows[0].id;
+        
+        // Assign role to user
+        await this.pgPool.query(
+          `INSERT INTO user_roles (user_id, role_id) 
+           VALUES ($1, $2) 
+           ON CONFLICT DO NOTHING`,
+          [userId, roleId]
+        );
       }
     } else if (this.adapter === 'sqlite' && this.sqliteDb) {
-      // Insert user
+      // Update or insert user
       const result = this.sqliteDb
         .prepare(
-          `INSERT OR IGNORE INTO users (email, password_hash, name, status) 
-           VALUES (?, ?, ?, ?)`
+          `INSERT INTO users (email, password_hash, name, status) 
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, name = excluded.name, status = excluded.status`
         )
-        .run('admin@example.com', passwordHash, 'Admin User', 'active');
+        .run('admin@demo.local', passwordHash, 'Admin User', 'active');
 
       if (result.changes > 0) {
         const userId = result.lastInsertRowid;
@@ -196,7 +206,7 @@ export class Seeder {
       }
     }
 
-    logger.info('✓ Admin user seeded (email: admin@example.com, password: admin123)');
+    logger.info('✓ Admin user seeded (email: admin@demo.local, password: DemoPass!1)');
   }
 
   private async seedSettings(): Promise<void> {

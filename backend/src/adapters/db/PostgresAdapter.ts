@@ -53,8 +53,13 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `SELECT u.*, 
-                array_agg(r.id) as role_ids,
-                array_agg(r.*) as roles
+                COALESCE(array_agg(r.id) FILTER (WHERE r.id IS NOT NULL), ARRAY[]::uuid[]) as role_ids,
+                COALESCE(json_agg(json_build_object(
+                  'id', r.id,
+                  'name', r.name,
+                  'system_role', r.system_role,
+                  'permissions', r.permissions
+                )) FILTER (WHERE r.id IS NOT NULL), '[]'::json) as roles
          FROM users u
          LEFT JOIN user_roles ur ON u.id = ur.user_id
          LEFT JOIN roles r ON ur.role_id = r.id
@@ -69,18 +74,25 @@ export class PostgresAdapter {
 
       const user = result.rows[0];
       
-      // Parse roles
-      if (user.roles && user.roles[0]) {
-        user.roles = user.roles.map((r: any) => ({
-          id: r.id,
-          name: r.name,
-          systemRole: r.system_role,
-          permissions: typeof r.permissions === 'string' 
-            ? JSON.parse(r.permissions) 
-            : r.permissions,
-        }));
-      } else {
-        user.roles = [];
+      // Parse roles - roles is now a JSON array
+      let roles: any[] = [];
+      if (user.roles) {
+        try {
+          const rolesArray = typeof user.roles === 'string' ? JSON.parse(user.roles) : user.roles;
+          if (Array.isArray(rolesArray)) {
+            roles = rolesArray.map((r: any) => ({
+              id: r.id,
+              name: r.name,
+              systemRole: r.system_role,
+              permissions: typeof r.permissions === 'string' 
+                ? JSON.parse(r.permissions) 
+                : r.permissions,
+            }));
+          }
+        } catch (e) {
+          logger.warn('Error parsing roles:', e);
+          roles = [];
+        }
       }
 
       return {
@@ -92,7 +104,7 @@ export class PostgresAdapter {
         status: user.status,
         lastLoginAt: user.last_login_at ? new Date(user.last_login_at).getTime() : undefined,
         createdAt: new Date(user.created_at).getTime(),
-        roles: user.roles,
+        roles: roles,
       };
     } catch (error) {
       logger.error('Error getting user by email:', error);

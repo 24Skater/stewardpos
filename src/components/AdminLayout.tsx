@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -14,7 +14,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { logout, getCurrentSession } from '@/lib/auth';
+import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
 interface AdminLayoutProps {
@@ -36,12 +36,40 @@ const navItems = [
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const session = getCurrentSession();
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      setIsLoading(true);
+      try {
+        const currentSession = await getCurrentSession();
+        setSession(currentSession);
+      } catch (error) {
+        console.error('Failed to load session:', error);
+        setSession(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadSession();
+  }, []);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  // Show loading state while session is being fetched
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg text-muted-foreground">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -49,7 +77,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <aside className="w-64 bg-card border-r border-border flex flex-col">
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-bold text-foreground">Admin Portal</h1>
-          <p className="text-sm text-muted-foreground mt-1">{session?.user.name}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {session?.user?.name ?? 'User'}
+          </p>
         </div>
 
         <div className="p-4 border-b border-border">

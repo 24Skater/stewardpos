@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { ValidationError, NotFoundError } from '../../utils/errors';
@@ -7,8 +7,8 @@ import logger from '../../utils/logger';
 
 const router = Router();
 
-// All product routes require authentication
-router.use(authenticate);
+// GET endpoints are public (for browsing products)
+// Write operations (POST, PUT, DELETE) require authentication
 
 /**
  * Product/Inventory API Routes
@@ -53,9 +53,9 @@ const updateProductSchema = z.object({
 
 /**
  * GET /api/products
- * List all products
+ * List all products (public - no auth required)
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const products = await adapter.getAllProducts();
@@ -73,9 +73,9 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
 
 /**
  * GET /api/products/:id
- * Get product by ID
+ * Get product by ID (public - no auth required)
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -96,9 +96,9 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
 
 /**
  * POST /api/products
- * Create new product
+ * Create new product (requires authentication)
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const productData = createProductSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -121,9 +121,9 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
 
 /**
  * PUT /api/products/:id
- * Update product
+ * Update product (requires authentication)
  */
-router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const productData = updateProductSchema.parse(req.body);
@@ -151,9 +151,9 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
 
 /**
  * DELETE /api/products/:id
- * Delete product
+ * Delete product (requires authentication)
  */
-router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
