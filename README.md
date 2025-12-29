@@ -27,7 +27,7 @@
 <p align="center">
   <a href="#-quick-start"><b>🚀 Quick Start</b></a> •
   <a href="#-features"><b>✨ Features</b></a> •
-  <a href="#-architecture"><b>🏗️ Architecture</b></a> •
+  <a href="#-branding--customization"><b>🎨 Branding</b></a> •
   <a href="#-documentation"><b>📖 Docs</b></a> •
   <a href="#-deployment"><b>📦 Deploy</b></a> •
   <a href="#-contributing"><b>🤝 Contribute</b></a>
@@ -74,6 +74,7 @@ Comprehensive reports, sales tracking, and business insights
 - [🛠️ Tech Stack](#️-tech-stack)
 - [📖 Documentation](#-documentation)
 - [📦 Deployment](#-deployment)
+- [🎨 Branding & Customization](#-branding--customization)
 - [🔐 Security](#-security)
 - [🤝 Contributing](#-contributing)
 - [📊 Roadmap](#-roadmap)
@@ -169,6 +170,7 @@ npm run dev            # Start dev server at :5173
 - 💳 Multiple payment methods
 - 🧾 Receipt printing/email
 - 💰 Discounts & promotions
+- 🔄 Quick returns from POS
 
 </td>
 <td width="33%" valign="top">
@@ -197,11 +199,11 @@ npm run dev            # Start dev server at :5173
 <tr>
 <td width="33%" valign="top">
 
-### 📊 Reports
-- 📈 Sales analytics
+### 📊 Reports & Exports
+- 📈 Sales & service analytics
 - 💵 Revenue tracking
 - 🏆 Product performance
-- 📤 Export CSV/PDF
+- 📤 Export PDF/Excel/CSV
 - 📅 Date filtering
 - 📉 Trend analysis
 
@@ -213,7 +215,7 @@ npm run dev            # Start dev server at :5173
 - 👔 Custom roles
 - 🔒 Granular permissions
 - 📝 Audit logging
-- 🔑 Session management
+- 🔑 API key management
 - 🔐 bcrypt hashing
 
 </td>
@@ -223,9 +225,44 @@ npm run dev            # Start dev server at :5173
 - 🔧 Service catalog
 - 📝 Quote generation
 - ⏱️ Flexible pricing
-- 🔄 Quote → Order
+- 🔄 Quote → Order workflow
 - 📋 Customer booking
 - 📅 Scheduling
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🎨 Branding
+- 🏪 Store identity config
+- 🎨 Custom brand colors
+- 📷 Logo everywhere
+- 🧾 Receipt customization
+- 📝 Custom header/footer
+- 🌈 Live color preview
+
+</td>
+<td width="33%" valign="top">
+
+### 💸 Discounts & Promos
+- 🏷️ Quick discount buttons
+- 🎟️ Promo code system
+- 👔 Employee discounts
+- ✍️ Manual discounts
+- 📊 Usage tracking
+- 🔒 Approval workflow
+
+</td>
+<td width="33%" valign="top">
+
+### 🔄 Returns & Refunds
+- 🧾 Receipt lookup
+- 📦 Item-level returns
+- 💵 Multiple refund methods
+- ⚡ Quick POS returns
+- 📝 Return reasons
+- 🔄 Auto restock option
 
 </td>
 </tr>
@@ -342,7 +379,12 @@ stewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 - Orders API: `/api/orders`
 - Customers API: `/api/customers`
 - Services API: `/api/services`
+- Quotes API: `/api/quotes`
+- Returns API: `/api/returns`
+- Discounts API: `/api/discounts`
+- Receipts API: `/api/receipts`
 - Admin API: `/api/admin/*`
+- API Keys: `/api/admin/api-keys`
 
 ### 🔧 Configuration
 - Environment variables: `.env`
@@ -410,6 +452,58 @@ Auto-scaling
 </td>
 </tr>
 </table>
+
+<br/>
+
+---
+
+<br/>
+
+## 🎨 Branding & Customization
+
+Make stewardPOS your own with comprehensive branding options:
+
+<table>
+<tr>
+<td width="50%">
+
+### 🏪 Store Identity
+Configure your business details that appear across the system:
+- **Store Name** - Displayed in POS header
+- **Store Number** - For multi-location tracking
+- **Contact Info** - Phone, email
+- **Address** - Full location details
+
+### 🎨 Visual Branding
+- **Logo** - Appears in POS header
+- **Favicon** - Browser tab icon
+- **Brand Color** - Applied to buttons, links, accents
+- **Live Preview** - See changes instantly!
+
+</td>
+<td width="50%">
+
+### 🧾 Receipt Customization
+Create professional, branded receipts:
+- **Receipt Logo** - Separate from main logo
+- **Store Info** - Name, address, phone
+- **Header Message** - Welcome text
+- **Footer Message** - Return policy, social media
+- **Barcode** - For easy scanning
+- **Print & Email** - Multiple delivery options
+
+### 🌈 Theme Support
+Brand color automatically updates:
+- Primary buttons
+- Links and accents
+- Focus rings
+- Gradients and glows
+
+</td>
+</tr>
+</table>
+
+> **Tip:** Go to **Admin → Branding** to customize all these options with a live preview!
 
 <br/>
 
@@ -510,15 +604,23 @@ git push origin feature/amazing-feature
 - Docker support
 - Setup wizard
 - Reports & analytics
+- **Discounts & promotions**
+- **Returns & refunds**
+- **Custom branding**
+- **Receipt customization**
+- **PDF/Excel exports**
+- **API key management**
+- **Service quotes workflow**
 
 </td>
 <td>
 
 ### 🔄 In Progress
-- Additional auth providers
-- Advanced reporting
+- Google OAuth integration
+- OIDC/SSO providers
 - Mobile responsive
 - Performance tuning
+- Loyalty programs
 
 </td>
 <td>
@@ -529,6 +631,9 @@ git push origin feature/amazing-feature
 - Multi-location support
 - Plugin marketplace
 - QuickBooks integration
+- Hardware integrations
+- Inventory alerts
+- Customer loyalty points
 
 </td>
 </tr>

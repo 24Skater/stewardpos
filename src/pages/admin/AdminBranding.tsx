@@ -16,6 +16,7 @@ import {
   Palette, Store, MapPin, Receipt, Image, FileText, Save, Eye, 
   Building2, Phone, Mail, Globe, Paintbrush
 } from 'lucide-react';
+import { updateBrandColor } from '@/components/BrandThemeProvider';
 
 interface BrandingSettings {
   // Store Identity
@@ -99,6 +100,10 @@ export default function AdminBranding() {
       apiClient.put('/api/admin/settings', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      // Apply brand color immediately
+      if (form.brandColor) {
+        updateBrandColor(form.brandColor);
+      }
       toast({ title: 'Branding settings saved successfully' });
     },
     onError: () => {
@@ -360,7 +365,7 @@ export default function AdminBranding() {
                       <Paintbrush className="w-5 h-5" />
                       Brand Color
                     </CardTitle>
-                    <CardDescription>Primary color used throughout the application</CardDescription>
+                    <CardDescription>Primary color used throughout the application (buttons, links, accents)</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex items-center gap-4">
@@ -369,14 +374,19 @@ export default function AdminBranding() {
                         <div className="flex gap-2">
                           <Input
                             value={form.brandColor}
-                            onChange={(e) => setForm({ ...form, brandColor: e.target.value })}
+                            onChange={(e) => {
+                              setForm({ ...form, brandColor: e.target.value });
+                            }}
                             placeholder="#3b82f6"
                             className="flex-1"
                           />
                           <input
                             type="color"
                             value={form.brandColor || '#3b82f6'}
-                            onChange={(e) => setForm({ ...form, brandColor: e.target.value })}
+                            onChange={(e) => {
+                              setForm({ ...form, brandColor: e.target.value });
+                              updateBrandColor(e.target.value); // Live preview
+                            }}
                             className="w-12 h-10 rounded border cursor-pointer"
                           />
                         </div>
@@ -386,16 +396,24 @@ export default function AdminBranding() {
                         style={{ backgroundColor: form.brandColor || '#3b82f6' }}
                       />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm text-muted-foreground mr-2">Quick colors:</span>
                       {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'].map(color => (
                         <button
                           key={color}
-                          className="w-8 h-8 rounded-full border-2 border-transparent hover:border-foreground transition-colors"
+                          className="w-8 h-8 rounded-full border-2 border-transparent hover:border-foreground transition-colors hover:scale-110"
                           style={{ backgroundColor: color }}
-                          onClick={() => setForm({ ...form, brandColor: color })}
+                          onClick={() => {
+                            setForm({ ...form, brandColor: color });
+                            updateBrandColor(color); // Live preview
+                          }}
+                          title={color}
                         />
                       ))}
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Color changes preview instantly. Click "Save All Changes" to make permanent.
+                    </p>
                   </CardContent>
                 </Card>
               </div>

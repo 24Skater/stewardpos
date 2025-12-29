@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
+import BrandThemeProvider from "@/components/BrandThemeProvider";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
@@ -35,11 +36,12 @@ const queryClient = new QueryClient();
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <SetupGuard>
+      <BrandThemeProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <SetupGuard>
             <Routes>
               <Route path="/setup" element={<Setup />} />
               <Route path="/login" element={<Login />} />
@@ -65,11 +67,12 @@ const App = () => (
               <Route path="/admin/receipts" element={<AdminReceipts />} />
               <Route path="/admin/branding" element={<AdminBranding />} />
               <Route path="/admin/discounts" element={<AdminDiscounts />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </SetupGuard>
-        </BrowserRouter>
-      </TooltipProvider>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </SetupGuard>
+          </BrowserRouter>
+        </TooltipProvider>
+      </BrandThemeProvider>
     </QueryClientProvider>
   </ErrorBoundary>
 );

@@ -93,11 +93,16 @@ export default function POS() {
   
   // Return dialog state
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  
+  // Store branding
+  const [storeName, setStoreName] = useState("POS");
+  const [storeLogo, setStoreLogo] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
     loadCategories();
     loadQuickDiscounts();
+    loadStoreName();
   }, []);
 
   useEffect(() => {
@@ -140,6 +145,23 @@ export default function POS() {
   const loadCategories = async () => {
     // Categories are now derived from products in loadProducts
     // This function is kept for compatibility but does nothing
+  };
+
+  const loadStoreName = async () => {
+    try {
+      const response = await apiClient.get<{ success: boolean; data: { storeName?: string; logoUrl?: string } }>('/api/admin/settings');
+      if (response.success && response.data) {
+        if (response.data.storeName) {
+          setStoreName(response.data.storeName);
+        }
+        if (response.data.logoUrl) {
+          setStoreLogo(response.data.logoUrl);
+        }
+      }
+    } catch (error) {
+      // Use default name if settings fail to load
+      console.warn('Could not load store branding');
+    }
   };
 
   const loadQuickDiscounts = async () => {
@@ -553,11 +575,22 @@ export default function POS() {
       <header className="border-b border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-primary to-primary-glow p-2 rounded-lg">
-              <Package className="w-6 h-6 text-primary-foreground" />
-            </div>
+            {storeLogo ? (
+              <img 
+                src={storeLogo} 
+                alt={storeName} 
+                className="h-10 w-auto max-w-[120px] object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="bg-gradient-to-br from-primary to-primary-glow p-2 rounded-lg">
+                <Package className="w-6 h-6 text-primary-foreground" />
+              </div>
+            )}
             <div>
-              <h1 className="text-xl font-bold text-foreground">Persona POS</h1>
+              <h1 className="text-xl font-bold text-foreground">{storeName}</h1>
               <p className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</p>
             </div>
           </div>
