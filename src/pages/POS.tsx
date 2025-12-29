@@ -8,12 +8,53 @@ import ReceiptDialog from "@/components/ReceiptDialog";
 import { CartItem } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
 import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
+
+interface DiscountType {
+  id: string;
+  name: string;
+  code?: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  color: string;
+  icon?: string;
+  requiresApproval: boolean;
+}
+
+interface AppliedDiscount {
+  source: 'quick_discount' | 'promo_code' | 'manual' | 'employee';
+  id?: string;
+  code?: string;
+  name: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  amount: number;
+}
+
+const iconMap: Record<string, any> = {
+  'user': UserCheck,
+  'shield': Shield,
+  'graduation-cap': GraduationCap,
+  'heart': Heart,
+  'cake': Cake,
+  'alert-triangle': AlertTriangle,
+};
+
+const colorMap: Record<string, string> = {
+  'blue': 'bg-blue-500 hover:bg-blue-600',
+  'green': 'bg-green-500 hover:bg-green-600',
+  'purple': 'bg-purple-500 hover:bg-purple-600',
+  'red': 'bg-red-500 hover:bg-red-600',
+  'pink': 'bg-pink-500 hover:bg-pink-600',
+  'orange': 'bg-orange-500 hover:bg-orange-600',
+  'gray': 'bg-gray-500 hover:bg-gray-600',
+};
 
 export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,10 +75,20 @@ export default function POS() {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Discount state
+  const [quickDiscounts, setQuickDiscounts] = useState<DiscountType[]>([]);
+  const [appliedDiscounts, setAppliedDiscounts] = useState<AppliedDiscount[]>([]);
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [manualDiscountType, setManualDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [manualDiscountValue, setManualDiscountValue] = useState("");
+  const [manualDiscountReason, setManualDiscountReason] = useState("");
 
   useEffect(() => {
     loadProducts();
     loadCategories();
+    loadQuickDiscounts();
   }, []);
 
   useEffect(() => {
@@ -80,6 +131,150 @@ export default function POS() {
   const loadCategories = async () => {
     // Categories are now derived from products in loadProducts
     // This function is kept for compatibility but does nothing
+  };
+
+  const loadQuickDiscounts = async () => {
+    try {
+      const response = await apiClient.get<{ success: boolean; data: DiscountType[] }>('/api/discounts/types/pos');
+      if (response.success) {
+        setQuickDiscounts(response.data);
+      }
+    } catch (error) {
+      // Non-critical, silently fail
+      console.warn('Failed to load quick discounts:', error);
+    }
+  };
+
+  const calculateSubtotal = () => {
+    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  };
+
+  const calculateDiscountAmount = (discount: AppliedDiscount, subtotal: number) => {
+    if (discount.type === 'percentage') {
+      return subtotal * (discount.value / 100);
+    }
+    return Math.min(discount.value, subtotal);
+  };
+
+  const getTotalDiscount = () => {
+    const subtotal = calculateSubtotal();
+    return appliedDiscounts.reduce((total, discount) => {
+      return total + calculateDiscountAmount(discount, subtotal - total);
+    }, 0);
+  };
+
+  const applyQuickDiscount = (discount: DiscountType) => {
+    // Check if already applied
+    if (appliedDiscounts.some(d => d.source === 'quick_discount' && d.id === discount.id)) {
+      toast({ title: 'Discount already applied', variant: 'destructive' });
+      return;
+    }
+
+    const subtotal = calculateSubtotal();
+    const currentDiscount = getTotalDiscount();
+    const remainingSubtotal = subtotal - currentDiscount;
+    const discountAmount = discount.discountType === 'percentage' 
+      ? remainingSubtotal * (discount.discountValue / 100)
+      : Math.min(discount.discountValue, remainingSubtotal);
+
+    setAppliedDiscounts([...appliedDiscounts, {
+      source: 'quick_discount',
+      id: discount.id,
+      code: discount.code,
+      name: discount.name,
+      type: discount.discountType,
+      value: discount.discountValue,
+      amount: discountAmount,
+    }]);
+
+    toast({ title: `${discount.name} applied`, description: `-$${discountAmount.toFixed(2)}` });
+  };
+
+  const applyPromoCode = async () => {
+    if (!promoCodeInput.trim()) return;
+
+    setPromoLoading(true);
+    try {
+      const subtotal = calculateSubtotal();
+      const response = await apiClient.post<{ success: boolean; valid: boolean; message?: string; promo?: any }>(
+        '/api/discounts/promos/validate',
+        {
+          code: promoCodeInput.trim().toUpperCase(),
+          cartTotal: subtotal,
+          itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+        }
+      );
+
+      if (response.success && response.valid && response.promo) {
+        // Check if already applied
+        if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === response.promo.id)) {
+          toast({ title: 'Promo code already applied', variant: 'destructive' });
+          return;
+        }
+
+        setAppliedDiscounts([...appliedDiscounts, {
+          source: 'promo_code',
+          id: response.promo.id,
+          code: response.promo.code,
+          name: response.promo.name,
+          type: response.promo.discountType,
+          value: response.promo.discountValue,
+          amount: response.promo.discountAmount,
+        }]);
+
+        setPromoCodeInput("");
+        toast({ 
+          title: 'Promo code applied!', 
+          description: `${response.promo.name} - $${response.promo.discountAmount.toFixed(2)} off` 
+        });
+      } else {
+        toast({ title: response.message || 'Invalid promo code', variant: 'destructive' });
+      }
+    } catch (error: any) {
+      toast({ title: 'Failed to validate promo code', description: error.message, variant: 'destructive' });
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const applyManualDiscount = () => {
+    const value = parseFloat(manualDiscountValue);
+    if (isNaN(value) || value <= 0) {
+      toast({ title: 'Please enter a valid discount amount', variant: 'destructive' });
+      return;
+    }
+
+    if (manualDiscountType === 'percentage' && value > 100) {
+      toast({ title: 'Percentage cannot exceed 100%', variant: 'destructive' });
+      return;
+    }
+
+    const subtotal = calculateSubtotal();
+    const currentDiscount = getTotalDiscount();
+    const remainingSubtotal = subtotal - currentDiscount;
+    const discountAmount = manualDiscountType === 'percentage' 
+      ? remainingSubtotal * (value / 100)
+      : Math.min(value, remainingSubtotal);
+
+    setAppliedDiscounts([...appliedDiscounts, {
+      source: 'manual',
+      name: manualDiscountReason || 'Manual Discount',
+      type: manualDiscountType,
+      value: value,
+      amount: discountAmount,
+    }]);
+
+    setManualDiscountValue("");
+    setManualDiscountReason("");
+    toast({ title: 'Manual discount applied', description: `-$${discountAmount.toFixed(2)}` });
+  };
+
+  const removeDiscount = (index: number) => {
+    setAppliedDiscounts(appliedDiscounts.filter((_, i) => i !== index));
+  };
+
+  const clearAllDiscounts = () => {
+    setAppliedDiscounts([]);
   };
 
   const filterProducts = () => {
@@ -244,8 +439,8 @@ export default function POS() {
       // TODO: Get settings from API when settings endpoint is available
       const taxRate = 0; // Default to 0 for now
       
-      const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-      const discountTotal = cart.reduce((sum, item) => sum + (item.lineDiscount || 0) * item.quantity, 0);
+      const subtotal = calculateSubtotal();
+      const discountTotal = getTotalDiscount();
       const taxTotal = (subtotal - discountTotal) * taxRate;
       const total = subtotal - discountTotal + taxTotal;
       
@@ -280,6 +475,31 @@ export default function POS() {
       const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
       
       if (response.success) {
+        // Log discount usage for each applied discount
+        for (const discount of appliedDiscounts) {
+          try {
+            await apiClient.post('/api/discounts/usage', {
+              orderId: response.data.id,
+              discountSource: discount.source,
+              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
+              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
+              discountCode: discount.code,
+              discountName: discount.name,
+              discountType: discount.type,
+              discountValue: discount.value,
+              discountAmount: discount.amount,
+              customerEmail: customerEmail || undefined,
+            });
+
+            // Increment promo code usage if applicable
+            if (discount.source === 'promo_code' && discount.id) {
+              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
+            }
+          } catch (error) {
+            console.error('Failed to log discount usage:', error);
+          }
+        }
+
         toast({
           title: "Sale completed!",
           description: `Order ${response.data.id} saved successfully`,
@@ -289,6 +509,7 @@ export default function POS() {
         setLastOrderTotal(total);
         setCart([]);
         setCustomerEmail("");
+        setAppliedDiscounts([]);
         setCheckoutOpen(false);
         setReceiptDialogOpen(true);
         
@@ -495,45 +716,206 @@ export default function POS() {
 
       {/* Checkout Dialog */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="bg-card border-border">
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-foreground">Complete Sale</DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              Customer information is optional. Leave blank for walk-in customers.
+              Apply discounts and complete the transaction
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">
-                Customer Email <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="customer@example.com (optional)"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                className="bg-background border-border"
-              />
-              <p className="text-xs text-muted-foreground">
-                Leave blank to complete sale without customer information
-              </p>
+          
+          <Tabs defaultValue="discounts" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="discounts">
+                <Tag className="w-4 h-4 mr-2" />
+                Discounts
+              </TabsTrigger>
+              <TabsTrigger value="promo">
+                <Gift className="w-4 h-4 mr-2" />
+                Promo Code
+              </TabsTrigger>
+              <TabsTrigger value="customer">
+                <UserCheck className="w-4 h-4 mr-2" />
+                Customer
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Quick Discounts Tab */}
+            <TabsContent value="discounts" className="mt-4 space-y-4">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Quick Discounts</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {quickDiscounts.map((discount) => {
+                    const IconComponent = iconMap[discount.icon || ''] || Tag;
+                    return (
+                      <Button
+                        key={discount.id}
+                        variant="outline"
+                        className={`h-auto flex-col py-3 ${colorMap[discount.color] || ''} ${appliedDiscounts.some(d => d.id === discount.id) ? 'ring-2 ring-green-500' : ''}`}
+                        onClick={() => applyQuickDiscount(discount)}
+                        disabled={appliedDiscounts.some(d => d.id === discount.id)}
+                      >
+                        <IconComponent className="w-5 h-5 mb-1 text-white" />
+                        <span className="text-xs text-white font-medium">{discount.name}</span>
+                        <span className="text-sm font-bold text-white">
+                          {discount.discountType === 'percentage' ? `${discount.discountValue}%` : `$${discount.discountValue}`}
+                        </span>
+                      </Button>
+                    );
+                  })}
+                  {quickDiscounts.length === 0 && (
+                    <p className="text-sm text-muted-foreground col-span-3 text-center py-4">
+                      No quick discounts available
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <Label className="text-sm font-medium mb-2 block">Manual Discount</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex gap-2">
+                    <Button
+                      variant={manualDiscountType === 'percentage' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setManualDiscountType('percentage')}
+                    >
+                      <Percent className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant={manualDiscountType === 'fixed' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setManualDiscountType('fixed')}
+                    >
+                      <DollarSign className="w-4 h-4" />
+                    </Button>
+                    <Input
+                      type="number"
+                      placeholder={manualDiscountType === 'percentage' ? '10' : '5.00'}
+                      value={manualDiscountValue}
+                      onChange={(e) => setManualDiscountValue(e.target.value)}
+                      className="w-24"
+                    />
+                    <Input
+                      placeholder="Reason (optional)"
+                      value={manualDiscountReason}
+                      onChange={(e) => setManualDiscountReason(e.target.value)}
+                      className="flex-1"
+                    />
+                  </div>
+                  <Button onClick={applyManualDiscount} disabled={!manualDiscountValue}>
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Promo Code Tab */}
+            <TabsContent value="promo" className="mt-4 space-y-4">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Enter Promo Code</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="SAVE20"
+                    value={promoCodeInput}
+                    onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === 'Enter' && applyPromoCode()}
+                    className="flex-1 uppercase"
+                  />
+                  <Button onClick={applyPromoCode} disabled={promoLoading || !promoCodeInput.trim()}>
+                    {promoLoading ? 'Validating...' : 'Apply'}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Customer Tab */}
+            <TabsContent value="customer" className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-foreground">
+                  Customer Email <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="customer@example.com (optional)"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  className="bg-background border-border"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to complete sale without customer information
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Applied Discounts */}
+          {appliedDiscounts.length > 0 && (
+            <div className="border-t pt-4">
+              <div className="flex justify-between items-center mb-2">
+                <Label className="text-sm font-medium">Applied Discounts</Label>
+                <Button variant="ghost" size="sm" onClick={clearAllDiscounts} className="text-xs text-destructive">
+                  Clear All
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {appliedDiscounts.map((discount, index) => (
+                  <div key={index} className="flex items-center justify-between bg-secondary/30 px-3 py-2 rounded-md">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <span className="text-sm font-medium">{discount.name}</span>
+                      {discount.code && (
+                        <code className="text-xs bg-muted px-1 rounded">{discount.code}</code>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-green-600 font-bold">
+                        -{discount.type === 'percentage' ? `${discount.value}%` : `$${discount.amount.toFixed(2)}`}
+                      </span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6"
+                        onClick={() => removeDiscount(index)}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="bg-secondary/30 p-4 rounded-lg border border-border">
-              <div className="flex justify-between items-center">
+          )}
+
+          {/* Order Summary */}
+          <div className="bg-secondary/30 p-4 rounded-lg border border-border mt-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>${calculateSubtotal().toFixed(2)}</span>
+              </div>
+              {getTotalDiscount() > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Discount</span>
+                  <span>-${getTotalDiscount().toFixed(2)}</span>
+                </div>
+              )}
+              <div className="border-t pt-2 flex justify-between items-center">
                 <span className="text-lg font-semibold text-foreground">Total</span>
                 <span className="text-2xl font-bold text-primary">
-                  ${cart.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2)}
+                  ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setCheckoutOpen(false)} className="border-border">
               Cancel
             </Button>
             <Button onClick={handleCompleteCheckout} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              Complete Sale
+              Complete Sale - ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2492,4 +2492,546 @@ export class SQLiteAdapter {
       updatedAt: row.updated_at,
     };
   }
+
+  // ===== Discount Types Operations =====
+  
+  async getAllDiscountTypes(): Promise<any[]> {
+    try {
+      const rows = this.db.prepare('SELECT * FROM discount_types ORDER BY display_order, name').all() as any[];
+      return rows.map(r => this.mapDiscountTypeRow(r));
+    } catch (error) {
+      logger.error('Error getting discount types:', error);
+      throw new DatabaseError('Failed to get discount types');
+    }
+  }
+
+  async getDiscountTypesForPOS(): Promise<any[]> {
+    try {
+      const rows = this.db.prepare(
+        'SELECT * FROM discount_types WHERE is_active = 1 AND show_in_pos = 1 ORDER BY display_order, name'
+      ).all() as any[];
+      return rows.map(r => this.mapDiscountTypeRow(r));
+    } catch (error) {
+      logger.error('Error getting POS discount types:', error);
+      throw new DatabaseError('Failed to get discount types');
+    }
+  }
+
+  async getDiscountTypeById(id: string): Promise<any | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM discount_types WHERE id = ?').get(id) as any;
+      return row ? this.mapDiscountTypeRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting discount type:', error);
+      throw new DatabaseError('Failed to get discount type');
+    }
+  }
+
+  async createDiscountType(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO discount_types (
+          id, name, description, code, discount_type, discount_value,
+          min_purchase, max_discount, applies_to, applicable_ids,
+          requires_approval, approval_threshold, requires_employee_id,
+          display_order, color, icon, show_in_pos, is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, data.name, data.description, data.code, data.discountType, data.discountValue,
+        data.minPurchase || 0, data.maxDiscount, data.appliesTo || 'all', 
+        JSON.stringify(data.applicableIds || []),
+        data.requiresApproval ? 1 : 0, data.approvalThreshold, data.requiresEmployeeId ? 1 : 0,
+        data.displayOrder || 0, data.color || 'gray', data.icon, 
+        data.showInPos !== false ? 1 : 0, data.isActive !== false ? 1 : 0,
+        Date.now(), Date.now()
+      );
+      return this.getDiscountTypeById(id);
+    } catch (error) {
+      logger.error('Error creating discount type:', error);
+      throw new DatabaseError('Failed to create discount type');
+    }
+  }
+
+  async updateDiscountType(id: string, data: any): Promise<any | null> {
+    try {
+      const fields: string[] = [];
+      const values: any[] = [];
+
+      if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+      if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
+      if (data.code !== undefined) { fields.push('code = ?'); values.push(data.code); }
+      if (data.discountType !== undefined) { fields.push('discount_type = ?'); values.push(data.discountType); }
+      if (data.discountValue !== undefined) { fields.push('discount_value = ?'); values.push(data.discountValue); }
+      if (data.minPurchase !== undefined) { fields.push('min_purchase = ?'); values.push(data.minPurchase); }
+      if (data.maxDiscount !== undefined) { fields.push('max_discount = ?'); values.push(data.maxDiscount); }
+      if (data.appliesTo !== undefined) { fields.push('applies_to = ?'); values.push(data.appliesTo); }
+      if (data.applicableIds !== undefined) { fields.push('applicable_ids = ?'); values.push(JSON.stringify(data.applicableIds)); }
+      if (data.requiresApproval !== undefined) { fields.push('requires_approval = ?'); values.push(data.requiresApproval ? 1 : 0); }
+      if (data.approvalThreshold !== undefined) { fields.push('approval_threshold = ?'); values.push(data.approvalThreshold); }
+      if (data.requiresEmployeeId !== undefined) { fields.push('requires_employee_id = ?'); values.push(data.requiresEmployeeId ? 1 : 0); }
+      if (data.displayOrder !== undefined) { fields.push('display_order = ?'); values.push(data.displayOrder); }
+      if (data.color !== undefined) { fields.push('color = ?'); values.push(data.color); }
+      if (data.icon !== undefined) { fields.push('icon = ?'); values.push(data.icon); }
+      if (data.showInPos !== undefined) { fields.push('show_in_pos = ?'); values.push(data.showInPos ? 1 : 0); }
+      if (data.isActive !== undefined) { fields.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
+
+      if (fields.length === 0) return this.getDiscountTypeById(id);
+
+      fields.push('updated_at = ?');
+      values.push(Date.now());
+      values.push(id);
+
+      this.db.prepare(`UPDATE discount_types SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      return this.getDiscountTypeById(id);
+    } catch (error) {
+      logger.error('Error updating discount type:', error);
+      throw new DatabaseError('Failed to update discount type');
+    }
+  }
+
+  async deleteDiscountType(id: string): Promise<boolean> {
+    try {
+      const result = this.db.prepare('DELETE FROM discount_types WHERE id = ?').run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting discount type:', error);
+      throw new DatabaseError('Failed to delete discount type');
+    }
+  }
+
+  private mapDiscountTypeRow(row: any): any {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      code: row.code,
+      discountType: row.discount_type,
+      discountValue: row.discount_value,
+      minPurchase: row.min_purchase || 0,
+      maxDiscount: row.max_discount,
+      appliesTo: row.applies_to,
+      applicableIds: row.applicable_ids ? JSON.parse(row.applicable_ids) : [],
+      requiresApproval: Boolean(row.requires_approval),
+      approvalThreshold: row.approval_threshold,
+      requiresEmployeeId: Boolean(row.requires_employee_id),
+      displayOrder: row.display_order,
+      color: row.color,
+      icon: row.icon,
+      showInPos: Boolean(row.show_in_pos),
+      isActive: Boolean(row.is_active),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // ===== Promo Codes Operations =====
+
+  async getAllPromoCodes(): Promise<any[]> {
+    try {
+      const rows = this.db.prepare(
+        `SELECT pc.*, u.name as created_by_name 
+         FROM promo_codes pc 
+         LEFT JOIN users u ON pc.created_by = u.id 
+         ORDER BY pc.created_at DESC`
+      ).all() as any[];
+      return rows.map(r => this.mapPromoCodeRow(r));
+    } catch (error) {
+      logger.error('Error getting promo codes:', error);
+      throw new DatabaseError('Failed to get promo codes');
+    }
+  }
+
+  async getPromoCodeById(id: string): Promise<any | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM promo_codes WHERE id = ?').get(id) as any;
+      return row ? this.mapPromoCodeRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting promo code:', error);
+      throw new DatabaseError('Failed to get promo code');
+    }
+  }
+
+  async getPromoCodeByCode(code: string): Promise<any | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM promo_codes WHERE UPPER(code) = ?').get(code.toUpperCase()) as any;
+      return row ? this.mapPromoCodeRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting promo code by code:', error);
+      throw new DatabaseError('Failed to get promo code');
+    }
+  }
+
+  async createPromoCode(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO promo_codes (
+          id, code, name, description, discount_type, discount_value,
+          buy_quantity, get_quantity, get_product_id,
+          min_purchase, max_discount, min_items,
+          applies_to, applicable_ids, excluded_ids,
+          first_order_only, specific_customers, customer_groups,
+          max_uses, max_uses_per_customer, current_uses,
+          starts_at, expires_at, stackable, priority, is_active, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, data.code.toUpperCase(), data.name, data.description, data.discountType, data.discountValue,
+        data.buyQuantity, data.getQuantity, data.getProductId,
+        data.minPurchase || 0, data.maxDiscount, data.minItems || 0,
+        data.appliesTo || 'all', JSON.stringify(data.applicableIds || []), JSON.stringify(data.excludedIds || []),
+        data.firstOrderOnly ? 1 : 0, JSON.stringify(data.specificCustomers || []), JSON.stringify(data.customerGroups || []),
+        data.maxUses, data.maxUsesPerCustomer || 1, 0,
+        new Date(data.startsAt).getTime(), data.expiresAt ? new Date(data.expiresAt).getTime() : null,
+        data.stackable ? 1 : 0, data.priority || 0, data.isActive !== false ? 1 : 0, data.createdBy,
+        Date.now(), Date.now()
+      );
+      return this.getPromoCodeById(id);
+    } catch (error) {
+      logger.error('Error creating promo code:', error);
+      throw new DatabaseError('Failed to create promo code');
+    }
+  }
+
+  async updatePromoCode(id: string, data: any): Promise<any | null> {
+    try {
+      const fields: string[] = [];
+      const values: any[] = [];
+
+      if (data.code !== undefined) { fields.push('code = ?'); values.push(data.code.toUpperCase()); }
+      if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+      if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
+      if (data.discountType !== undefined) { fields.push('discount_type = ?'); values.push(data.discountType); }
+      if (data.discountValue !== undefined) { fields.push('discount_value = ?'); values.push(data.discountValue); }
+      if (data.minPurchase !== undefined) { fields.push('min_purchase = ?'); values.push(data.minPurchase); }
+      if (data.maxDiscount !== undefined) { fields.push('max_discount = ?'); values.push(data.maxDiscount); }
+      if (data.maxUses !== undefined) { fields.push('max_uses = ?'); values.push(data.maxUses); }
+      if (data.maxUsesPerCustomer !== undefined) { fields.push('max_uses_per_customer = ?'); values.push(data.maxUsesPerCustomer); }
+      if (data.startsAt !== undefined) { fields.push('starts_at = ?'); values.push(new Date(data.startsAt).getTime()); }
+      if (data.expiresAt !== undefined) { fields.push('expires_at = ?'); values.push(data.expiresAt ? new Date(data.expiresAt).getTime() : null); }
+      if (data.isActive !== undefined) { fields.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
+      if (data.stackable !== undefined) { fields.push('stackable = ?'); values.push(data.stackable ? 1 : 0); }
+
+      if (fields.length === 0) return this.getPromoCodeById(id);
+
+      fields.push('updated_at = ?');
+      values.push(Date.now());
+      values.push(id);
+
+      this.db.prepare(`UPDATE promo_codes SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      return this.getPromoCodeById(id);
+    } catch (error) {
+      logger.error('Error updating promo code:', error);
+      throw new DatabaseError('Failed to update promo code');
+    }
+  }
+
+  async deletePromoCode(id: string): Promise<boolean> {
+    try {
+      const result = this.db.prepare('DELETE FROM promo_codes WHERE id = ?').run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting promo code:', error);
+      throw new DatabaseError('Failed to delete promo code');
+    }
+  }
+
+  async incrementPromoCodeUsage(id: string): Promise<void> {
+    try {
+      this.db.prepare(
+        'UPDATE promo_codes SET current_uses = current_uses + 1, updated_at = ? WHERE id = ?'
+      ).run(Date.now(), id);
+    } catch (error) {
+      logger.error('Error incrementing promo code usage:', error);
+    }
+  }
+
+  async getPromoCodeUsageByCustomer(promoCodeId: string, customerId: string): Promise<number> {
+    try {
+      const result = this.db.prepare(
+        'SELECT COUNT(*) as count FROM discount_usage WHERE promo_code_id = ? AND customer_id = ?'
+      ).get(promoCodeId, customerId) as any;
+      return result?.count || 0;
+    } catch (error) {
+      logger.error('Error getting promo code usage by customer:', error);
+      return 0;
+    }
+  }
+
+  private mapPromoCodeRow(row: any): any {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      discountType: row.discount_type,
+      discountValue: row.discount_value,
+      buyQuantity: row.buy_quantity,
+      getQuantity: row.get_quantity,
+      getProductId: row.get_product_id,
+      minPurchase: row.min_purchase || 0,
+      maxDiscount: row.max_discount,
+      minItems: row.min_items || 0,
+      appliesTo: row.applies_to,
+      applicableIds: row.applicable_ids ? JSON.parse(row.applicable_ids) : [],
+      excludedIds: row.excluded_ids ? JSON.parse(row.excluded_ids) : [],
+      firstOrderOnly: Boolean(row.first_order_only),
+      specificCustomers: row.specific_customers ? JSON.parse(row.specific_customers) : [],
+      customerGroups: row.customer_groups ? JSON.parse(row.customer_groups) : [],
+      maxUses: row.max_uses,
+      maxUsesPerCustomer: row.max_uses_per_customer,
+      currentUses: row.current_uses || 0,
+      startsAt: row.starts_at,
+      expiresAt: row.expires_at,
+      stackable: Boolean(row.stackable),
+      priority: row.priority,
+      isActive: Boolean(row.is_active),
+      createdBy: row.created_by,
+      createdByName: row.created_by_name,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // ===== Employee Discounts Operations =====
+
+  async getAllEmployeeDiscounts(): Promise<any[]> {
+    try {
+      const rows = this.db.prepare(
+        `SELECT ed.*, u.name as user_name, u.email as user_email, a.name as approved_by_name
+         FROM employee_discounts ed
+         LEFT JOIN users u ON ed.user_id = u.id
+         LEFT JOIN users a ON ed.approved_by = a.id
+         ORDER BY ed.created_at DESC`
+      ).all() as any[];
+      return rows.map(r => this.mapEmployeeDiscountRow(r));
+    } catch (error) {
+      logger.error('Error getting employee discounts:', error);
+      throw new DatabaseError('Failed to get employee discounts');
+    }
+  }
+
+  async getEmployeeDiscountByUser(userId: string): Promise<any | null> {
+    try {
+      const row = this.db.prepare(
+        `SELECT ed.*, u.name as user_name, u.email as user_email
+         FROM employee_discounts ed
+         LEFT JOIN users u ON ed.user_id = u.id
+         WHERE ed.user_id = ?`
+      ).get(userId) as any;
+      return row ? this.mapEmployeeDiscountRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting employee discount:', error);
+      throw new DatabaseError('Failed to get employee discount');
+    }
+  }
+
+  async upsertEmployeeDiscount(data: any): Promise<any> {
+    try {
+      // Check if exists
+      const existing = await this.getEmployeeDiscountByUser(data.userId);
+      
+      if (existing) {
+        // Update
+        this.db.prepare(
+          `UPDATE employee_discounts SET
+            discount_percentage = ?, max_discount_amount = ?,
+            requires_manager_approval_above = ?, allowed_categories = ?,
+            is_active = ?, approved_by = ?, approved_at = ?, updated_at = ?
+          WHERE user_id = ?`
+        ).run(
+          data.discountPercentage || 10, data.maxDiscountAmount,
+          data.requiresManagerApprovalAbove, JSON.stringify(data.allowedCategories || []),
+          data.isActive !== false ? 1 : 0, data.approvedBy, data.approvedAt, Date.now(),
+          data.userId
+        );
+      } else {
+        // Insert
+        const id = crypto.randomUUID();
+        this.db.prepare(
+          `INSERT INTO employee_discounts (
+            id, user_id, discount_percentage, max_discount_amount,
+            requires_manager_approval_above, allowed_categories,
+            is_active, approved_by, approved_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          id, data.userId, data.discountPercentage || 10, data.maxDiscountAmount,
+          data.requiresManagerApprovalAbove, JSON.stringify(data.allowedCategories || []),
+          data.isActive !== false ? 1 : 0, data.approvedBy, data.approvedAt, Date.now(), Date.now()
+        );
+      }
+      
+      return this.getEmployeeDiscountByUser(data.userId);
+    } catch (error) {
+      logger.error('Error upserting employee discount:', error);
+      throw new DatabaseError('Failed to create/update employee discount');
+    }
+  }
+
+  async deleteEmployeeDiscount(userId: string): Promise<boolean> {
+    try {
+      const result = this.db.prepare('DELETE FROM employee_discounts WHERE user_id = ?').run(userId);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting employee discount:', error);
+      throw new DatabaseError('Failed to delete employee discount');
+    }
+  }
+
+  private mapEmployeeDiscountRow(row: any): any {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      userName: row.user_name,
+      userEmail: row.user_email,
+      discountPercentage: row.discount_percentage,
+      maxDiscountAmount: row.max_discount_amount,
+      currentMonthUsage: row.current_month_usage || 0,
+      lastResetAt: row.last_reset_at,
+      requiresManagerApprovalAbove: row.requires_manager_approval_above,
+      allowedCategories: row.allowed_categories ? JSON.parse(row.allowed_categories) : [],
+      isActive: Boolean(row.is_active),
+      approvedBy: row.approved_by,
+      approvedByName: row.approved_by_name,
+      approvedAt: row.approved_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  // ===== Discount Usage Operations =====
+
+  async getDiscountUsage(filters?: { orderId?: string; customerId?: string; startDate?: number; endDate?: number }): Promise<any[]> {
+    try {
+      let query = `
+        SELECT du.*, u.name as applied_by_name, a.name as approved_by_name
+        FROM discount_usage du
+        LEFT JOIN users u ON du.applied_by = u.id
+        LEFT JOIN users a ON du.approved_by = a.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (filters?.orderId) {
+        query += ' AND du.order_id = ?';
+        params.push(filters.orderId);
+      }
+      if (filters?.customerId) {
+        query += ' AND du.customer_id = ?';
+        params.push(filters.customerId);
+      }
+      if (filters?.startDate) {
+        query += ' AND du.applied_at >= ?';
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        query += ' AND du.applied_at <= ?';
+        params.push(filters.endDate);
+      }
+
+      query += ' ORDER BY du.applied_at DESC LIMIT 500';
+
+      const rows = this.db.prepare(query).all(...params) as any[];
+      return rows.map(r => ({
+        id: r.id,
+        orderId: r.order_id,
+        quoteId: r.quote_id,
+        discountSource: r.discount_source,
+        discountTypeId: r.discount_type_id,
+        promoCodeId: r.promo_code_id,
+        employeeDiscountId: r.employee_discount_id,
+        discountCode: r.discount_code,
+        discountName: r.discount_name,
+        discountType: r.discount_type,
+        discountValue: r.discount_value,
+        discountAmount: r.discount_amount,
+        manualReason: r.manual_reason,
+        customerId: r.customer_id,
+        customerEmail: r.customer_email,
+        requiresApproval: Boolean(r.requires_approval),
+        approvedBy: r.approved_by,
+        approvedByName: r.approved_by_name,
+        approvalStatus: r.approval_status,
+        appliedBy: r.applied_by,
+        appliedByName: r.applied_by_name,
+        appliedAt: r.applied_at,
+      }));
+    } catch (error) {
+      logger.error('Error getting discount usage:', error);
+      throw new DatabaseError('Failed to get discount usage');
+    }
+  }
+
+  async logDiscountUsage(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO discount_usage (
+          id, order_id, quote_id, discount_source,
+          discount_type_id, promo_code_id, employee_discount_id,
+          discount_code, discount_name, discount_type, discount_value, discount_amount,
+          manual_reason, customer_id, customer_email,
+          requires_approval, approved_by, approval_status, applied_by, applied_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, data.orderId, data.quoteId, data.discountSource,
+        data.discountTypeId, data.promoCodeId, data.employeeDiscountId,
+        data.discountCode, data.discountName, data.discountType, data.discountValue, data.discountAmount,
+        data.manualReason, data.customerId, data.customerEmail,
+        data.requiresApproval ? 1 : 0, data.approvedBy, data.approvalStatus || 'none', data.appliedBy, Date.now()
+      );
+      return this.db.prepare('SELECT * FROM discount_usage WHERE id = ?').get(id);
+    } catch (error) {
+      logger.error('Error logging discount usage:', error);
+      throw new DatabaseError('Failed to log discount usage');
+    }
+  }
+
+  async getDiscountStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
+    try {
+      let whereClause = '';
+      const params: any[] = [];
+
+      if (filters?.startDate) {
+        whereClause += ' AND applied_at >= ?';
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        whereClause += ' AND applied_at <= ?';
+        params.push(filters.endDate);
+      }
+
+      const result = this.db.prepare(
+        `SELECT
+          COUNT(*) as total_discounts,
+          COALESCE(SUM(discount_amount), 0) as total_discount_amount,
+          SUM(CASE WHEN discount_source = 'promo_code' THEN 1 ELSE 0 END) as promo_code_count,
+          COALESCE(SUM(CASE WHEN discount_source = 'promo_code' THEN discount_amount ELSE 0 END), 0) as promo_code_amount,
+          SUM(CASE WHEN discount_source = 'quick_discount' THEN 1 ELSE 0 END) as quick_discount_count,
+          COALESCE(SUM(CASE WHEN discount_source = 'quick_discount' THEN discount_amount ELSE 0 END), 0) as quick_discount_amount,
+          SUM(CASE WHEN discount_source = 'employee' THEN 1 ELSE 0 END) as employee_discount_count,
+          COALESCE(SUM(CASE WHEN discount_source = 'employee' THEN discount_amount ELSE 0 END), 0) as employee_discount_amount,
+          SUM(CASE WHEN discount_source = 'manual' THEN 1 ELSE 0 END) as manual_discount_count,
+          COALESCE(SUM(CASE WHEN discount_source = 'manual' THEN discount_amount ELSE 0 END), 0) as manual_discount_amount
+        FROM discount_usage
+        WHERE 1=1 ${whereClause}`
+      ).get(...params) as any;
+
+      return {
+        totalDiscounts: result.total_discounts || 0,
+        totalDiscountAmount: result.total_discount_amount || 0,
+        promoCodeCount: result.promo_code_count || 0,
+        promoCodeAmount: result.promo_code_amount || 0,
+        quickDiscountCount: result.quick_discount_count || 0,
+        quickDiscountAmount: result.quick_discount_amount || 0,
+        employeeDiscountCount: result.employee_discount_count || 0,
+        employeeDiscountAmount: result.employee_discount_amount || 0,
+        manualDiscountCount: result.manual_discount_count || 0,
+        manualDiscountAmount: result.manual_discount_amount || 0,
+      };
+    } catch (error) {
+      logger.error('Error getting discount stats:', error);
+      throw new DatabaseError('Failed to get discount stats');
+    }
+  }
 }

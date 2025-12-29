@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
-import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users } from 'lucide-react';
+import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -42,6 +42,8 @@ export default function Dashboard() {
     pendingQuotes: 0,
     totalServices: 0,
     totalCustomers: 0,
+    totalDiscountAmount: 0,
+    totalDiscountCount: 0,
   });
   const [salesData, setSalesData] = useState<{ date: string; sales: number; orders: number; services: number }[]>([]);
   const [recentQuotes, setRecentQuotes] = useState<Quote[]>([]);
@@ -52,13 +54,16 @@ export default function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse] = await Promise.all([
+      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse] = await Promise.all([
         apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
         apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
         apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
         apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
         apiClient.get<{ success: boolean; data: any[] }>('/api/customers'),
+        apiClient.get<{ success: boolean; data: any }>('/api/discounts/stats'),
       ]);
+
+      const discountStats = discountStatsResponse.success ? discountStatsResponse.data : { totalDiscounts: 0, totalDiscountAmount: 0 };
 
       const orders = ordersResponse.success ? ordersResponse.data : [];
       const products = productsResponse.success ? productsResponse.data : [];
@@ -94,6 +99,8 @@ export default function Dashboard() {
         pendingQuotes,
         totalServices: services.filter(s => s.isActive).length,
         totalCustomers: customers.length,
+        totalDiscountAmount: discountStats.totalDiscountAmount || 0,
+        totalDiscountCount: discountStats.totalDiscounts || 0,
       });
 
       // Recent quotes
@@ -190,6 +197,13 @@ export default function Dashboard() {
       icon: Users,
       color: 'text-pink-600',
     },
+    {
+      title: 'Discounts Given',
+      value: `$${stats.totalDiscountAmount.toFixed(2)}`,
+      subValue: `${stats.totalDiscountCount} uses`,
+      icon: Tag,
+      color: 'text-rose-600',
+    },
   ];
 
   return (
@@ -214,6 +228,9 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{card.value}</div>
+                    {card.subValue && (
+                      <p className="text-xs text-muted-foreground mt-1">{card.subValue}</p>
+                    )}
                   </CardContent>
                 </Card>
               );

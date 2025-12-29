@@ -16,7 +16,8 @@ import {
   Code,
   Key,
   RotateCcw,
-  Receipt
+  Receipt,
+  Tag
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
@@ -31,6 +32,7 @@ const navItems = [
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
   { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
+  { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { path: '/admin/exports', label: 'Exports', icon: Download },
   { path: '/admin/customers', label: 'Customers', icon: Users },

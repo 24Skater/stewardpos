@@ -26,6 +26,7 @@ import AdminQuotes from "./pages/admin/AdminQuotes";
 import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import AdminReturns from "./pages/admin/AdminReturns";
 import AdminReceipts from "./pages/admin/AdminReceipts";
+import AdminDiscounts from "./pages/admin/AdminDiscounts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="/admin/api-keys" element={<AdminApiKeys />} />
               <Route path="/admin/returns" element={<AdminReturns />} />
               <Route path="/admin/receipts" element={<AdminReceipts />} />
+              <Route path="/admin/discounts" element={<AdminDiscounts />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </SetupGuard>
