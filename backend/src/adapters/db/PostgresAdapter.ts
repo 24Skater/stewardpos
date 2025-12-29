@@ -811,9 +811,21 @@ export class PostgresAdapter {
       }
 
       // Delete all related records first (order matters due to foreign keys)
-      await client.query('DELETE FROM returns WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)', [id]);
+      // 1. Delete return-related records first
+      await client.query('DELETE FROM refund_transactions WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
+      await client.query('DELETE FROM store_credits WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
+      await client.query('DELETE FROM receipt_emails WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
+      // return_items cascades automatically
+      await client.query('DELETE FROM returns WHERE customer_id = $1', [id]);
+      
+      // 2. Delete order-related records
+      await client.query('DELETE FROM receipt_emails WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)', [id]);
+      
+      // 3. Delete quotes and orders
       await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
       await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
+      
+      // 4. Finally delete the customer
       await client.query('DELETE FROM customers WHERE id = $1', [id]);
 
       await client.query('COMMIT');

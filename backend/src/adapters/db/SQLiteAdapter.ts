@@ -811,10 +811,22 @@ export class SQLiteAdapter {
         return false;
       }
 
-      // Delete all related records first
-      this.db.prepare('DELETE FROM returns WHERE order_id IN (SELECT id FROM orders WHERE customer_id = ?)').run(id);
+      // Delete all related records first (order matters due to foreign keys)
+      // 1. Delete return-related records
+      this.db.prepare('DELETE FROM refund_transactions WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
+      this.db.prepare('DELETE FROM store_credits WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
+      this.db.prepare('DELETE FROM receipt_emails WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
+      // return_items cascades automatically
+      this.db.prepare('DELETE FROM returns WHERE customer_id = ?').run(id);
+      
+      // 2. Delete order-related records
+      this.db.prepare('DELETE FROM receipt_emails WHERE order_id IN (SELECT id FROM orders WHERE customer_id = ?)').run(id);
+      
+      // 3. Delete quotes and orders
       this.db.prepare('DELETE FROM quotes WHERE customer_id = ?').run(id);
       this.db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id);
+      
+      // 4. Finally delete the customer
       this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
 
       return true;
