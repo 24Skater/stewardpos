@@ -72,6 +72,11 @@ export default function POS() {
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [lastOrderId, setLastOrderId] = useState("");
   const [lastOrderTotal, setLastOrderTotal] = useState(0);
+  const [lastOrderSubtotal, setLastOrderSubtotal] = useState(0);
+  const [lastOrderTax, setLastOrderTax] = useState(0);
+  const [lastOrderDiscount, setLastOrderDiscount] = useState(0);
+  const [lastOrderPaymentMethod, setLastOrderPaymentMethod] = useState("");
+  const [lastOrderItems, setLastOrderItems] = useState<CartItem[]>([]);
   const [categories, setCategories] = useState<string[]>(["All"]);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -511,6 +516,11 @@ export default function POS() {
 
         setLastOrderId(response.data.id);
         setLastOrderTotal(total);
+        setLastOrderSubtotal(subtotal);
+        setLastOrderTax(taxTotal);
+        setLastOrderDiscount(discountTotal);
+        setLastOrderPaymentMethod('Cash');
+        setLastOrderItems([...cart]);
         setCart([]);
         setCustomerEmail("");
         setAppliedDiscounts([]);
@@ -725,6 +735,18 @@ export default function POS() {
         onClose={() => setReceiptDialogOpen(false)}
         orderId={lastOrderId}
         total={lastOrderTotal}
+        subtotal={lastOrderSubtotal}
+        tax={lastOrderTax}
+        discount={lastOrderDiscount}
+        paymentMethod={lastOrderPaymentMethod}
+        items={lastOrderItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+        }))}
       />
 
       {/* Checkout Dialog */}

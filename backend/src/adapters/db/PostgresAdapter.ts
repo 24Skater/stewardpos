@@ -1152,6 +1152,17 @@ export class PostgresAdapter {
         iconUrl: s.icon_url,
         brandColor: s.brand_color,
         config: s.config || {},
+        // Receipt branding
+        storeAddress: s.store_address,
+        storeCity: s.store_city,
+        storeState: s.store_state,
+        storeZip: s.store_zip,
+        storeNumber: s.store_number,
+        receiptLogoUrl: s.receipt_logo_url,
+        receiptHeaderText: s.receipt_header_text,
+        receiptFooterText: s.receipt_footer_text,
+        receiptShowLogo: s.receipt_show_logo !== false,
+        receiptShowBarcode: s.receipt_show_barcode !== false,
       };
     } catch (error) {
       logger.error('Error getting settings:', error);
@@ -1161,9 +1172,15 @@ export class PostgresAdapter {
 
   async updateSettings(settings: any): Promise<any> {
     try {
+      // Build dynamic update query for all fields
       const result = await this.pool.query(
-        `INSERT INTO settings (id, tax_rate_default, store_name, store_email, store_phone, timezone, logo_url, icon_url, brand_color, config)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO settings (
+          id, tax_rate_default, store_name, store_email, store_phone, timezone, 
+          logo_url, icon_url, brand_color, config,
+          store_address, store_city, store_state, store_zip, store_number,
+          receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode
+        )
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (id) DO UPDATE SET
            tax_rate_default = COALESCE($1, settings.tax_rate_default),
            store_name = COALESCE($2, settings.store_name),
@@ -1173,7 +1190,17 @@ export class PostgresAdapter {
            logo_url = COALESCE($6, settings.logo_url),
            icon_url = COALESCE($7, settings.icon_url),
            brand_color = COALESCE($8, settings.brand_color),
-           config = COALESCE($9, settings.config)
+           config = COALESCE($9, settings.config),
+           store_address = COALESCE($10, settings.store_address),
+           store_city = COALESCE($11, settings.store_city),
+           store_state = COALESCE($12, settings.store_state),
+           store_zip = COALESCE($13, settings.store_zip),
+           store_number = COALESCE($14, settings.store_number),
+           receipt_logo_url = COALESCE($15, settings.receipt_logo_url),
+           receipt_header_text = COALESCE($16, settings.receipt_header_text),
+           receipt_footer_text = COALESCE($17, settings.receipt_footer_text),
+           receipt_show_logo = COALESCE($18, settings.receipt_show_logo),
+           receipt_show_barcode = COALESCE($19, settings.receipt_show_barcode)
          RETURNING *`,
         [
           settings.taxRateDefault,
@@ -1185,6 +1212,16 @@ export class PostgresAdapter {
           settings.iconUrl,
           settings.brandColor,
           settings.config ? JSON.stringify(settings.config) : null,
+          settings.storeAddress,
+          settings.storeCity,
+          settings.storeState,
+          settings.storeZip,
+          settings.storeNumber,
+          settings.receiptLogoUrl,
+          settings.receiptHeaderText,
+          settings.receiptFooterText,
+          settings.receiptShowLogo,
+          settings.receiptShowBarcode,
         ]
       );
 
@@ -1199,6 +1236,16 @@ export class PostgresAdapter {
         iconUrl: s.icon_url,
         brandColor: s.brand_color,
         config: s.config || {},
+        storeAddress: s.store_address,
+        storeCity: s.store_city,
+        storeState: s.store_state,
+        storeZip: s.store_zip,
+        storeNumber: s.store_number,
+        receiptLogoUrl: s.receipt_logo_url,
+        receiptHeaderText: s.receipt_header_text,
+        receiptFooterText: s.receipt_footer_text,
+        receiptShowLogo: s.receipt_show_logo !== false,
+        receiptShowBarcode: s.receipt_show_barcode !== false,
       };
     } catch (error) {
       logger.error('Error updating settings:', error);

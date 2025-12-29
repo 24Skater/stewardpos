@@ -1193,6 +1193,17 @@ export class SQLiteAdapter {
         iconUrl: s.icon_url,
         brandColor: s.brand_color,
         config: s.config ? JSON.parse(s.config) : {},
+        // Receipt branding
+        storeAddress: s.store_address,
+        storeCity: s.store_city,
+        storeState: s.store_state,
+        storeZip: s.store_zip,
+        storeNumber: s.store_number,
+        receiptLogoUrl: s.receipt_logo_url,
+        receiptHeaderText: s.receipt_header_text,
+        receiptFooterText: s.receipt_footer_text,
+        receiptShowLogo: s.receipt_show_logo !== 0,
+        receiptShowBarcode: s.receipt_show_barcode !== 0,
       };
     } catch (error) {
       logger.error('Error getting settings:', error);
@@ -1219,7 +1230,17 @@ export class SQLiteAdapter {
                logo_url = COALESCE(?, logo_url),
                icon_url = COALESCE(?, icon_url),
                brand_color = COALESCE(?, brand_color),
-               config = COALESCE(?, config)
+               config = COALESCE(?, config),
+               store_address = COALESCE(?, store_address),
+               store_city = COALESCE(?, store_city),
+               store_state = COALESCE(?, store_state),
+               store_zip = COALESCE(?, store_zip),
+               store_number = COALESCE(?, store_number),
+               receipt_logo_url = COALESCE(?, receipt_logo_url),
+               receipt_header_text = COALESCE(?, receipt_header_text),
+               receipt_footer_text = COALESCE(?, receipt_footer_text),
+               receipt_show_logo = COALESCE(?, receipt_show_logo),
+               receipt_show_barcode = COALESCE(?, receipt_show_barcode)
              WHERE id = 1`
           )
           .run(
@@ -1231,13 +1252,27 @@ export class SQLiteAdapter {
             settings.logoUrl,
             settings.iconUrl,
             settings.brandColor,
-            settings.config ? JSON.stringify(settings.config) : null
+            settings.config ? JSON.stringify(settings.config) : null,
+            settings.storeAddress,
+            settings.storeCity,
+            settings.storeState,
+            settings.storeZip,
+            settings.storeNumber,
+            settings.receiptLogoUrl,
+            settings.receiptHeaderText,
+            settings.receiptFooterText,
+            settings.receiptShowLogo !== undefined ? (settings.receiptShowLogo ? 1 : 0) : null,
+            settings.receiptShowBarcode !== undefined ? (settings.receiptShowBarcode ? 1 : 0) : null
           );
       } else {
         this.db
           .prepare(
-            `INSERT INTO settings (id, tax_rate_default, store_name, store_email, store_phone, timezone, logo_url, icon_url, brand_color, config)
-             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO settings (
+              id, tax_rate_default, store_name, store_email, store_phone, timezone, 
+              logo_url, icon_url, brand_color, config,
+              store_address, store_city, store_state, store_zip, store_number,
+              receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             settings.taxRateDefault || 0,
@@ -1248,7 +1283,17 @@ export class SQLiteAdapter {
             settings.logoUrl,
             settings.iconUrl,
             settings.brandColor,
-            settings.config ? JSON.stringify(settings.config) : null
+            settings.config ? JSON.stringify(settings.config) : null,
+            settings.storeAddress,
+            settings.storeCity,
+            settings.storeState,
+            settings.storeZip,
+            settings.storeNumber,
+            settings.receiptLogoUrl,
+            settings.receiptHeaderText,
+            settings.receiptFooterText,
+            settings.receiptShowLogo !== false ? 1 : 0,
+            settings.receiptShowBarcode !== false ? 1 : 0
           );
       }
 
@@ -1266,6 +1311,16 @@ export class SQLiteAdapter {
         iconUrl: s.icon_url,
         brandColor: s.brand_color,
         config: s.config ? JSON.parse(s.config) : {},
+        storeAddress: s.store_address,
+        storeCity: s.store_city,
+        storeState: s.store_state,
+        storeZip: s.store_zip,
+        storeNumber: s.store_number,
+        receiptLogoUrl: s.receipt_logo_url,
+        receiptHeaderText: s.receipt_header_text,
+        receiptFooterText: s.receipt_footer_text,
+        receiptShowLogo: s.receipt_show_logo !== 0,
+        receiptShowBarcode: s.receipt_show_barcode !== 0,
       };
     } catch (error) {
       logger.error('Error updating settings:', error);

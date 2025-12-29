@@ -73,9 +73,25 @@ interface ReturnableItem {
   canReturn: boolean;
 }
 
+interface ReceiptSettings {
+  storeName?: string;
+  storePhone?: string;
+  storeAddress?: string;
+  storeCity?: string;
+  storeState?: string;
+  storeZip?: string;
+  storeNumber?: string;
+  receiptLogoUrl?: string;
+  receiptHeaderText?: string;
+  receiptFooterText?: string;
+  receiptShowLogo?: boolean;
+  receiptShowBarcode?: boolean;
+}
+
 export default function AdminReceipts() {
   const [receipts, setReceipts] = useState<ReceiptOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<ReceiptSettings>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState<Date | undefined>(subMonths(new Date(), 1));
   const [endDate, setEndDate] = useState<Date | undefined>(new Date());
@@ -98,6 +114,7 @@ export default function AdminReceipts() {
 
   useEffect(() => {
     loadReceipts();
+    loadSettings();
   }, [page, startDate, endDate, paymentFilter]);
 
   const loadReceipts = async () => {
@@ -134,6 +151,17 @@ export default function AdminReceipts() {
       toast({ title: 'Error loading receipts', description: error.message, variant: 'destructive' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const res = await apiClient.get<{ success: boolean; data: ReceiptSettings }>('/api/admin/settings');
+      if (res.success) {
+        setSettings(res.data);
+      }
+    } catch (error) {
+      console.error('Failed to load receipt settings:', error);
     }
   };
 
@@ -541,10 +569,32 @@ export default function AdminReceipts() {
                     <TabsContent value="receipt" className="space-y-4">
                       {/* Receipt Preview */}
                       <Card>
-                        <CardContent className="pt-6 font-mono text-sm">
+                        <CardContent className="pt-6 font-mono text-sm bg-white text-black rounded max-w-[320px] mx-auto">
+                          {/* Header with branding */}
                           <div className="text-center mb-4">
-                            <p className="font-bold text-lg">SALES RECEIPT</p>
-                            <p className="text-muted-foreground">{format(new Date(selectedReceipt.createdAt), 'PPP p')}</p>
+                            {settings.receiptShowLogo !== false && settings.receiptLogoUrl && (
+                              <img 
+                                src={settings.receiptLogoUrl} 
+                                alt="Store Logo" 
+                                className="max-h-16 mx-auto mb-2"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            )}
+                            <p className="font-bold text-lg">{settings.storeName || 'SALES RECEIPT'}</p>
+                            {settings.storeNumber && <p className="text-xs">Store #{settings.storeNumber}</p>}
+                            {settings.storeAddress && <p className="text-xs">{settings.storeAddress}</p>}
+                            {(settings.storeCity || settings.storeState || settings.storeZip) && (
+                              <p className="text-xs">
+                                {settings.storeCity}{settings.storeCity && settings.storeState ? ', ' : ''}{settings.storeState} {settings.storeZip}
+                              </p>
+                            )}
+                            {settings.storePhone && <p className="text-xs">Tel: {settings.storePhone}</p>}
+                            {settings.receiptHeaderText && (
+                              <p className="text-xs italic mt-2">{settings.receiptHeaderText}</p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-2">{format(new Date(selectedReceipt.createdAt), 'PPP p')}</p>
                           </div>
 
                           <div className="border-t border-dashed pt-4 mb-4">
@@ -553,7 +603,7 @@ export default function AdminReceipts() {
                                 <div>
                                   <p>{item.nameSnapshot}</p>
                                   {(item.size || item.color) && (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-gray-500">
                                       {item.size} {item.color}
                                     </p>
                                   )}
@@ -585,13 +635,28 @@ export default function AdminReceipts() {
                             </div>
                           </div>
 
-                          <div className="border-t border-dashed pt-4 mt-4 text-center">
+                          <div className="border-t border-dashed pt-4 mt-4 text-center text-xs">
+                            <p>Order #{selectedReceipt.id.slice(0, 8).toUpperCase()}</p>
                             <p>Payment: {selectedReceipt.paymentMethod.toUpperCase()}</p>
                             {selectedReceipt.customerEmail && (
-                              <p className="text-xs mt-2">{selectedReceipt.customerEmail}</p>
+                              <p className="mt-2">{selectedReceipt.customerEmail}</p>
                             )}
-                            <p className="text-xs text-muted-foreground mt-4">Thank you for your purchase!</p>
                           </div>
+
+                          {/* Barcode */}
+                          {settings.receiptShowBarcode !== false && (
+                            <div className="text-center mt-4">
+                              <div className="bg-black h-10 w-48 mx-auto"></div>
+                              <p className="text-xs mt-1">*{selectedReceipt.id.slice(0, 8).toUpperCase()}*</p>
+                            </div>
+                          )}
+
+                          {/* Footer message */}
+                          {settings.receiptFooterText && (
+                            <div className="border-t border-dashed pt-4 mt-4 text-center text-xs whitespace-pre-line text-gray-600">
+                              {settings.receiptFooterText}
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
 

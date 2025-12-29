@@ -271,13 +271,24 @@ router.delete('/roles/:id', async (req: AuthRequest, res: Response, next: NextFu
 const updateSettingsSchema = z.object({
   taxRateDefault: z.number().min(0).max(1).optional(),
   storeName: z.string().optional(),
-  storeEmail: z.string().email().optional(),
-  storePhone: z.string().optional(),
+  storeEmail: z.string().email().optional().nullable(),
+  storePhone: z.string().optional().nullable(),
   timezone: z.string().optional(),
   logoUrl: z.string().url().optional().nullable(),
   iconUrl: z.string().url().optional().nullable(),
   brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable(),
   config: z.record(z.any()).optional(),
+  // Receipt branding
+  storeAddress: z.string().optional().nullable(),
+  storeCity: z.string().optional().nullable(),
+  storeState: z.string().optional().nullable(),
+  storeZip: z.string().optional().nullable(),
+  storeNumber: z.string().optional().nullable(),
+  receiptLogoUrl: z.string().url().optional().nullable(),
+  receiptHeaderText: z.string().optional().nullable(),
+  receiptFooterText: z.string().optional().nullable(),
+  receiptShowLogo: z.boolean().optional(),
+  receiptShowBarcode: z.boolean().optional(),
 });
 
 /**

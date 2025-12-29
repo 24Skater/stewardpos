@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api-client';
-import { Search, Receipt, RotateCcw, DollarSign, CreditCard, Wallet, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Search, Receipt, RotateCcw, DollarSign, CreditCard, Wallet, AlertTriangle, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Order {
@@ -74,6 +75,11 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
   const [order, setOrder] = useState<Order | null>(null);
   const [existingReturns, setExistingReturns] = useState<any[]>([]);
   
+  // Recent orders state
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const [searchTab, setSearchTab] = useState<'recent' | 'search'>('recent');
+  
   // Return state
   const [returnItems, setReturnItems] = useState<ReturnItem[]>([]);
   const [reasonCode, setReasonCode] = useState('not_needed');
@@ -85,10 +91,30 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
   const [step, setStep] = useState<'search' | 'select' | 'confirm'>('search');
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      loadRecentOrders();
+    } else {
       resetDialog();
     }
   }, [open]);
+
+  const loadRecentOrders = async () => {
+    setLoadingRecent(true);
+    try {
+      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      if (response.success) {
+        // Sort by date and take last 10
+        const sorted = response.data
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 10);
+        setRecentOrders(sorted);
+      }
+    } catch (error) {
+      console.error('Failed to load recent orders:', error);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
 
   const resetDialog = () => {
     setSearchQuery('');
@@ -99,6 +125,54 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     setRefundMethod('cash');
     setStep('search');
     setExistingReturns([]);
+  };
+
+  const selectOrder = async (orderId: string) => {
+    setSearching(true);
+    try {
+      // Get full order details with items
+      const orderResponse = await apiClient.get<{ success: boolean; data: Order }>(`/api/orders/${orderId}`);
+      if (orderResponse.success) {
+        setOrder(orderResponse.data);
+        
+        // Check for existing returns on this order
+        const returnsResponse = await apiClient.get<{ success: boolean; data: any[] }>(`/api/returns/order/${orderId}`);
+        if (returnsResponse.success) {
+          setExistingReturns(returnsResponse.data);
+        }
+        
+        // Calculate already returned quantities
+        const alreadyReturnedMap: Record<string, number> = {};
+        if (returnsResponse.success) {
+          for (const ret of returnsResponse.data) {
+            if (ret.items) {
+              for (const item of ret.items) {
+                const key = item.productId + (item.variantId || '');
+                alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + item.returnQuantity;
+              }
+            }
+          }
+        }
+        
+        // Set up return items
+        setReturnItems(orderResponse.data.items.map(item => {
+          const key = item.productId + (item.variantId || '');
+          const alreadyReturned = alreadyReturnedMap[key] || 0;
+          return {
+            ...item,
+            returnQuantity: Math.max(0, item.quantity - alreadyReturned),
+            alreadyReturned,
+            selected: false,
+          };
+        }));
+        
+        setStep('select');
+      }
+    } catch (error: any) {
+      toast({ title: 'Failed to load order', description: error.message, variant: 'destructive' });
+    } finally {
+      setSearching(false);
+    }
   };
 
   const searchOrder = async () => {
@@ -117,44 +191,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         );
         
         if (foundOrder) {
-          // Get full order details with items
-          const orderResponse = await apiClient.get<{ success: boolean; data: Order }>(`/api/orders/${foundOrder.id}`);
-          if (orderResponse.success) {
-            setOrder(orderResponse.data);
-            
-            // Check for existing returns on this order
-            const returnsResponse = await apiClient.get<{ success: boolean; data: any[] }>(`/api/returns/order/${foundOrder.id}`);
-            if (returnsResponse.success) {
-              setExistingReturns(returnsResponse.data);
-            }
-            
-            // Calculate already returned quantities
-            const alreadyReturnedMap: Record<string, number> = {};
-            if (returnsResponse.success) {
-              for (const ret of returnsResponse.data) {
-                if (ret.items) {
-                  for (const item of ret.items) {
-                    const key = item.productId + (item.variantId || '');
-                    alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + item.returnQuantity;
-                  }
-                }
-              }
-            }
-            
-            // Set up return items
-            setReturnItems(orderResponse.data.items.map(item => {
-              const key = item.productId + (item.variantId || '');
-              const alreadyReturned = alreadyReturnedMap[key] || 0;
-              return {
-                ...item,
-                returnQuantity: Math.max(0, item.quantity - alreadyReturned),
-                alreadyReturned,
-                selected: false,
-              };
-            }));
-            
-            setStep('select');
-          }
+          await selectOrder(foundOrder.id);
         } else {
           toast({ title: 'Order not found', description: 'Please check the receipt number', variant: 'destructive' });
         }
@@ -297,25 +334,80 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         {/* Step 1: Search */}
         {step === 'search' && (
           <div className="space-y-4 py-4">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Enter receipt # or order ID (e.g., FCE60F0E)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === 'Enter' && searchOrder()}
-                  className="pl-9"
-                  autoFocus
-                />
-              </div>
-              <Button onClick={searchOrder} disabled={searching || !searchQuery.trim()}>
-                {searching ? 'Searching...' : 'Find Order'}
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Enter the first 8 characters of the order ID shown on the receipt
-            </p>
+            <Tabs value={searchTab} onValueChange={(v) => setSearchTab(v as 'recent' | 'search')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="recent">
+                  <Clock className="w-4 h-4 mr-2" />
+                  Recent Receipts
+                </TabsTrigger>
+                <TabsTrigger value="search">
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Recent Orders Tab */}
+              <TabsContent value="recent" className="mt-4">
+                {loadingRecent ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading recent orders...</div>
+                ) : recentOrders.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No recent orders found</div>
+                ) : (
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                    {recentOrders.map((recentOrder) => (
+                      <button
+                        key={recentOrder.id}
+                        onClick={() => selectOrder(recentOrder.id)}
+                        disabled={searching}
+                        className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-secondary rounded-lg">
+                            <Receipt className="w-4 h-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="font-mono font-medium">#{recentOrder.id.slice(0, 8).toUpperCase()}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {format(recentOrder.createdAt, 'MMM d, h:mm a')}
+                              {recentOrder.customerEmail && ` • ${recentOrder.customerEmail}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="font-bold">${recentOrder.total.toFixed(2)}</p>
+                            <Badge variant="outline" className="text-xs">{recentOrder.paymentMethod}</Badge>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Manual Search Tab */}
+              <TabsContent value="search" className="mt-4 space-y-4">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Enter receipt # or order ID (e.g., FCE60F0E)"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === 'Enter' && searchOrder()}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Button onClick={searchOrder} disabled={searching || !searchQuery.trim()}>
+                    {searching ? 'Searching...' : 'Find'}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Enter the first 8 characters of the order ID shown on the receipt
+                </p>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
 
