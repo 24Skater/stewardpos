@@ -106,6 +106,10 @@ export function hasAnyRole(session: AuthSession | null, roleNames: string[]): bo
   return session.user.roles.some(role => roleNames.includes(role.systemRole || role.name));
 }
 
+export function hasRole(session: AuthSession | null, roleName: string): boolean {
+  return hasAnyRole(session, [roleName]);
+}
+
 function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions {
   const merged: RolePermissions = {
     inventory: { read: false, write: false, delete: false },

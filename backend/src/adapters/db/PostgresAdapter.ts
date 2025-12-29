@@ -706,6 +706,128 @@ export class PostgresAdapter {
     }
   }
 
+  async archiveCustomer(id: string, archivedBy: string, reason?: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get customer data
+      const customerResult = await client.query(
+        'SELECT * FROM customers WHERE id = $1',
+        [id]
+      );
+
+      if (customerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      const customer = customerResult.rows[0];
+
+      // Insert into archived_customers
+      await client.query(
+        `INSERT INTO archived_customers 
+         (id, name, email, phone, organization, address, city, state, zip, country, notes, 
+          created_at, updated_at, archived_by, archive_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [
+          customer.id, customer.name, customer.email, customer.phone, customer.org,
+          customer.address, customer.city, customer.state, customer.zip, customer.country,
+          customer.notes, customer.created_at, customer.updated_at, archivedBy, reason
+        ]
+      );
+
+      // Archive associated quotes
+      const quotesResult = await client.query(
+        'SELECT * FROM quotes WHERE customer_id = $1',
+        [id]
+      );
+
+      for (const quote of quotesResult.rows) {
+        await client.query(
+          `INSERT INTO archived_quotes 
+           (id, customer_id, quote_number, status, items, subtotal, tax, total, notes, 
+            valid_until, created_at, updated_at, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            quote.id, quote.customer_id, quote.quote_number, quote.status, quote.items,
+            quote.subtotal, quote.tax, quote.total, quote.notes, quote.valid_until,
+            quote.created_at, quote.updated_at, quote.created_by
+          ]
+        );
+      }
+
+      // Archive associated orders
+      const ordersResult = await client.query(
+        'SELECT * FROM orders WHERE customer_id = $1',
+        [id]
+      );
+
+      for (const order of ordersResult.rows) {
+        await client.query(
+          `INSERT INTO archived_orders 
+           (id, customer_id, order_number, status, items, subtotal, tax, discount, total, 
+            payment_method, notes, created_at, updated_at, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [
+            order.id, order.customer_id, order.order_number, order.status, order.items,
+            order.subtotal, order.tax, order.discount, order.total, order.payment_method,
+            order.notes, order.created_at, order.updated_at, order.created_by
+          ]
+        );
+      }
+
+      // Delete from original tables (order matters due to foreign keys)
+      await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
+      await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
+      await client.query('DELETE FROM customers WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+      logger.info(`Customer ${id} archived successfully`);
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error archiving customer:', error);
+      throw new DatabaseError('Failed to archive customer');
+    } finally {
+      client.release();
+    }
+  }
+
+  async permanentDeleteCustomer(id: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Check if customer exists
+      const customerResult = await client.query(
+        'SELECT id FROM customers WHERE id = $1',
+        [id]
+      );
+
+      if (customerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      // Delete all related records first (order matters due to foreign keys)
+      await client.query('DELETE FROM returns WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)', [id]);
+      await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
+      await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
+      await client.query('DELETE FROM customers WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+      logger.info(`Customer ${id} permanently deleted`);
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error permanently deleting customer:', error);
+      throw new DatabaseError('Failed to permanently delete customer');
+    } finally {
+      client.release();
+    }
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
     logger.info('PostgreSQL connection pool closed');

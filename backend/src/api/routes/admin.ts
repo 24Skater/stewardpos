@@ -268,11 +268,11 @@ router.delete('/roles/:id', async (req: AuthRequest, res: Response, next: NextFu
 
 // ===== Settings Management =====
 
-// Helper to validate URLs more flexibly (allows empty strings and common URL formats)
+// Helper to validate URLs more flexibly (allows empty strings, full URLs, and relative paths)
 const flexibleUrl = z.string()
   .refine(
-    (val) => !val || val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:'),
-    { message: 'Must be a valid URL starting with http://, https://, or data:' }
+    (val) => !val || val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:') || val.startsWith('/'),
+    { message: 'Must be a valid URL starting with http://, https://, data:, or /' }
   )
   .optional()
   .nullable();

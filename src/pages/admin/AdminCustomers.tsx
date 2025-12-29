@@ -5,14 +5,15 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api-client';
-import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, DollarSign, RotateCcw } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, RotateCcw, Archive, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
+import { getCurrentSession, hasPermission, hasRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
 interface Customer {
@@ -96,6 +97,13 @@ export default function AdminCustomers() {
   const [customerQuotes, setCustomerQuotes] = useState<Quote[]>([]);
   const [customerReturns, setCustomerReturns] = useState<Return[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  
+  // Delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [deleteAction, setDeleteAction] = useState<'archive' | 'permanent' | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
   
   const { toast } = useToast();
 
@@ -246,13 +254,51 @@ export default function AdminCustomers() {
     }
   };
 
-  const handleDeleteCustomer = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this customer?')) return;
+  const handleDeleteCustomer = (customer: Customer) => {
+    setCustomerToDelete(customer);
+    setDeleteDialogOpen(true);
+    setArchiveReason('');
+    setDeleteAction(null);
+  };
+
+  const handleArchiveCustomer = async () => {
+    if (!customerToDelete) return;
+    setDeletingCustomer(true);
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/customers/${id}`);
+      const response = await apiClient.post<{ success: boolean; message: string }>(
+        `/api/customers/${customerToDelete.id}/archive`,
+        { reason: archiveReason || undefined }
+      );
       if (response.success) {
-        toast({ title: 'Customer deleted successfully' });
+        toast({ title: 'Customer archived', description: response.message });
+        setDeleteDialogOpen(false);
+        setCustomerToDelete(null);
+        await loadCustomers();
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to archive customer',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingCustomer(false);
+    }
+  };
+
+  const handlePermanentDeleteCustomer = async () => {
+    if (!customerToDelete) return;
+    setDeletingCustomer(true);
+
+    try {
+      const response = await apiClient.delete<{ success: boolean; message: string }>(
+        `/api/customers/${customerToDelete.id}/permanent`
+      );
+      if (response.success) {
+        toast({ title: 'Customer deleted', description: response.message });
+        setDeleteDialogOpen(false);
+        setCustomerToDelete(null);
         await loadCustomers();
       }
     } catch (error: any) {
@@ -261,8 +307,47 @@ export default function AdminCustomers() {
         description: error.message || 'Failed to delete customer',
         variant: 'destructive',
       });
+    } finally {
+      setDeletingCustomer(false);
     }
   };
+
+  const handleSimpleDelete = async () => {
+    if (!customerToDelete) return;
+    setDeletingCustomer(true);
+
+    try {
+      const response = await apiClient.delete<{ success: boolean; hasRelatedRecords?: boolean }>(
+        `/api/customers/${customerToDelete.id}`
+      );
+      if (response.success) {
+        toast({ title: 'Customer deleted successfully' });
+        setDeleteDialogOpen(false);
+        setCustomerToDelete(null);
+        await loadCustomers();
+      }
+    } catch (error: any) {
+      // If customer has related records, show archive/permanent delete options
+      if (error.message?.includes('associated') || error.message?.includes('Archive')) {
+        setDeleteAction('archive'); // Show the options
+        toast({
+          title: 'Cannot delete directly',
+          description: 'This customer has related records. Choose Archive or Permanent Delete.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to delete customer',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setDeletingCustomer(false);
+    }
+  };
+
+  const isAdmin = hasRole(session, 'admin');
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -373,7 +458,7 @@ export default function AdminCustomers() {
                             </Button>
                           )}
                           {canDelete && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer)} title="Delete/Archive">
                               <Trash2 className="w-4 h-4 text-destructive" />
                             </Button>
                           )}
@@ -777,6 +862,139 @@ export default function AdminCustomers() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Delete/Archive Confirmation Dialog */}
+          <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
+            if (!open) {
+              setDeleteDialogOpen(false);
+              setCustomerToDelete(null);
+              setDeleteAction(null);
+              setArchiveReason('');
+            }
+          }}>
+            <AlertDialogContent className="max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                  Delete Customer: {customerToDelete?.name}
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div className="space-y-4">
+                    {!deleteAction ? (
+                      <>
+                        <p>Choose how you want to remove this customer:</p>
+                        
+                        <div className="space-y-3">
+                          {/* Archive Option */}
+                          <div 
+                            className="p-4 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                            onClick={() => setDeleteAction('archive')}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Archive className="w-5 h-5 text-blue-500" />
+                              <div>
+                                <p className="font-medium">Archive Customer</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Move customer and their records to archive. Data can be restored from the database if needed.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Permanent Delete Option - Admin Only */}
+                          {isAdmin && (
+                            <div 
+                              className="p-4 border border-red-200 rounded-lg cursor-pointer hover:bg-red-50 transition-colors"
+                              onClick={() => setDeleteAction('permanent')}
+                            >
+                              <div className="flex items-center gap-3">
+                                <Trash2 className="w-5 h-5 text-red-500" />
+                                <div>
+                                  <p className="font-medium text-red-700">Permanent Delete</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Permanently delete customer and ALL related records (orders, quotes, returns). 
+                                    <span className="text-red-600 font-medium"> This cannot be undone!</span>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : deleteAction === 'archive' ? (
+                      <>
+                        <p>
+                          You are about to archive <strong>{customerToDelete?.name}</strong>. 
+                          This will move the customer and all their quotes/orders to an archive table.
+                        </p>
+                        <div className="space-y-2">
+                          <Label htmlFor="archiveReason">Reason for archiving (optional)</Label>
+                          <Textarea
+                            id="archiveReason"
+                            value={archiveReason}
+                            onChange={(e) => setArchiveReason(e.target.value)}
+                            placeholder="e.g., Customer requested deletion, Inactive for 2+ years..."
+                            rows={2}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-red-700 font-medium flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            Warning: This action is irreversible!
+                          </p>
+                        </div>
+                        <p>
+                          You are about to <strong className="text-red-600">permanently delete</strong> {customerToDelete?.name} 
+                          and ALL associated records including:
+                        </p>
+                        <ul className="list-disc pl-6 space-y-1 text-sm">
+                          <li>All quotes created for this customer</li>
+                          <li>All orders placed by this customer</li>
+                          <li>All returns associated with this customer</li>
+                        </ul>
+                        <p className="font-medium">This data cannot be recovered!</p>
+                      </>
+                    )}
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingCustomer}>Cancel</AlertDialogCancel>
+                {!deleteAction ? (
+                  <Button variant="outline" onClick={handleSimpleDelete} disabled={deletingCustomer}>
+                    {deletingCustomer ? 'Processing...' : 'Try Simple Delete'}
+                  </Button>
+                ) : deleteAction === 'archive' ? (
+                  <>
+                    <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
+                      Back
+                    </Button>
+                    <Button onClick={handleArchiveCustomer} disabled={deletingCustomer}>
+                      <Archive className="w-4 h-4 mr-2" />
+                      {deletingCustomer ? 'Archiving...' : 'Archive Customer'}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
+                      Back
+                    </Button>
+                    <AlertDialogAction
+                      onClick={handlePermanentDeleteCustomer}
+                      disabled={deletingCustomer}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {deletingCustomer ? 'Deleting...' : 'Permanently Delete'}
+                    </AlertDialogAction>
+                  </>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </AdminLayout>
     </ProtectedRoute>

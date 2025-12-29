@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -14,9 +14,10 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api-client';
 import { 
   Palette, Store, MapPin, Receipt, Image, FileText, Save, Eye, 
-  Building2, Phone, Mail, Globe, Paintbrush
+  Building2, Phone, Mail, Globe, Paintbrush, Upload, X, Loader2
 } from 'lucide-react';
 import { updateBrandColor } from '@/components/BrandThemeProvider';
+import { authStore } from '@/lib/auth-store';
 
 interface BrandingSettings {
   // Store Identity
@@ -44,6 +45,16 @@ export default function AdminBranding() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [previewMode, setPreviewMode] = useState(false);
+  
+  // File upload refs
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const iconInputRef = useRef<HTMLInputElement>(null);
+  const receiptLogoInputRef = useRef<HTMLInputElement>(null);
+  
+  // Upload loading states
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [uploadingReceiptLogo, setUploadingReceiptLogo] = useState(false);
 
   const [form, setForm] = useState<BrandingSettings>({
     storeName: '',
@@ -63,6 +74,73 @@ export default function AdminBranding() {
     receiptShowLogo: true,
     receiptShowBarcode: true,
   });
+  
+  // File upload handler
+  const handleFileUpload = async (
+    file: File, 
+    type: 'logo' | 'icon' | 'receipt-logo',
+    setLoading: (loading: boolean) => void,
+    fieldName: keyof BrandingSettings
+  ) => {
+    if (!file) return;
+    
+    // Validate file type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg+xml', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ 
+        title: 'Invalid file type', 
+        description: 'Please upload a PNG, JPG, GIF, SVG, WebP, or ICO file.',
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ 
+        title: 'File too large', 
+        description: 'Please upload a file smaller than 5MB.',
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const token = authStore.getToken();
+      const apiType = type === 'receipt-logo' ? 'logo' : type;
+      
+      const response = await fetch(`/api/upload/${apiType}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setForm(prev => ({ ...prev, [fieldName]: result.data.url }));
+        toast({ title: 'File uploaded successfully' });
+      } else {
+        throw new Error(result.message || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({ 
+        title: 'Upload failed', 
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive' 
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['settings'],
@@ -294,17 +372,76 @@ export default function AdminBranding() {
                     <CardDescription>Main logo used across the application</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Upload Section */}
                     <div className="space-y-2">
-                      <Label>Logo URL</Label>
+                      <Label>Upload Logo</Label>
+                      <div className="flex gap-2">
+                        <input
+                          ref={logoInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file, 'logo', setUploadingLogo, 'logoUrl');
+                            e.target.value = '';
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={uploadingLogo}
+                        >
+                          {uploadingLogo ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Choose File
+                            </>
+                          )}
+                        </Button>
+                        {form.logoUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setForm({ ...form, logoUrl: '' })}
+                            title="Remove logo"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Recommended: 200x80 pixels, PNG or SVG format. Max 5MB.
+                      </p>
+                    </div>
+                    
+                    {/* Or enter URL */}
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">Or enter URL</span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
                       <Input
                         value={form.logoUrl}
                         onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
                         placeholder="https://example.com/logo.png"
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Recommended: 200x80 pixels, PNG or SVG format
-                      </p>
                     </div>
+                    
+                    {/* Preview */}
                     {form.logoUrl && (
                       <div className="p-4 bg-muted rounded-lg">
                         <p className="text-xs text-muted-foreground mb-2">Preview:</p>
@@ -331,17 +468,76 @@ export default function AdminBranding() {
                     <CardDescription>Small icon for browser tabs and bookmarks</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Upload Section */}
                     <div className="space-y-2">
-                      <Label>Icon URL</Label>
+                      <Label>Upload Favicon</Label>
+                      <div className="flex gap-2">
+                        <input
+                          ref={iconInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/gif,image/x-icon,image/vnd.microsoft.icon,image/webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file, 'icon', setUploadingIcon, 'iconUrl');
+                            e.target.value = '';
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => iconInputRef.current?.click()}
+                          disabled={uploadingIcon}
+                        >
+                          {uploadingIcon ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Choose File
+                            </>
+                          )}
+                        </Button>
+                        {form.iconUrl && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setForm({ ...form, iconUrl: '' })}
+                            title="Remove icon"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Recommended: 32x32 or 64x64 pixels, ICO or PNG format. Max 5MB.
+                      </p>
+                    </div>
+                    
+                    {/* Or enter URL */}
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">Or enter URL</span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
                       <Input
                         value={form.iconUrl}
                         onChange={(e) => setForm({ ...form, iconUrl: e.target.value })}
                         placeholder="https://example.com/favicon.ico"
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Recommended: 32x32 or 64x64 pixels, ICO or PNG format
-                      </p>
                     </div>
+                    
+                    {/* Preview */}
                     {form.iconUrl && (
                       <div className="p-4 bg-muted rounded-lg">
                         <p className="text-xs text-muted-foreground mb-2">Preview:</p>
@@ -433,17 +629,95 @@ export default function AdminBranding() {
                       <CardDescription>Logo displayed at the top of receipts (can differ from main logo)</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {/* Upload Section */}
                       <div className="space-y-2">
-                        <Label>Receipt Logo URL</Label>
+                        <Label>Upload Receipt Logo</Label>
+                        <div className="flex gap-2">
+                          <input
+                            ref={receiptLogoInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg,image/gif,image/svg+xml,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileUpload(file, 'receipt-logo', setUploadingReceiptLogo, 'receiptLogoUrl');
+                              e.target.value = '';
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => receiptLogoInputRef.current?.click()}
+                            disabled={uploadingReceiptLogo}
+                          >
+                            {uploadingReceiptLogo ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Uploading...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-4 h-4 mr-2" />
+                                Choose File
+                              </>
+                            )}
+                          </Button>
+                          {form.receiptLogoUrl && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setForm({ ...form, receiptLogoUrl: '' })}
+                              title="Remove receipt logo"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          For thermal printers: black & white, 200px wide recommended. Max 5MB.
+                        </p>
+                      </div>
+                      
+                      {/* Or enter URL */}
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-card px-2 text-muted-foreground">Or enter URL</span>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
                         <Input
                           value={form.receiptLogoUrl}
                           onChange={(e) => setForm({ ...form, receiptLogoUrl: e.target.value })}
                           placeholder="https://example.com/receipt-logo.png"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Leave empty to use main logo. For thermal printers: black & white, 200px wide
+                          Leave empty to use main logo
                         </p>
                       </div>
+                      
+                      {/* Receipt Logo Preview */}
+                      {form.receiptLogoUrl && (
+                        <div className="p-4 bg-muted rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-2">Preview:</p>
+                          <img 
+                            src={form.receiptLogoUrl} 
+                            alt="Receipt Logo Preview" 
+                            className="max-h-12 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+                      
+                      <Separator />
+                      
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                           <Label>Show Logo on Receipts</Label>

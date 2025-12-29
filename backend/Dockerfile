@@ -55,6 +55,9 @@ RUN chmod +x docker-entrypoint.sh
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
 
+# Create uploads directories
+RUN mkdir -p /app/uploads/logos /app/uploads/icons && chown -R nodejs:nodejs /app/uploads
+
 # Switch to non-root user
 USER nodejs
 

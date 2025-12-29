@@ -91,6 +91,7 @@ services:
       MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-localhost:9000}
     volumes:
       - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     depends_on:
@@ -134,6 +135,8 @@ volumes:
   minio_data:
     driver: local
   backend_logs:
+    driver: local
+  backend_uploads:
     driver: local
 
 networks:

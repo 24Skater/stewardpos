@@ -721,6 +721,117 @@ export class SQLiteAdapter {
     }
   }
 
+  async archiveCustomer(id: string, archivedBy: string, reason?: string): Promise<boolean> {
+    const transaction = this.db.transaction(() => {
+      // Get customer data
+      const customer = this.db
+        .prepare('SELECT * FROM customers WHERE id = ?')
+        .get(id) as any;
+
+      if (!customer) {
+        return false;
+      }
+
+      // Insert into archived_customers
+      this.db.prepare(
+        `INSERT INTO archived_customers 
+         (id, name, email, phone, organization, address, city, state, zip, country, notes, 
+          created_at, updated_at, archived_by, archive_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        customer.id, customer.name, customer.email, customer.phone, customer.org,
+        customer.address, customer.city, customer.state, customer.zip, customer.country,
+        customer.notes, customer.created_at, customer.updated_at, archivedBy, reason || null
+      );
+
+      // Archive associated quotes
+      const quotes = this.db
+        .prepare('SELECT * FROM quotes WHERE customer_id = ?')
+        .all(id) as any[];
+
+      for (const quote of quotes) {
+        this.db.prepare(
+          `INSERT INTO archived_quotes 
+           (id, customer_id, quote_number, status, items, subtotal, tax, total, notes, 
+            valid_until, created_at, updated_at, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          quote.id, quote.customer_id, quote.quote_number, quote.status, quote.items,
+          quote.subtotal, quote.tax, quote.total, quote.notes, quote.valid_until,
+          quote.created_at, quote.updated_at, quote.created_by
+        );
+      }
+
+      // Archive associated orders
+      const orders = this.db
+        .prepare('SELECT * FROM orders WHERE customer_id = ?')
+        .all(id) as any[];
+
+      for (const order of orders) {
+        this.db.prepare(
+          `INSERT INTO archived_orders 
+           (id, customer_id, order_number, status, items, subtotal, tax, discount, total, 
+            payment_method, notes, created_at, updated_at, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          order.id, order.customer_id, order.order_number, order.status, order.items,
+          order.subtotal, order.tax, order.discount, order.total, order.payment_method,
+          order.notes, order.created_at, order.updated_at, order.created_by
+        );
+      }
+
+      // Delete from original tables
+      this.db.prepare('DELETE FROM quotes WHERE customer_id = ?').run(id);
+      this.db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id);
+      this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+
+      return true;
+    });
+
+    try {
+      const result = transaction();
+      if (result) {
+        logger.info(`Customer ${id} archived successfully`);
+      }
+      return result;
+    } catch (error) {
+      logger.error('Error archiving customer:', error);
+      throw new DatabaseError('Failed to archive customer');
+    }
+  }
+
+  async permanentDeleteCustomer(id: string): Promise<boolean> {
+    const transaction = this.db.transaction(() => {
+      // Check if customer exists
+      const customer = this.db
+        .prepare('SELECT id FROM customers WHERE id = ?')
+        .get(id);
+
+      if (!customer) {
+        return false;
+      }
+
+      // Delete all related records first
+      this.db.prepare('DELETE FROM returns WHERE order_id IN (SELECT id FROM orders WHERE customer_id = ?)').run(id);
+      this.db.prepare('DELETE FROM quotes WHERE customer_id = ?').run(id);
+      this.db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id);
+      this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+
+      return true;
+    });
+
+    try {
+      const result = transaction();
+      if (result) {
+        logger.info(`Customer ${id} permanently deleted`);
+      }
+      return result;
+    } catch (error) {
+      logger.error('Error permanently deleting customer:', error);
+      throw new DatabaseError('Failed to permanently delete customer');
+    }
+  }
+
   close(): void {
     this.db.close();
     logger.info('SQLite connection closed');
