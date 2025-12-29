@@ -14,7 +14,9 @@ import {
   LogOut,
   ArrowLeft,
   Code,
-  Key
+  Key,
+  RotateCcw,
+  Receipt
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
@@ -27,6 +29,8 @@ interface AdminLayoutProps {
 const navItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
+  { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
+  { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { path: '/admin/exports', label: 'Exports', icon: Download },
   { path: '/admin/customers', label: 'Customers', icon: Users },

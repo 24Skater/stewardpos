@@ -657,6 +657,185 @@ export function exportServicesToPDF(data: any[], settings?: Settings) {
   doc.save(`services-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
+// ========== RETURNS & REFUNDS REPORTS ==========
+
+interface Return {
+  id: string;
+  returnNumber: string;
+  returnType: string;
+  status: string;
+  customerEmail?: string;
+  customerName?: string;
+  total: number;
+  refundMethod?: string;
+  refundStatus: string;
+  reasonCode?: string;
+  createdAt: number;
+  items?: ReturnItem[];
+}
+
+interface ReturnItem {
+  id: string;
+  productId: string;
+  nameSnapshot: string;
+  returnQuantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  condition: string;
+  restocked: boolean;
+}
+
+export function generateReturnsReport(returns: Return[]) {
+  return returns.map(r => ({
+    'Return #': r.returnNumber,
+    'Date': new Date(r.createdAt).toLocaleDateString(),
+    'Type': r.returnType,
+    'Customer': r.customerName || r.customerEmail || 'Guest',
+    'Status': r.status,
+    'Refund Method': r.refundMethod || 'Pending',
+    'Refund Status': r.refundStatus,
+    'Reason': r.reasonCode || 'Not specified',
+    'Total': r.total,
+    'Items': r.items?.length || 0,
+  }));
+}
+
+export function generateReturnsByCustomerReport(returns: Return[], customers: Customer[]) {
+  const customerData = new Map<string, { name: string; email: string; returns: number; totalRefunded: number }>();
+  
+  returns.forEach(ret => {
+    const key = ret.customerEmail || 'Walk-in';
+    const customer = customers.find(c => c.email === ret.customerEmail);
+    const existing = customerData.get(key) || { 
+      name: customer?.name || ret.customerName || 'Walk-in', 
+      email: key, 
+      returns: 0, 
+      totalRefunded: 0 
+    };
+    existing.returns += 1;
+    if (ret.status === 'completed') {
+      existing.totalRefunded += ret.total;
+    }
+    customerData.set(key, existing);
+  });
+  
+  return Array.from(customerData.values())
+    .map(data => ({
+      'Customer Name': data.name,
+      'Email': data.email,
+      'Total Returns': data.returns,
+      'Total Refunded': data.totalRefunded,
+    }))
+    .sort((a, b) => b['Total Returns'] - a['Total Returns']);
+}
+
+export function generateReturnsMonthlyReport(returns: Return[]) {
+  const monthlyData = new Map<string, { count: number; refunded: number; pending: number }>();
+  
+  returns.forEach(ret => {
+    const month = getMonthName(new Date(ret.createdAt));
+    const existing = monthlyData.get(month) || { count: 0, refunded: 0, pending: 0 };
+    existing.count += 1;
+    if (ret.status === 'completed') {
+      existing.refunded += ret.total;
+    } else if (ret.status === 'pending') {
+      existing.pending += ret.total;
+    }
+    monthlyData.set(month, existing);
+  });
+  
+  return Array.from(monthlyData.entries())
+    .map(([month, data]) => ({
+      'Month': month,
+      'Total Returns': data.count,
+      'Refunded Amount': data.refunded,
+      'Pending Amount': data.pending,
+    }))
+    .sort((a, b) => new Date(b.Month).getTime() - new Date(a.Month).getTime());
+}
+
+export function generateReturnsByReasonReport(returns: Return[]) {
+  const reasonLabels: Record<string, string> = {
+    defective: 'Defective Product',
+    wrong_item: 'Wrong Item',
+    not_needed: 'No Longer Needed',
+    damaged: 'Damaged',
+    other: 'Other',
+  };
+  
+  const reasonData = new Map<string, { count: number; total: number }>();
+  
+  returns.forEach(ret => {
+    const reason = ret.reasonCode || 'other';
+    const existing = reasonData.get(reason) || { count: 0, total: 0 };
+    existing.count += 1;
+    existing.total += ret.total;
+    reasonData.set(reason, existing);
+  });
+  
+  return Array.from(reasonData.entries())
+    .map(([reason, data]) => ({
+      'Reason': reasonLabels[reason] || reason,
+      'Return Count': data.count,
+      'Total Value': data.total,
+      'Percentage': returns.length > 0 ? ((data.count / returns.length) * 100) : 0,
+    }))
+    .sort((a, b) => b['Return Count'] - a['Return Count']);
+}
+
+export function exportReturnsToPDF(returns: Return[], settings?: Settings) {
+  const doc = new jsPDF();
+  const startY = createPDFHeader(doc, 'Returns & Refunds Report', 
+    `Generated: ${new Date().toLocaleDateString()}`, settings);
+  
+  const totalReturns = returns.length;
+  const completedReturns = returns.filter(r => r.status === 'completed').length;
+  const totalRefunded = returns.filter(r => r.status === 'completed').reduce((sum, r) => sum + r.total, 0);
+  
+  doc.setFontSize(12);
+  doc.text(`Total Returns: ${totalReturns}`, 14, startY);
+  doc.text(`Completed: ${completedReturns}`, 14, startY + 8);
+  doc.text(`Total Refunded: $${totalRefunded.toFixed(2)}`, 14, startY + 16);
+  
+  autoTable(doc, {
+    startY: startY + 26,
+    head: [['Return #', 'Date', 'Customer', 'Status', 'Refund Status', 'Total']],
+    body: returns.slice(0, 50).map(ret => [
+      ret.returnNumber,
+      new Date(ret.createdAt).toLocaleDateString(),
+      (ret.customerName || ret.customerEmail || 'Guest').substring(0, 20),
+      ret.status,
+      ret.refundStatus,
+      `$${ret.total.toFixed(2)}`,
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [239, 68, 68] },
+  });
+  
+  doc.save(`returns-report-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+export function exportReturnsByReasonToPDF(data: any[], settings?: Settings) {
+  const doc = new jsPDF();
+  const startY = createPDFHeader(doc, 'Returns by Reason Report', 
+    `Generated: ${new Date().toLocaleDateString()}`, settings);
+  
+  autoTable(doc, {
+    startY,
+    head: [['Reason', 'Count', 'Total Value', 'Percentage']],
+    body: data.map(row => [
+      row.Reason,
+      row['Return Count'],
+      `$${row['Total Value'].toFixed(2)}`,
+      `${row.Percentage.toFixed(1)}%`,
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [239, 68, 68] },
+  });
+  
+  doc.save(`returns-by-reason-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
 // ========== LEGACY EXPORTS ==========
 
 export function exportInventoryToCSV(products: Product[]) {

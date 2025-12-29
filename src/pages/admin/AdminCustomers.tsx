@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api-client';
-import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, DollarSign } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, DollarSign, RotateCcw } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
@@ -51,6 +51,18 @@ interface Quote {
   items: { description: string; quantity: number; lineTotal: number }[];
 }
 
+interface Return {
+  id: string;
+  returnNumber: string;
+  returnType: string;
+  status: string;
+  refundStatus: string;
+  refundMethod?: string;
+  total: number;
+  reasonCode?: string;
+  createdAt: number;
+}
+
 const emptyCustomer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'> = {
   name: '',
   org: '',
@@ -82,6 +94,7 @@ export default function AdminCustomers() {
   // Order history
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [customerQuotes, setCustomerQuotes] = useState<Quote[]>([]);
+  const [customerReturns, setCustomerReturns] = useState<Return[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   
   const { toast } = useToast();
@@ -126,11 +139,18 @@ export default function AdminCustomers() {
       setLoadingHistory(true);
       setCustomerOrders([]);
       setCustomerQuotes([]);
+      setCustomerReturns([]);
 
       // Load quotes
       const quotesResponse = await apiClient.get<{ success: boolean; data: Quote[] }>(`/api/quotes/customer/${customer.id}`);
       if (quotesResponse.success) {
         setCustomerQuotes(quotesResponse.data);
+      }
+
+      // Load returns by customer ID
+      const returnsResponse = await apiClient.get<{ success: boolean; data: Return[] }>(`/api/returns/customer/${customer.id}`);
+      if (returnsResponse.success) {
+        setCustomerReturns(returnsResponse.data);
       }
 
       // Load orders by email if customer has an email
@@ -262,12 +282,17 @@ export default function AdminCustomers() {
     const totalServiceRevenue = customerQuotes
       .filter(q => q.status === 'completed')
       .reduce((sum, q) => sum + q.total, 0);
+    const totalReturns = customerReturns
+      .filter(r => r.status === 'completed')
+      .reduce((sum, r) => sum + r.total, 0);
     return {
       totalPOSSales,
       totalServiceRevenue,
+      totalReturns,
       totalOrders: customerOrders.length,
       totalQuotes: customerQuotes.length,
-      totalValue: totalPOSSales + totalServiceRevenue,
+      returnCount: customerReturns.length,
+      totalValue: totalPOSSales + totalServiceRevenue - totalReturns,
     };
   };
 
@@ -520,15 +545,19 @@ export default function AdminCustomers() {
                       <Briefcase className="w-4 h-4" />
                       Service Quotes ({customerQuotes.length})
                     </TabsTrigger>
+                    <TabsTrigger value="returns" className="flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4" />
+                      Returns ({customerReturns.length})
+                    </TabsTrigger>
                   </TabsList>
 
                   {/* Customer Info Tab */}
                   <TabsContent value="info" className="space-y-4">
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-4 gap-4">
                       <Card>
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">Total POS Sales</CardTitle>
+                          <CardTitle className="text-sm text-muted-foreground">POS Sales</CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="text-2xl font-bold">${getCustomerStats().totalPOSSales.toFixed(2)}</div>
@@ -544,7 +573,16 @@ export default function AdminCustomers() {
                       </Card>
                       <Card>
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">Lifetime Value</CardTitle>
+                          <CardTitle className="text-sm text-muted-foreground">Returns</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-2xl font-bold text-red-600">-${getCustomerStats().totalReturns.toFixed(2)}</div>
+                          <p className="text-xs text-muted-foreground">{getCustomerStats().returnCount} return(s)</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm text-muted-foreground">Net Value</CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="text-2xl font-bold text-green-600">${getCustomerStats().totalValue.toFixed(2)}</div>
@@ -666,6 +704,56 @@ export default function AdminCustomers() {
                               </TableCell>
                               <TableCell>{getStatusBadge(quote.status)}</TableCell>
                               <TableCell className="font-bold">${quote.total.toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </TabsContent>
+
+                  {/* Returns Tab */}
+                  <TabsContent value="returns">
+                    {loadingHistory ? (
+                      <p className="text-center py-8 text-muted-foreground">Loading return history...</p>
+                    ) : customerReturns.length === 0 ? (
+                      <p className="text-center py-8 text-muted-foreground">No returns found for this customer</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Return #</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Refund</TableHead>
+                            <TableHead>Total</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {customerReturns.map((ret) => (
+                            <TableRow key={ret.id}>
+                              <TableCell>{new Date(ret.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell className="font-mono text-sm">{ret.returnNumber}</TableCell>
+                              <TableCell className="capitalize">{ret.returnType}</TableCell>
+                              <TableCell>
+                                <Badge className={
+                                  ret.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  ret.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                  ret.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                  'bg-blue-100 text-blue-800'
+                                }>
+                                  {ret.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={
+                                  ret.refundStatus === 'processed' ? 'border-green-500 text-green-700' :
+                                  'border-yellow-500 text-yellow-700'
+                                }>
+                                  {ret.refundStatus}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-bold text-red-600">-${ret.total.toFixed(2)}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>

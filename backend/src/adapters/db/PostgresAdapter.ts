@@ -1875,4 +1875,606 @@ export class PostgresAdapter {
       throw new DatabaseError('Failed to delete API key');
     }
   }
+
+  // ===== Returns & Refunds Operations =====
+
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<any[]> {
+    try {
+      let query = `
+        SELECT r.*, 
+               o.total as original_order_total,
+               u.name as created_by_name,
+               c.name as customer_name
+        FROM returns r
+        LEFT JOIN orders o ON r.original_order_id = o.id
+        LEFT JOIN users u ON r.created_by = u.id
+        LEFT JOIN customers c ON r.customer_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (filters?.status) {
+        query += ` AND r.status = $${paramIndex++}`;
+        params.push(filters.status);
+      }
+      if (filters?.startDate) {
+        query += ` AND r.created_at >= to_timestamp($${paramIndex++} / 1000.0)`;
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        query += ` AND r.created_at <= to_timestamp($${paramIndex++} / 1000.0)`;
+        params.push(filters.endDate);
+      }
+      if (filters?.customerId) {
+        query += ` AND r.customer_id = $${paramIndex++}`;
+        params.push(filters.customerId);
+      }
+
+      query += ' ORDER BY r.created_at DESC';
+
+      const result = await this.pool.query(query, params);
+
+      return result.rows.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting all returns:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async getReturnById(id: string): Promise<any | null> {
+    try {
+      const returnResult = await this.pool.query(
+        `SELECT r.*, 
+                o.total as original_order_total,
+                u.name as created_by_name,
+                a.name as approved_by_name,
+                c.name as customer_name
+         FROM returns r
+         LEFT JOIN orders o ON r.original_order_id = o.id
+         LEFT JOIN users u ON r.created_by = u.id
+         LEFT JOIN users a ON r.approved_by = a.id
+         LEFT JOIN customers c ON r.customer_id = c.id
+         WHERE r.id = $1`,
+        [id]
+      );
+
+      if (returnResult.rows.length === 0) {
+        return null;
+      }
+
+      // Get return items
+      const itemsResult = await this.pool.query(
+        'SELECT * FROM return_items WHERE return_id = $1',
+        [id]
+      );
+
+      const returnData = this.mapReturnRow(returnResult.rows[0]);
+      returnData.items = itemsResult.rows.map(item => ({
+        id: item.id,
+        returnId: item.return_id,
+        originalOrderItemId: item.original_order_item_id,
+        productId: item.product_id,
+        variantId: item.variant_id,
+        nameSnapshot: item.name_snapshot,
+        size: item.size,
+        color: item.color,
+        originalQuantity: item.original_quantity,
+        returnQuantity: item.return_quantity,
+        unitPrice: parseFloat(item.unit_price),
+        lineTotal: parseFloat(item.line_total),
+        condition: item.condition,
+        restocked: item.restocked,
+        restockedAt: item.restocked_at ? new Date(item.restocked_at).getTime() : null,
+        notes: item.notes,
+      }));
+
+      return returnData;
+    } catch (error) {
+      logger.error('Error getting return by ID:', error);
+      throw new DatabaseError('Failed to get return');
+    }
+  }
+
+  async getReturnsByOrder(orderId: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT r.*, u.name as created_by_name
+         FROM returns r
+         LEFT JOIN users u ON r.created_by = u.id
+         WHERE r.original_order_id = $1
+         ORDER BY r.created_at DESC`,
+        [orderId]
+      );
+
+      const returns = result.rows.map(r => this.mapReturnRow(r));
+
+      // Get items for each return
+      for (const ret of returns) {
+        const itemsResult = await this.pool.query(
+          'SELECT * FROM return_items WHERE return_id = $1',
+          [ret.id]
+        );
+        ret.items = itemsResult.rows.map(item => ({
+          id: item.id,
+          productId: item.product_id,
+          nameSnapshot: item.name_snapshot,
+          returnQuantity: item.return_quantity,
+          lineTotal: parseFloat(item.line_total),
+        }));
+      }
+
+      return returns;
+    } catch (error) {
+      logger.error('Error getting returns by order:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async getReturnsByCustomer(customerId: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT r.*, o.total as original_order_total
+         FROM returns r
+         LEFT JOIN orders o ON r.original_order_id = o.id
+         WHERE r.customer_id = $1
+         ORDER BY r.created_at DESC`,
+        [customerId]
+      );
+
+      return result.rows.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting returns by customer:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async createReturn(returnData: any): Promise<any> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Insert return
+      const returnResult = await client.query(
+        `INSERT INTO returns (
+          original_order_id, return_number, return_type, status,
+          customer_email, customer_phone, customer_id,
+          subtotal, tax_total, total,
+          refund_method, refund_status,
+          reason_code, reason_details, internal_notes,
+          restock_items, restocking_fee, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        RETURNING *`,
+        [
+          returnData.originalOrderId,
+          returnData.returnNumber,
+          returnData.returnType || 'return',
+          returnData.status || 'pending',
+          returnData.customerEmail,
+          returnData.customerPhone,
+          returnData.customerId,
+          returnData.subtotal,
+          returnData.taxTotal || 0,
+          returnData.total,
+          returnData.refundMethod,
+          returnData.refundStatus || 'pending',
+          returnData.reasonCode,
+          returnData.reasonDetails,
+          returnData.internalNotes,
+          returnData.restockItems !== false,
+          returnData.restockingFee || 0,
+          returnData.createdBy,
+        ]
+      );
+
+      const returnId = returnResult.rows[0].id;
+
+      // Insert return items
+      for (const item of returnData.items || []) {
+        await client.query(
+          `INSERT INTO return_items (
+            return_id, original_order_item_id, product_id, variant_id,
+            name_snapshot, size, color,
+            original_quantity, return_quantity,
+            unit_price, line_total, condition, notes
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            returnId,
+            item.originalOrderItemId,
+            item.productId,
+            item.variantId,
+            item.nameSnapshot,
+            item.size,
+            item.color,
+            item.originalQuantity,
+            item.returnQuantity,
+            item.unitPrice,
+            item.lineTotal,
+            item.condition || 'good',
+            item.notes,
+          ]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return this.getReturnById(returnId);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error creating return:', error);
+      throw new DatabaseError('Failed to create return');
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateReturnStatus(id: string, data: { status: string; internalNotes?: string; approvedBy?: string }): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE returns SET
+          status = $1,
+          internal_notes = COALESCE($2, internal_notes),
+          approved_by = COALESCE($3, approved_by),
+          updated_at = NOW()
+        WHERE id = $4
+        RETURNING *`,
+        [data.status, data.internalNotes, data.approvedBy, id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.getReturnById(id);
+    } catch (error) {
+      logger.error('Error updating return status:', error);
+      throw new DatabaseError('Failed to update return status');
+    }
+  }
+
+  async updateReturnRefundStatus(id: string, data: any): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE returns SET
+          refund_status = COALESCE($1, refund_status),
+          refund_method = COALESCE($2, refund_method),
+          refund_processed_at = COALESCE(to_timestamp($3 / 1000.0), refund_processed_at),
+          store_credit_code = COALESCE($4, store_credit_code),
+          store_credit_amount = COALESCE($5, store_credit_amount),
+          updated_at = NOW()
+        WHERE id = $6
+        RETURNING *`,
+        [
+          data.refundStatus,
+          data.refundMethod,
+          data.refundProcessedAt,
+          data.storeCreditCode,
+          data.storeCreditAmount,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.getReturnById(id);
+    } catch (error) {
+      logger.error('Error updating return refund status:', error);
+      throw new DatabaseError('Failed to update return refund status');
+    }
+  }
+
+  async getReturnStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
+    try {
+      let whereClause = '';
+      const params: any[] = [];
+
+      if (filters?.startDate) {
+        whereClause += ' AND created_at >= to_timestamp($1 / 1000.0)';
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        whereClause += ` AND created_at <= to_timestamp($${params.length + 1} / 1000.0)`;
+        params.push(filters.endDate);
+      }
+
+      const result = await this.pool.query(
+        `SELECT
+          COUNT(*) as total_returns,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_returns,
+          COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_returns,
+          COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_returns,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as total_refunded,
+          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount ELSE 0 END), 0) as total_store_credits,
+          COUNT(DISTINCT customer_id) as unique_customers
+        FROM returns
+        WHERE 1=1 ${whereClause}`,
+        params
+      );
+
+      const stats = result.rows[0];
+      return {
+        totalReturns: parseInt(stats.total_returns),
+        completedReturns: parseInt(stats.completed_returns),
+        pendingReturns: parseInt(stats.pending_returns),
+        rejectedReturns: parseInt(stats.rejected_returns),
+        totalRefunded: parseFloat(stats.total_refunded),
+        totalStoreCredits: parseFloat(stats.total_store_credits),
+        uniqueCustomers: parseInt(stats.unique_customers),
+      };
+    } catch (error) {
+      logger.error('Error getting return stats:', error);
+      throw new DatabaseError('Failed to get return stats');
+    }
+  }
+
+  async createRefundTransaction(data: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO refund_transactions (
+          return_id, order_id, transaction_type, amount, currency,
+          payment_method, processor_transaction_id, status, processed_by, completed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING *`,
+        [
+          data.returnId,
+          data.orderId,
+          data.transactionType,
+          data.amount,
+          data.currency || 'USD',
+          data.paymentMethod,
+          data.processorTransactionId,
+          data.status || 'completed',
+          data.processedBy,
+        ]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error creating refund transaction:', error);
+      throw new DatabaseError('Failed to create refund transaction');
+    }
+  }
+
+  async createStoreCredit(data: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO store_credits (
+          customer_id, customer_email, return_id, code,
+          original_amount, remaining_amount, status, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8 / 1000.0))
+        RETURNING *`,
+        [
+          data.customerId,
+          data.customerEmail,
+          data.returnId,
+          data.code,
+          data.originalAmount,
+          data.remainingAmount,
+          data.status || 'active',
+          data.expiresAt,
+        ]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error creating store credit:', error);
+      throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<any[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get items to restock
+      let query = 'SELECT * FROM return_items WHERE return_id = $1 AND restocked = false';
+      const params: any[] = [returnId];
+
+      if (itemIds && itemIds.length > 0) {
+        query += ' AND id = ANY($2)';
+        params.push(itemIds);
+      }
+
+      const itemsResult = await client.query(query, params);
+      const restockedItems: any[] = [];
+
+      for (const item of itemsResult.rows) {
+        // Update stock in product_variants
+        if (item.variant_id) {
+          await client.query(
+            'UPDATE product_variants SET stock = stock + $1 WHERE id = $2',
+            [item.return_quantity, item.variant_id]
+          );
+        }
+
+        // Mark item as restocked
+        await client.query(
+          'UPDATE return_items SET restocked = true, restocked_at = NOW() WHERE id = $1',
+          [item.id]
+        );
+
+        restockedItems.push({
+          id: item.id,
+          productId: item.product_id,
+          variantId: item.variant_id,
+          nameSnapshot: item.name_snapshot,
+          quantity: item.return_quantity,
+        });
+      }
+
+      await client.query('COMMIT');
+      return restockedItems;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error restocking return items:', error);
+      throw new DatabaseError('Failed to restock items');
+    } finally {
+      client.release();
+    }
+  }
+
+  // Receipt email logging
+  async logReceiptEmail(data: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO receipt_emails (
+          order_id, return_id, recipient_email, subject, receipt_type, status, sent_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *`,
+        [
+          data.orderId,
+          data.returnId,
+          data.recipientEmail,
+          data.subject,
+          data.receiptType,
+          data.status || 'sent',
+          data.sentBy,
+        ]
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error logging receipt email:', error);
+      throw new DatabaseError('Failed to log receipt email');
+    }
+  }
+
+  async getReceiptEmailHistory(orderId: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT re.*, u.name as sent_by_name
+         FROM receipt_emails re
+         LEFT JOIN users u ON re.sent_by = u.id
+         WHERE re.order_id = $1
+         ORDER BY re.sent_at DESC`,
+        [orderId]
+      );
+
+      return result.rows.map(r => ({
+        id: r.id,
+        orderId: r.order_id,
+        recipientEmail: r.recipient_email,
+        subject: r.subject,
+        receiptType: r.receipt_type,
+        status: r.status,
+        sentBy: r.sent_by,
+        sentByName: r.sent_by_name,
+        sentAt: new Date(r.sent_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error getting receipt email history:', error);
+      throw new DatabaseError('Failed to get receipt email history');
+    }
+  }
+
+  async searchOrders(filters: any): Promise<any[]> {
+    try {
+      let query = `
+        SELECT o.*, 
+               COUNT(oi.id) as item_count
+        FROM orders o
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (filters.query) {
+        query += ` AND (o.id::text ILIKE $${paramIndex} OR o.customer_email ILIKE $${paramIndex})`;
+        params.push(`%${filters.query}%`);
+        paramIndex++;
+      }
+      if (filters.startDate) {
+        query += ` AND o.created_at >= to_timestamp($${paramIndex++} / 1000.0)`;
+        params.push(filters.startDate);
+      }
+      if (filters.endDate) {
+        query += ` AND o.created_at <= to_timestamp($${paramIndex++} / 1000.0)`;
+        params.push(filters.endDate);
+      }
+      if (filters.customerEmail) {
+        query += ` AND o.customer_email = $${paramIndex++}`;
+        params.push(filters.customerEmail);
+      }
+      if (filters.minAmount !== undefined) {
+        query += ` AND o.total >= $${paramIndex++}`;
+        params.push(filters.minAmount);
+      }
+      if (filters.maxAmount !== undefined) {
+        query += ` AND o.total <= $${paramIndex++}`;
+        params.push(filters.maxAmount);
+      }
+      if (filters.paymentMethod) {
+        query += ` AND o.payment_method = $${paramIndex++}`;
+        params.push(filters.paymentMethod);
+      }
+
+      query += ' GROUP BY o.id ORDER BY o.created_at DESC';
+
+      if (filters.limit) {
+        query += ` LIMIT $${paramIndex++}`;
+        params.push(filters.limit);
+      }
+      if (filters.offset) {
+        query += ` OFFSET $${paramIndex++}`;
+        params.push(filters.offset);
+      }
+
+      const result = await this.pool.query(query, params);
+
+      return result.rows.map(order => ({
+        id: order.id,
+        createdAt: new Date(order.created_at).getTime(),
+        subtotal: parseFloat(order.subtotal),
+        discountTotal: parseFloat(order.discount_total),
+        taxTotal: parseFloat(order.tax_total),
+        total: parseFloat(order.total),
+        paymentMethod: order.payment_method,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone,
+        itemCount: parseInt(order.item_count),
+      }));
+    } catch (error) {
+      logger.error('Error searching orders:', error);
+      throw new DatabaseError('Failed to search orders');
+    }
+  }
+
+  private mapReturnRow(row: any): any {
+    return {
+      id: row.id,
+      originalOrderId: row.original_order_id,
+      returnNumber: row.return_number,
+      returnType: row.return_type,
+      status: row.status,
+      customerEmail: row.customer_email,
+      customerPhone: row.customer_phone,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      subtotal: parseFloat(row.subtotal),
+      taxTotal: parseFloat(row.tax_total),
+      total: parseFloat(row.total),
+      refundMethod: row.refund_method,
+      refundStatus: row.refund_status,
+      refundProcessedAt: row.refund_processed_at ? new Date(row.refund_processed_at).getTime() : null,
+      refundReference: row.refund_reference,
+      storeCreditAmount: row.store_credit_amount ? parseFloat(row.store_credit_amount) : 0,
+      storeCreditCode: row.store_credit_code,
+      reasonCode: row.reason_code,
+      reasonDetails: row.reason_details,
+      internalNotes: row.internal_notes,
+      restockItems: row.restock_items,
+      restockingFee: row.restocking_fee ? parseFloat(row.restocking_fee) : 0,
+      createdBy: row.created_by,
+      createdByName: row.created_by_name,
+      approvedBy: row.approved_by,
+      approvedByName: row.approved_by_name,
+      originalOrderTotal: row.original_order_total ? parseFloat(row.original_order_total) : null,
+      createdAt: new Date(row.created_at).getTime(),
+      updatedAt: new Date(row.updated_at).getTime(),
+    };
+  }
 }

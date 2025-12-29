@@ -16,7 +16,8 @@ import {
   ShoppingCart,
   Briefcase,
   FileSpreadsheet,
-  BarChart3
+  BarChart3,
+  RotateCcw
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -34,6 +35,10 @@ import {
   generateCustomerOrderHistoryReport,
   generateServicesByTypeReport,
   generateServicesByCategoryReport,
+  generateReturnsReport,
+  generateReturnsByCustomerReport,
+  generateReturnsMonthlyReport,
+  generateReturnsByReasonReport,
   exportSalesMoMToPDF,
   exportSalesWoWToPDF,
   exportSalesByCustomerToPDF,
@@ -41,6 +46,8 @@ import {
   exportTrendingToPDF,
   exportCustomerListToPDF,
   exportServicesToPDF,
+  exportReturnsToPDF,
+  exportReturnsByReasonToPDF,
 } from '@/lib/export-utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -94,6 +101,21 @@ interface Service {
   isActive: boolean;
 }
 
+interface Return {
+  id: string;
+  returnNumber: string;
+  returnType: string;
+  status: string;
+  customerEmail?: string;
+  customerName?: string;
+  total: number;
+  refundMethod?: string;
+  refundStatus: string;
+  reasonCode?: string;
+  createdAt: number;
+  items?: any[];
+}
+
 export default function AdminExports() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -106,6 +128,7 @@ export default function AdminExports() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [returns, setReturns] = useState<Return[]>([]);
   
   const { toast } = useToast();
 
@@ -115,12 +138,13 @@ export default function AdminExports() {
 
   const loadAllData = async () => {
     try {
-      const [ordersRes, quotesRes, customersRes, servicesRes, productsRes] = await Promise.all([
+      const [ordersRes, quotesRes, customersRes, servicesRes, productsRes, returnsRes] = await Promise.all([
         apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
         apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
         apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
         apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
         apiClient.get<{ success: boolean; data: any[] }>('/api/products'),
+        apiClient.get<{ success: boolean; data: Return[] }>('/api/returns'),
       ]);
 
       if (ordersRes.success) setOrders(ordersRes.data);
@@ -128,6 +152,7 @@ export default function AdminExports() {
       if (customersRes.success) setCustomers(customersRes.data);
       if (servicesRes.success) setServices(servicesRes.data);
       if (productsRes.success) setProducts(productsRes.data);
+      if (returnsRes.success) setReturns(returnsRes.data);
     } catch (error: any) {
       toast({
         title: 'Error loading data',
@@ -322,6 +347,56 @@ export default function AdminExports() {
           }
           break;
         }
+        
+        case 'returns-all': {
+          const filteredReturns = filterByDateRange(returns);
+          const data = generateReturnsReport(filteredReturns);
+          if (format === 'pdf') {
+            exportReturnsToPDF(filteredReturns);
+          } else if (format === 'excel') {
+            exportToExcel([{ name: 'Returns', data }], 'returns.xlsx');
+          } else {
+            exportToCSV(data, 'returns.csv');
+          }
+          break;
+        }
+        
+        case 'returns-customer': {
+          const filteredReturns = filterByDateRange(returns);
+          const data = generateReturnsByCustomerReport(filteredReturns, customers);
+          if (format === 'pdf') {
+            exportReturnsByReasonToPDF(data);
+          } else if (format === 'excel') {
+            exportToExcel([{ name: 'Returns by Customer', data }], 'returns-by-customer.xlsx');
+          } else {
+            exportToCSV(data, 'returns-by-customer.csv');
+          }
+          break;
+        }
+        
+        case 'returns-monthly': {
+          const filteredReturns = filterByDateRange(returns);
+          const data = generateReturnsMonthlyReport(filteredReturns);
+          if (format === 'excel') {
+            exportToExcel([{ name: 'Monthly Returns', data }], 'returns-monthly.xlsx');
+          } else {
+            exportToCSV(data, 'returns-monthly.csv');
+          }
+          break;
+        }
+        
+        case 'returns-reason': {
+          const filteredReturns = filterByDateRange(returns);
+          const data = generateReturnsByReasonReport(filteredReturns);
+          if (format === 'pdf') {
+            exportReturnsByReasonToPDF(data);
+          } else if (format === 'excel') {
+            exportToExcel([{ name: 'Returns by Reason', data }], 'returns-by-reason.xlsx');
+          } else {
+            exportToCSV(data, 'returns-by-reason.csv');
+          }
+          break;
+        }
       }
       
       toast({ title: 'Export completed successfully' });
@@ -430,10 +505,14 @@ export default function AdminExports() {
           </Card>
 
           <Tabs defaultValue="sales" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="sales" className="flex items-center gap-2">
                 <ShoppingCart className="w-4 h-4" />
-                Sales Reports
+                Sales
+              </TabsTrigger>
+              <TabsTrigger value="returns" className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" />
+                Returns
               </TabsTrigger>
               <TabsTrigger value="customers" className="flex items-center gap-2">
                 <Users className="w-4 h-4" />
@@ -517,6 +596,69 @@ export default function AdminExports() {
                   </CardHeader>
                   <CardContent>
                     <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} />
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Returns Tab */}
+            <TabsContent value="returns" className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <RotateCcw className="w-5 h-5 text-red-500" />
+                      All Returns
+                    </CardTitle>
+                    <CardDescription>Complete list of all returns and refunds</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge variant="outline">{returns.length} returns</Badge>
+                      <Badge variant="outline" className="bg-green-50 text-green-700">
+                        {returns.filter(r => r.status === 'completed').length} completed
+                      </Badge>
+                    </div>
+                    <ExportButtons reportType="returns-all" formats={['pdf', 'excel', 'csv']} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5 text-purple-500" />
+                      Returns by Customer
+                    </CardTitle>
+                    <CardDescription>Which customers have the most returns</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="returns-customer" formats={['pdf', 'excel', 'csv']} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-blue-500" />
+                      Returns Monthly Trend
+                    </CardTitle>
+                    <CardDescription>Return volume and refund amounts by month</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="returns-monthly" formats={['excel', 'csv']} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-orange-500" />
+                      Returns by Reason
+                    </CardTitle>
+                    <CardDescription>Analysis of why products are being returned</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="returns-reason" formats={['pdf', 'excel', 'csv']} />
                   </CardContent>
                 </Card>
               </div>

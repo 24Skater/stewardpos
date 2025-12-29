@@ -1924,4 +1924,572 @@ export class SQLiteAdapter {
       throw new DatabaseError('Failed to delete API key');
     }
   }
+
+  // ===== Returns & Refunds Operations =====
+
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<any[]> {
+    try {
+      let query = `
+        SELECT r.*, 
+               o.total as original_order_total,
+               u.name as created_by_name,
+               c.name as customer_name
+        FROM returns r
+        LEFT JOIN orders o ON r.original_order_id = o.id
+        LEFT JOIN users u ON r.created_by = u.id
+        LEFT JOIN customers c ON r.customer_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (filters?.status) {
+        query += ' AND r.status = ?';
+        params.push(filters.status);
+      }
+      if (filters?.startDate) {
+        query += ' AND r.created_at >= ?';
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        query += ' AND r.created_at <= ?';
+        params.push(filters.endDate);
+      }
+      if (filters?.customerId) {
+        query += ' AND r.customer_id = ?';
+        params.push(filters.customerId);
+      }
+
+      query += ' ORDER BY r.created_at DESC';
+
+      const returns = this.db.prepare(query).all(...params) as any[];
+
+      return returns.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting all returns:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async getReturnById(id: string): Promise<any | null> {
+    try {
+      const row = this.db.prepare(
+        `SELECT r.*, 
+                o.total as original_order_total,
+                u.name as created_by_name,
+                a.name as approved_by_name,
+                c.name as customer_name
+         FROM returns r
+         LEFT JOIN orders o ON r.original_order_id = o.id
+         LEFT JOIN users u ON r.created_by = u.id
+         LEFT JOIN users a ON r.approved_by = a.id
+         LEFT JOIN customers c ON r.customer_id = c.id
+         WHERE r.id = ?`
+      ).get(id) as any;
+
+      if (!row) {
+        return null;
+      }
+
+      // Get return items
+      const items = this.db.prepare(
+        'SELECT * FROM return_items WHERE return_id = ?'
+      ).all(id) as any[];
+
+      const returnData = this.mapReturnRow(row);
+      returnData.items = items.map(item => ({
+        id: item.id,
+        returnId: item.return_id,
+        originalOrderItemId: item.original_order_item_id,
+        productId: item.product_id,
+        variantId: item.variant_id,
+        nameSnapshot: item.name_snapshot,
+        size: item.size,
+        color: item.color,
+        originalQuantity: item.original_quantity,
+        returnQuantity: item.return_quantity,
+        unitPrice: item.unit_price,
+        lineTotal: item.line_total,
+        condition: item.condition,
+        restocked: Boolean(item.restocked),
+        restockedAt: item.restocked_at,
+        notes: item.notes,
+      }));
+
+      return returnData;
+    } catch (error) {
+      logger.error('Error getting return by ID:', error);
+      throw new DatabaseError('Failed to get return');
+    }
+  }
+
+  async getReturnsByOrder(orderId: string): Promise<any[]> {
+    try {
+      const returns = this.db.prepare(
+        `SELECT r.*, u.name as created_by_name
+         FROM returns r
+         LEFT JOIN users u ON r.created_by = u.id
+         WHERE r.original_order_id = ?
+         ORDER BY r.created_at DESC`
+      ).all(orderId) as any[];
+
+      const result = returns.map(r => this.mapReturnRow(r));
+
+      // Get items for each return
+      for (const ret of result) {
+        const items = this.db.prepare(
+          'SELECT * FROM return_items WHERE return_id = ?'
+        ).all(ret.id) as any[];
+        ret.items = items.map(item => ({
+          id: item.id,
+          productId: item.product_id,
+          nameSnapshot: item.name_snapshot,
+          returnQuantity: item.return_quantity,
+          lineTotal: item.line_total,
+        }));
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Error getting returns by order:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async getReturnsByCustomer(customerId: string): Promise<any[]> {
+    try {
+      const returns = this.db.prepare(
+        `SELECT r.*, o.total as original_order_total
+         FROM returns r
+         LEFT JOIN orders o ON r.original_order_id = o.id
+         WHERE r.customer_id = ?
+         ORDER BY r.created_at DESC`
+      ).all(customerId) as any[];
+
+      return returns.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting returns by customer:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  async createReturn(returnData: any): Promise<any> {
+    try {
+      const returnId = crypto.randomUUID();
+
+      // Insert return
+      this.db.prepare(
+        `INSERT INTO returns (
+          id, original_order_id, return_number, return_type, status,
+          customer_email, customer_phone, customer_id,
+          subtotal, tax_total, total,
+          refund_method, refund_status,
+          reason_code, reason_details, internal_notes,
+          restock_items, restocking_fee, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        returnId,
+        returnData.originalOrderId,
+        returnData.returnNumber,
+        returnData.returnType || 'return',
+        returnData.status || 'pending',
+        returnData.customerEmail,
+        returnData.customerPhone,
+        returnData.customerId,
+        returnData.subtotal,
+        returnData.taxTotal || 0,
+        returnData.total,
+        returnData.refundMethod,
+        returnData.refundStatus || 'pending',
+        returnData.reasonCode,
+        returnData.reasonDetails,
+        returnData.internalNotes,
+        returnData.restockItems !== false ? 1 : 0,
+        returnData.restockingFee || 0,
+        returnData.createdBy,
+        Date.now(),
+        Date.now()
+      );
+
+      // Insert return items
+      const insertItem = this.db.prepare(
+        `INSERT INTO return_items (
+          id, return_id, original_order_item_id, product_id, variant_id,
+          name_snapshot, size, color,
+          original_quantity, return_quantity,
+          unit_price, line_total, condition, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+
+      for (const item of returnData.items || []) {
+        insertItem.run(
+          crypto.randomUUID(),
+          returnId,
+          item.originalOrderItemId,
+          item.productId,
+          item.variantId,
+          item.nameSnapshot,
+          item.size,
+          item.color,
+          item.originalQuantity,
+          item.returnQuantity,
+          item.unitPrice,
+          item.lineTotal,
+          item.condition || 'good',
+          item.notes
+        );
+      }
+
+      return this.getReturnById(returnId);
+    } catch (error) {
+      logger.error('Error creating return:', error);
+      throw new DatabaseError('Failed to create return');
+    }
+  }
+
+  async updateReturnStatus(id: string, data: { status: string; internalNotes?: string; approvedBy?: string }): Promise<any | null> {
+    try {
+      this.db.prepare(
+        `UPDATE returns SET
+          status = ?,
+          internal_notes = COALESCE(?, internal_notes),
+          approved_by = COALESCE(?, approved_by),
+          updated_at = ?
+        WHERE id = ?`
+      ).run(data.status, data.internalNotes, data.approvedBy, Date.now(), id);
+
+      return this.getReturnById(id);
+    } catch (error) {
+      logger.error('Error updating return status:', error);
+      throw new DatabaseError('Failed to update return status');
+    }
+  }
+
+  async updateReturnRefundStatus(id: string, data: any): Promise<any | null> {
+    try {
+      this.db.prepare(
+        `UPDATE returns SET
+          refund_status = COALESCE(?, refund_status),
+          refund_method = COALESCE(?, refund_method),
+          refund_processed_at = COALESCE(?, refund_processed_at),
+          store_credit_code = COALESCE(?, store_credit_code),
+          store_credit_amount = COALESCE(?, store_credit_amount),
+          updated_at = ?
+        WHERE id = ?`
+      ).run(
+        data.refundStatus,
+        data.refundMethod,
+        data.refundProcessedAt,
+        data.storeCreditCode,
+        data.storeCreditAmount,
+        Date.now(),
+        id
+      );
+
+      return this.getReturnById(id);
+    } catch (error) {
+      logger.error('Error updating return refund status:', error);
+      throw new DatabaseError('Failed to update return refund status');
+    }
+  }
+
+  async getReturnStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
+    try {
+      let query = `
+        SELECT
+          COUNT(*) as total_returns,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_returns,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_returns,
+          SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_returns,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as total_refunded,
+          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount ELSE 0 END), 0) as total_store_credits,
+          COUNT(DISTINCT customer_id) as unique_customers
+        FROM returns
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (filters?.startDate) {
+        query += ' AND created_at >= ?';
+        params.push(filters.startDate);
+      }
+      if (filters?.endDate) {
+        query += ' AND created_at <= ?';
+        params.push(filters.endDate);
+      }
+
+      const stats = this.db.prepare(query).get(...params) as any;
+
+      return {
+        totalReturns: stats.total_returns || 0,
+        completedReturns: stats.completed_returns || 0,
+        pendingReturns: stats.pending_returns || 0,
+        rejectedReturns: stats.rejected_returns || 0,
+        totalRefunded: stats.total_refunded || 0,
+        totalStoreCredits: stats.total_store_credits || 0,
+        uniqueCustomers: stats.unique_customers || 0,
+      };
+    } catch (error) {
+      logger.error('Error getting return stats:', error);
+      throw new DatabaseError('Failed to get return stats');
+    }
+  }
+
+  async createRefundTransaction(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO refund_transactions (
+          id, return_id, order_id, transaction_type, amount, currency,
+          payment_method, processor_transaction_id, status, processed_by, created_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        data.returnId,
+        data.orderId,
+        data.transactionType,
+        data.amount,
+        data.currency || 'USD',
+        data.paymentMethod,
+        data.processorTransactionId,
+        data.status || 'completed',
+        data.processedBy,
+        Date.now(),
+        Date.now()
+      );
+
+      return this.db.prepare('SELECT * FROM refund_transactions WHERE id = ?').get(id);
+    } catch (error) {
+      logger.error('Error creating refund transaction:', error);
+      throw new DatabaseError('Failed to create refund transaction');
+    }
+  }
+
+  async createStoreCredit(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO store_credits (
+          id, customer_id, customer_email, return_id, code,
+          original_amount, remaining_amount, status, expires_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        data.customerId,
+        data.customerEmail,
+        data.returnId,
+        data.code,
+        data.originalAmount,
+        data.remainingAmount,
+        data.status || 'active',
+        data.expiresAt,
+        Date.now()
+      );
+
+      return this.db.prepare('SELECT * FROM store_credits WHERE id = ?').get(id);
+    } catch (error) {
+      logger.error('Error creating store credit:', error);
+      throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<any[]> {
+    try {
+      // Get items to restock
+      let query = 'SELECT * FROM return_items WHERE return_id = ? AND restocked = 0';
+      const params: any[] = [returnId];
+
+      const items = this.db.prepare(query).all(...params) as any[];
+      const restockedItems: any[] = [];
+
+      for (const item of items) {
+        if (itemIds && itemIds.length > 0 && !itemIds.includes(item.id)) {
+          continue;
+        }
+
+        // Update stock in product_variants
+        if (item.variant_id) {
+          this.db.prepare(
+            'UPDATE product_variants SET stock = stock + ? WHERE id = ?'
+          ).run(item.return_quantity, item.variant_id);
+        }
+
+        // Mark item as restocked
+        this.db.prepare(
+          'UPDATE return_items SET restocked = 1, restocked_at = ? WHERE id = ?'
+        ).run(Date.now(), item.id);
+
+        restockedItems.push({
+          id: item.id,
+          productId: item.product_id,
+          variantId: item.variant_id,
+          nameSnapshot: item.name_snapshot,
+          quantity: item.return_quantity,
+        });
+      }
+
+      return restockedItems;
+    } catch (error) {
+      logger.error('Error restocking return items:', error);
+      throw new DatabaseError('Failed to restock items');
+    }
+  }
+
+  // Receipt email logging
+  async logReceiptEmail(data: any): Promise<any> {
+    try {
+      const id = crypto.randomUUID();
+      this.db.prepare(
+        `INSERT INTO receipt_emails (
+          id, order_id, return_id, recipient_email, subject, receipt_type, status, sent_by, sent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        data.orderId,
+        data.returnId,
+        data.recipientEmail,
+        data.subject,
+        data.receiptType,
+        data.status || 'sent',
+        data.sentBy,
+        Date.now()
+      );
+
+      return this.db.prepare('SELECT * FROM receipt_emails WHERE id = ?').get(id);
+    } catch (error) {
+      logger.error('Error logging receipt email:', error);
+      throw new DatabaseError('Failed to log receipt email');
+    }
+  }
+
+  async getReceiptEmailHistory(orderId: string): Promise<any[]> {
+    try {
+      const rows = this.db.prepare(
+        `SELECT re.*, u.name as sent_by_name
+         FROM receipt_emails re
+         LEFT JOIN users u ON re.sent_by = u.id
+         WHERE re.order_id = ?
+         ORDER BY re.sent_at DESC`
+      ).all(orderId) as any[];
+
+      return rows.map(r => ({
+        id: r.id,
+        orderId: r.order_id,
+        recipientEmail: r.recipient_email,
+        subject: r.subject,
+        receiptType: r.receipt_type,
+        status: r.status,
+        sentBy: r.sent_by,
+        sentByName: r.sent_by_name,
+        sentAt: r.sent_at,
+      }));
+    } catch (error) {
+      logger.error('Error getting receipt email history:', error);
+      throw new DatabaseError('Failed to get receipt email history');
+    }
+  }
+
+  async searchOrders(filters: any): Promise<any[]> {
+    try {
+      let query = `
+        SELECT o.*, 
+               (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) as item_count
+        FROM orders o
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (filters.query) {
+        query += ' AND (o.id LIKE ? OR o.customer_email LIKE ?)';
+        params.push(`%${filters.query}%`, `%${filters.query}%`);
+      }
+      if (filters.startDate) {
+        query += ' AND o.created_at >= ?';
+        params.push(filters.startDate);
+      }
+      if (filters.endDate) {
+        query += ' AND o.created_at <= ?';
+        params.push(filters.endDate);
+      }
+      if (filters.customerEmail) {
+        query += ' AND o.customer_email = ?';
+        params.push(filters.customerEmail);
+      }
+      if (filters.minAmount !== undefined) {
+        query += ' AND o.total >= ?';
+        params.push(filters.minAmount);
+      }
+      if (filters.maxAmount !== undefined) {
+        query += ' AND o.total <= ?';
+        params.push(filters.maxAmount);
+      }
+      if (filters.paymentMethod) {
+        query += ' AND o.payment_method = ?';
+        params.push(filters.paymentMethod);
+      }
+
+      query += ' ORDER BY o.created_at DESC';
+
+      if (filters.limit) {
+        query += ' LIMIT ?';
+        params.push(filters.limit);
+      }
+      if (filters.offset) {
+        query += ' OFFSET ?';
+        params.push(filters.offset);
+      }
+
+      const orders = this.db.prepare(query).all(...params) as any[];
+
+      return orders.map(order => ({
+        id: order.id,
+        createdAt: order.created_at,
+        subtotal: order.subtotal,
+        discountTotal: order.discount_total,
+        taxTotal: order.tax_total,
+        total: order.total,
+        paymentMethod: order.payment_method,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone,
+        itemCount: order.item_count,
+      }));
+    } catch (error) {
+      logger.error('Error searching orders:', error);
+      throw new DatabaseError('Failed to search orders');
+    }
+  }
+
+  private mapReturnRow(row: any): any {
+    return {
+      id: row.id,
+      originalOrderId: row.original_order_id,
+      returnNumber: row.return_number,
+      returnType: row.return_type,
+      status: row.status,
+      customerEmail: row.customer_email,
+      customerPhone: row.customer_phone,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      subtotal: row.subtotal,
+      taxTotal: row.tax_total,
+      total: row.total,
+      refundMethod: row.refund_method,
+      refundStatus: row.refund_status,
+      refundProcessedAt: row.refund_processed_at,
+      refundReference: row.refund_reference,
+      storeCreditAmount: row.store_credit_amount || 0,
+      storeCreditCode: row.store_credit_code,
+      reasonCode: row.reason_code,
+      reasonDetails: row.reason_details,
+      internalNotes: row.internal_notes,
+      restockItems: Boolean(row.restock_items),
+      restockingFee: row.restocking_fee || 0,
+      createdBy: row.created_by,
+      createdByName: row.created_by_name,
+      approvedBy: row.approved_by,
+      approvedByName: row.approved_by_name,
+      originalOrderTotal: row.original_order_total,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
 }
