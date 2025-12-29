@@ -25,36 +25,39 @@ router.use(authenticate);
  * POST   /api/returns/:id/restock  - Restock items
  */
 
+// Helper to preprocess null/empty values to undefined
+const nullToUndefined = (val: unknown) => (val === null || val === undefined || val === '' ? undefined : val);
+
 // Validation schemas
 const returnItemSchema = z.object({
-  originalOrderItemId: z.string().optional(),
+  originalOrderItemId: z.preprocess(nullToUndefined, z.string().optional()),
   productId: z.string(),
-  variantId: z.string().optional(),
+  variantId: z.preprocess(nullToUndefined, z.string().optional()),
   nameSnapshot: z.string(),
-  size: z.string().optional(),
-  color: z.string().optional(),
+  size: z.preprocess(nullToUndefined, z.string().optional()),
+  color: z.preprocess(nullToUndefined, z.string().optional()),
   originalQuantity: z.number().int().min(1),
   returnQuantity: z.number().int().min(1),
   unitPrice: z.number().min(0),
   lineTotal: z.number().min(0),
   condition: z.enum(['good', 'damaged', 'defective', 'opened']).default('good'),
-  notes: z.string().optional(),
+  notes: z.preprocess(nullToUndefined, z.string().optional()),
 });
 
 const createReturnSchema = z.object({
   originalOrderId: z.string(),
   returnType: z.enum(['return', 'exchange', 'void']).default('return'),
-  customerEmail: z.string().email().optional(),
-  customerPhone: z.string().optional(),
-  customerId: z.string().optional(),
+  customerEmail: z.preprocess(nullToUndefined, z.string().email().optional()),
+  customerPhone: z.preprocess(nullToUndefined, z.string().optional()),
+  customerId: z.preprocess(nullToUndefined, z.string().optional()),
   items: z.array(returnItemSchema).min(1),
   subtotal: z.number().min(0),
   taxTotal: z.number().min(0).default(0),
   total: z.number().min(0),
-  refundMethod: z.enum(['original_payment', 'store_credit', 'cash', 'card']).optional(),
-  reasonCode: z.enum(['defective', 'wrong_item', 'not_needed', 'damaged', 'other']).optional(),
-  reasonDetails: z.string().optional(),
-  internalNotes: z.string().optional(),
+  refundMethod: z.preprocess(nullToUndefined, z.enum(['original_payment', 'store_credit', 'cash', 'card']).optional()),
+  reasonCode: z.preprocess(nullToUndefined, z.enum(['defective', 'wrong_item', 'not_needed', 'damaged', 'other']).optional()),
+  reasonDetails: z.preprocess(nullToUndefined, z.string().optional()),
+  internalNotes: z.preprocess(nullToUndefined, z.string().optional()),
   restockItems: z.boolean().default(true),
   restockingFee: z.number().min(0).default(0),
 });

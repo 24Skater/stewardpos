@@ -8,7 +8,8 @@ import ReceiptDialog from "@/components/ReceiptDialog";
 import { CartItem } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
 import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw } from "lucide-react";
+import QuickReturnDialog from "@/components/QuickReturnDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,6 +85,9 @@ export default function POS() {
   const [manualDiscountType, setManualDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [manualDiscountValue, setManualDiscountValue] = useState("");
   const [manualDiscountReason, setManualDiscountReason] = useState("");
+  
+  // Return dialog state
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -550,6 +554,15 @@ export default function POS() {
           <div className="flex gap-2">
             <Button 
               variant="outline" 
+              onClick={() => setReturnDialogOpen(true)}
+              className="border-orange-500 text-orange-600 hover:bg-orange-50"
+              size="sm"
+            >
+              <RotateCcw className="w-4 h-4 mr-1" />
+              Returns
+            </Button>
+            <Button 
+              variant="outline" 
               onClick={() => navigate('/services')}
               className="border-border"
               size="sm"
@@ -920,6 +933,13 @@ export default function POS() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Quick Return Dialog */}
+      <QuickReturnDialog
+        open={returnDialogOpen}
+        onClose={() => setReturnDialogOpen(false)}
+        onComplete={() => loadProducts()}
+      />
     </div>
   );
 }
