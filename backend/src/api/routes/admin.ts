@@ -268,15 +268,24 @@ router.delete('/roles/:id', async (req: AuthRequest, res: Response, next: NextFu
 
 // ===== Settings Management =====
 
+// Helper to validate URLs more flexibly (allows empty strings and common URL formats)
+const flexibleUrl = z.string()
+  .refine(
+    (val) => !val || val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:'),
+    { message: 'Must be a valid URL starting with http://, https://, or data:' }
+  )
+  .optional()
+  .nullable();
+
 const updateSettingsSchema = z.object({
   taxRateDefault: z.number().min(0).max(1).optional(),
   storeName: z.string().optional(),
-  storeEmail: z.string().email().optional().nullable(),
+  storeEmail: z.string().email().optional().nullable().or(z.literal('')),
   storePhone: z.string().optional().nullable(),
   timezone: z.string().optional(),
-  logoUrl: z.string().url().optional().nullable(),
-  iconUrl: z.string().url().optional().nullable(),
-  brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable(),
+  logoUrl: flexibleUrl,
+  iconUrl: flexibleUrl,
+  brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable().or(z.literal('')),
   config: z.record(z.any()).optional(),
   // Receipt branding
   storeAddress: z.string().optional().nullable(),
@@ -284,7 +293,7 @@ const updateSettingsSchema = z.object({
   storeState: z.string().optional().nullable(),
   storeZip: z.string().optional().nullable(),
   storeNumber: z.string().optional().nullable(),
-  receiptLogoUrl: z.string().url().optional().nullable(),
+  receiptLogoUrl: flexibleUrl,
   receiptHeaderText: z.string().optional().nullable(),
   receiptFooterText: z.string().optional().nullable(),
   receiptShowLogo: z.boolean().optional(),

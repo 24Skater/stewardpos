@@ -32,7 +32,7 @@ const navItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
   { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
-  { path: '/admin/receipt-branding', label: 'Receipt Branding', icon: Palette },
+  { path: '/admin/branding', label: 'Branding', icon: Palette },
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
   { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },

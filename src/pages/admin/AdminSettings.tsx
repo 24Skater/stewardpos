@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { apiClient } from '@/lib/api-client';
-import { Save, Store, Shield, Palette, Database, RefreshCw, Upload, Link, X, Image } from 'lucide-react';
+import { Save, Store, Shield, Database, RefreshCw, Palette, ArrowRight } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
@@ -18,9 +19,6 @@ interface Settings {
   storeEmail: string;
   storePhone: string;
   timezone: string;
-  logoUrl?: string;
-  iconUrl?: string;
-  brandColor?: string;
   config?: {
     authMethods?: {
       local?: boolean;
@@ -49,13 +47,13 @@ const timezones = [
 ];
 
 export default function AdminSettings() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<Settings>({
     taxRateDefault: 0.08,
     storeName: 'Persona Store',
     storeEmail: '',
     storePhone: '',
     timezone: 'UTC',
-    brandColor: '#3b82f6',
     config: {
       authMethods: {
         local: true,
@@ -68,13 +66,6 @@ export default function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [uploadingIcon, setUploadingIcon] = useState(false);
-  const [logoInputMode, setLogoInputMode] = useState<'url' | 'upload'>('url');
-  const [iconInputMode, setIconInputMode] = useState<'url' | 'upload'>('url');
-  
-  const logoFileRef = useRef<HTMLInputElement>(null);
-  const iconFileRef = useRef<HTMLInputElement>(null);
   
   const { toast } = useToast();
 
@@ -148,60 +139,6 @@ export default function AdminSettings() {
     }
   };
 
-  const handleFileUpload = async (file: File, type: 'logo' | 'icon') => {
-    const setUploading = type === 'logo' ? setUploadingLogo : setUploadingIcon;
-    
-    try {
-      setUploading(true);
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`/api/upload/${type}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: formData,
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        if (type === 'logo') {
-          setSettings({ ...settings, logoUrl: result.data.url });
-        } else {
-          setSettings({ ...settings, iconUrl: result.data.url });
-        }
-        toast({ title: `${type === 'logo' ? 'Logo' : 'Icon'} uploaded successfully` });
-      } else {
-        throw new Error(result.message || 'Upload failed');
-      }
-    } catch (error: any) {
-      toast({
-        title: 'Upload failed',
-        description: error.message || 'Failed to upload file',
-        variant: 'destructive',
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileUpload(file, 'logo');
-    }
-  };
-
-  const handleIconFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      handleFileUpload(file, 'icon');
-    }
-  };
-
   if (loading) {
     return (
       <ProtectedRoute>
@@ -232,7 +169,6 @@ export default function AdminSettings() {
           <Tabs defaultValue="general" className="space-y-4">
             <TabsList>
               <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="branding">Branding</TabsTrigger>
               <TabsTrigger value="auth">Authentication</TabsTrigger>
               <TabsTrigger value="database">Database</TabsTrigger>
             </TabsList>
@@ -315,224 +251,26 @@ export default function AdminSettings() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* Branding Settings */}
-            <TabsContent value="branding" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Palette className="w-5 h-5" />
-                    Branding
-                  </CardTitle>
-                  <CardDescription>Customize your store appearance</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Logo Upload */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Store Logo</Label>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant={logoInputMode === 'upload' ? 'default' : 'outline'} 
-                          size="sm"
-                          onClick={() => setLogoInputMode('upload')}
-                        >
-                          <Upload className="w-3 h-3 mr-1" />
-                          Upload
-                        </Button>
-                        <Button 
-                          variant={logoInputMode === 'url' ? 'default' : 'outline'} 
-                          size="sm"
-                          onClick={() => setLogoInputMode('url')}
-                        >
-                          <Link className="w-3 h-3 mr-1" />
-                          URL
-                        </Button>
+              {/* Branding Link Card */}
+              <Card className="border-dashed">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-primary/10 rounded-lg">
+                        <Palette className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Branding & Appearance</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Customize logo, colors, store identity, and receipt appearance
+                        </p>
                       </div>
                     </div>
-                    
-                    {logoInputMode === 'upload' ? (
-                      <div className="flex items-center gap-4">
-                        <input
-                          ref={logoFileRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLogoFileChange}
-                          className="hidden"
-                        />
-                        <Button 
-                          variant="outline" 
-                          onClick={() => logoFileRef.current?.click()}
-                          disabled={uploadingLogo}
-                        >
-                          {uploadingLogo ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              Uploading...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-4 h-4 mr-2" />
-                              Choose File
-                            </>
-                          )}
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                          Max 5MB. PNG, JPG, GIF, WebP, SVG
-                        </span>
-                      </div>
-                    ) : (
-                      <Input
-                        type="url"
-                        value={settings.logoUrl || ''}
-                        onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value || undefined })}
-                        placeholder="https://example.com/logo.png"
-                      />
-                    )}
-                    
-                    {settings.logoUrl && (
-                      <div className="flex items-center gap-4 p-4 bg-secondary/30 rounded-lg">
-                        <div className="w-24 h-24 bg-white rounded-lg border flex items-center justify-center overflow-hidden">
-                          <img 
-                            src={settings.logoUrl} 
-                            alt="Logo preview" 
-                            className="max-w-full max-h-full object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '';
-                              (e.target as HTMLImageElement).alt = 'Failed to load';
-                            }}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Current Logo</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-xs">{settings.logoUrl}</p>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => setSettings({ ...settings, logoUrl: undefined })}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Icon/Favicon Upload */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Favicon / Icon</Label>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant={iconInputMode === 'upload' ? 'default' : 'outline'} 
-                          size="sm"
-                          onClick={() => setIconInputMode('upload')}
-                        >
-                          <Upload className="w-3 h-3 mr-1" />
-                          Upload
-                        </Button>
-                        <Button 
-                          variant={iconInputMode === 'url' ? 'default' : 'outline'} 
-                          size="sm"
-                          onClick={() => setIconInputMode('url')}
-                        >
-                          <Link className="w-3 h-3 mr-1" />
-                          URL
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    {iconInputMode === 'upload' ? (
-                      <div className="flex items-center gap-4">
-                        <input
-                          ref={iconFileRef}
-                          type="file"
-                          accept="image/*,.ico"
-                          onChange={handleIconFileChange}
-                          className="hidden"
-                        />
-                        <Button 
-                          variant="outline" 
-                          onClick={() => iconFileRef.current?.click()}
-                          disabled={uploadingIcon}
-                        >
-                          {uploadingIcon ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                              Uploading...
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-4 h-4 mr-2" />
-                              Choose File
-                            </>
-                          )}
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                          Recommended: 32x32 or 64x64 pixels
-                        </span>
-                      </div>
-                    ) : (
-                      <Input
-                        type="url"
-                        value={settings.iconUrl || ''}
-                        onChange={(e) => setSettings({ ...settings, iconUrl: e.target.value || undefined })}
-                        placeholder="https://example.com/favicon.ico"
-                      />
-                    )}
-                    
-                    {settings.iconUrl && (
-                      <div className="flex items-center gap-4 p-4 bg-secondary/30 rounded-lg">
-                        <div className="w-16 h-16 bg-white rounded-lg border flex items-center justify-center overflow-hidden">
-                          <img 
-                            src={settings.iconUrl} 
-                            alt="Icon preview" 
-                            className="max-w-full max-h-full object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '';
-                              (e.target as HTMLImageElement).alt = 'Failed to load';
-                            }}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Current Icon</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-xs">{settings.iconUrl}</p>
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => setSettings({ ...settings, iconUrl: undefined })}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Brand Color */}
-                  <div className="space-y-2">
-                    <Label htmlFor="brandColor">Brand Color</Label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        id="brandColor"
-                        type="color"
-                        value={settings.brandColor || '#3b82f6'}
-                        onChange={(e) => setSettings({ ...settings, brandColor: e.target.value })}
-                        className="w-16 h-10 p-1 cursor-pointer"
-                      />
-                      <Input
-                        type="text"
-                        value={settings.brandColor || '#3b82f6'}
-                        onChange={(e) => setSettings({ ...settings, brandColor: e.target.value })}
-                        className="flex-1"
-                        placeholder="#3b82f6"
-                      />
-                      <div 
-                        className="w-10 h-10 rounded-lg border"
-                        style={{ backgroundColor: settings.brandColor || '#3b82f6' }}
-                      />
-                    </div>
+                    <Button onClick={() => navigate('/admin/branding')}>
+                      Go to Branding
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
