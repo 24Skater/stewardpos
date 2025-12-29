@@ -799,9 +799,9 @@ export class PostgresAdapter {
     try {
       await client.query('BEGIN');
 
-      // Check if customer exists
+      // Check if customer exists and get their email (needed for orders lookup)
       const customerResult = await client.query(
-        'SELECT id FROM customers WHERE id = $1',
+        'SELECT id, email FROM customers WHERE id = $1',
         [id]
       );
 
@@ -809,23 +809,57 @@ export class PostgresAdapter {
         await client.query('ROLLBACK');
         return false;
       }
+      
+      const customerEmail = customerResult.rows[0].email;
+
+      // Get all return IDs for this customer (returns has customer_id)
+      const returnIds = await client.query(
+        'SELECT id FROM returns WHERE customer_id = $1',
+        [id]
+      );
+      
+      // Get all order IDs for this customer (orders uses customer_email, not customer_id)
+      const orderIds = customerEmail 
+        ? await client.query('SELECT id FROM orders WHERE customer_email = $1', [customerEmail])
+        : { rows: [] };
 
       // Delete all related records first (order matters due to foreign keys)
-      // 1. Delete return-related records first
-      await client.query('DELETE FROM refund_transactions WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
-      await client.query('DELETE FROM store_credits WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
-      await client.query('DELETE FROM receipt_emails WHERE return_id IN (SELECT id FROM returns WHERE customer_id = $1)', [id]);
-      // return_items cascades automatically
+      // 1. Delete refund_transactions by return_id or order_id
+      if (returnIds.rows.length > 0) {
+        const returnIdList = returnIds.rows.map(r => r.id);
+        await client.query('DELETE FROM refund_transactions WHERE return_id = ANY($1)', [returnIdList]);
+        await client.query('DELETE FROM receipt_emails WHERE return_id = ANY($1)', [returnIdList]);
+      }
+      if (orderIds.rows.length > 0) {
+        const orderIdList = orderIds.rows.map((o: any) => o.id);
+        await client.query('DELETE FROM refund_transactions WHERE order_id = ANY($1)', [orderIdList]);
+        await client.query('DELETE FROM receipt_emails WHERE order_id = ANY($1)', [orderIdList]);
+        // Delete discount_usage and loyalty_transactions for these orders
+        await client.query('DELETE FROM discount_usage WHERE order_id = ANY($1)', [orderIdList]);
+        await client.query('DELETE FROM loyalty_transactions WHERE order_id = ANY($1)', [orderIdList]);
+        // Delete store credits that were used on these orders
+        await client.query('DELETE FROM store_credits WHERE used_order_id = ANY($1)', [orderIdList]);
+      }
+      
+      // 2. Delete store_credits (has customer_id directly and return_id)
+      await client.query('DELETE FROM store_credits WHERE customer_id = $1', [id]);
+      if (returnIds.rows.length > 0) {
+        const returnIdList = returnIds.rows.map(r => r.id);
+        await client.query('DELETE FROM store_credits WHERE return_id = ANY($1)', [returnIdList]);
+      }
+      
+      // 3. Delete returns (return_items cascade automatically)
       await client.query('DELETE FROM returns WHERE customer_id = $1', [id]);
       
-      // 2. Delete order-related records
-      await client.query('DELETE FROM receipt_emails WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)', [id]);
-      
-      // 3. Delete quotes and orders
+      // 4. Delete quotes (has customer_id)
       await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
-      await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
       
-      // 4. Finally delete the customer
+      // 5. Delete orders (uses customer_email) - order_items cascade automatically
+      if (customerEmail) {
+        await client.query('DELETE FROM orders WHERE customer_email = $1', [customerEmail]);
+      }
+      
+      // 6. Finally delete the customer
       await client.query('DELETE FROM customers WHERE id = $1', [id]);
 
       await client.query('COMMIT');

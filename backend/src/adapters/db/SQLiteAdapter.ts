@@ -802,31 +802,59 @@ export class SQLiteAdapter {
 
   async permanentDeleteCustomer(id: string): Promise<boolean> {
     const transaction = this.db.transaction(() => {
-      // Check if customer exists
+      // Check if customer exists and get their email (needed for orders lookup)
       const customer = this.db
-        .prepare('SELECT id FROM customers WHERE id = ?')
-        .get(id);
+        .prepare('SELECT id, email FROM customers WHERE id = ?')
+        .get(id) as { id: string; email: string | null } | undefined;
 
       if (!customer) {
         return false;
       }
 
+      const customerEmail = customer.email;
+
+      // Get all return IDs for this customer (returns has customer_id)
+      const returnIds = this.db.prepare('SELECT id FROM returns WHERE customer_id = ?').all(id) as { id: string }[];
+      
+      // Get all order IDs for this customer (orders uses customer_email, not customer_id)
+      const orderIds = customerEmail
+        ? this.db.prepare('SELECT id FROM orders WHERE customer_email = ?').all(customerEmail) as { id: string }[]
+        : [];
+
       // Delete all related records first (order matters due to foreign keys)
-      // 1. Delete return-related records
-      this.db.prepare('DELETE FROM refund_transactions WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
-      this.db.prepare('DELETE FROM store_credits WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
-      this.db.prepare('DELETE FROM receipt_emails WHERE return_id IN (SELECT id FROM returns WHERE customer_id = ?)').run(id);
-      // return_items cascades automatically
+      // 1. Delete refund_transactions and receipt_emails by return_id or order_id
+      for (const ret of returnIds) {
+        this.db.prepare('DELETE FROM refund_transactions WHERE return_id = ?').run(ret.id);
+        this.db.prepare('DELETE FROM receipt_emails WHERE return_id = ?').run(ret.id);
+      }
+      for (const ord of orderIds) {
+        this.db.prepare('DELETE FROM refund_transactions WHERE order_id = ?').run(ord.id);
+        this.db.prepare('DELETE FROM receipt_emails WHERE order_id = ?').run(ord.id);
+        // Delete discount_usage and loyalty_transactions for these orders
+        this.db.prepare('DELETE FROM discount_usage WHERE order_id = ?').run(ord.id);
+        this.db.prepare('DELETE FROM loyalty_transactions WHERE order_id = ?').run(ord.id);
+        // Delete store credits that were used on these orders
+        this.db.prepare('DELETE FROM store_credits WHERE used_order_id = ?').run(ord.id);
+      }
+      
+      // 2. Delete store_credits (has customer_id directly and return_id)
+      this.db.prepare('DELETE FROM store_credits WHERE customer_id = ?').run(id);
+      for (const ret of returnIds) {
+        this.db.prepare('DELETE FROM store_credits WHERE return_id = ?').run(ret.id);
+      }
+      
+      // 3. Delete returns (return_items cascade automatically)
       this.db.prepare('DELETE FROM returns WHERE customer_id = ?').run(id);
       
-      // 2. Delete order-related records
-      this.db.prepare('DELETE FROM receipt_emails WHERE order_id IN (SELECT id FROM orders WHERE customer_id = ?)').run(id);
-      
-      // 3. Delete quotes and orders
+      // 4. Delete quotes (has customer_id)
       this.db.prepare('DELETE FROM quotes WHERE customer_id = ?').run(id);
-      this.db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id);
       
-      // 4. Finally delete the customer
+      // 5. Delete orders (uses customer_email) - order_items cascade automatically
+      if (customerEmail) {
+        this.db.prepare('DELETE FROM orders WHERE customer_email = ?').run(customerEmail);
+      }
+      
+      // 6. Finally delete the customer
       this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
 
       return true;
