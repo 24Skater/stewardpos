@@ -11,7 +11,8 @@ import {
   Shield, 
   FileText,
   LogOut,
-  ArrowLeft
+  ArrowLeft,
+  Code
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
@@ -30,6 +31,7 @@ const navItems = [
   { path: '/admin/services', label: 'Services', icon: Briefcase },
   { path: '/admin/settings', label: 'Settings', icon: Settings },
   { path: '/admin/roles', label: 'Roles & Users', icon: Shield },
+  { path: '/admin/components', label: 'Components', icon: Code },
   { path: '/admin/audit', label: 'Audit Log', icon: FileText },
 ];
 

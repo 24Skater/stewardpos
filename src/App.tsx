@@ -21,6 +21,7 @@ import AdminServices from "./pages/admin/AdminServices";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminRoles from "./pages/admin/AdminRoles";
 import AdminAudit from "./pages/admin/AdminAudit";
+import AdminComponents from "./pages/admin/AdminComponents";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/setup" element={<Setup />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/" element={
               <SetupGuard>
                 <Routes>
@@ -43,7 +45,6 @@ const App = () => (
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/services" element={<ServicesPos />} />
-                  <Route path="/login" element={<Login />} />
                   <Route path="/admin" element={<Dashboard />} />
                   <Route path="/admin/inventory" element={<AdminInventory />} />
                   <Route path="/admin/reports" element={<AdminReports />} />
@@ -53,6 +54,7 @@ const App = () => (
                   <Route path="/admin/settings" element={<AdminSettings />} />
                   <Route path="/admin/roles" element={<AdminRoles />} />
                   <Route path="/admin/audit" element={<AdminAudit />} />
+                  <Route path="/admin/components" element={<AdminComponents />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </SetupGuard>

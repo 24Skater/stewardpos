@@ -4,9 +4,13 @@ import { Seeder } from '../../services/seeder';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import config from '../../config';
+import componentsRoutes from './components';
 
 const router = Router();
 router.use(authenticate);
+
+// Component management routes
+router.use('/components', componentsRoutes);
 
 // Users
 router.get('/users', async (_req: AuthRequest, res: Response, next: NextFunction) => {

@@ -1,18 +1,19 @@
-# Base Docker Compose Configuration
-# This is the base configuration used by environment-specific overrides
-# For a standalone demo, use docker-compose.demo.yml instead
+# Demo/Development Docker Compose Configuration
+# This is a simplified setup for quick demos and local development
+# For production deployments, use the environment-specific configurations in environments/
 
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
+    container_name: stewardpos-db-demo
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-stewardpos}
       POSTGRES_USER: ${POSTGRES_USER:-stewardpos_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stewardpos_secure_password_123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demo_password_123}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_demo:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -21,18 +22,19 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - stewardpos-network
+      - stewardpos-demo-network
 
   # MinIO (S3-compatible storage)
   minio:
     image: minio/minio:latest
+    container_name: stewardpos-storage-demo
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_THIS_PASSWORD}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     command: server /data --console-address ":9001"
     volumes:
-      - minio_data:/data
+      - minio_data_demo:/data
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -42,17 +44,18 @@ services:
       timeout: 20s
       retries: 3
     networks:
-      - stewardpos-network
+      - stewardpos-demo-network
 
   # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: stewardpos-backend-demo
     restart: unless-stopped
     environment:
       # Server
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: production
       PORT: 3001
       HOST: 0.0.0.0
       
@@ -62,10 +65,10 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-stewardpos}
       DB_USER: ${DB_USER:-stewardpos_user}
-      DB_PASSWORD: ${DB_PASSWORD:-stewardpos_secure_password_123}
+      DB_PASSWORD: ${DB_PASSWORD:-demo_password_123}
       
       # JWT
-      JWT_SECRET: ${JWT_SECRET:-CHANGE_THIS_MIN_32_CHARACTERS_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-demo_jwt_secret_min_32_characters_long_change_me}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       
       # CORS
@@ -79,10 +82,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE: /app/logs/app.log
       
-      # Auto-seed database on first startup
+      # Auto-seed database on first startup (useful for demos)
       AUTO_SEED: ${AUTO_SEED:-true}
     volumes:
-      - backend_logs:/app/logs
+      - backend_logs_demo:/app/logs
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     depends_on:
@@ -95,7 +98,7 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - stewardpos-network
+      - stewardpos-demo-network
 
   # Frontend Application
   frontend:
@@ -104,12 +107,16 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
+    container_name: stewardpos-frontend-demo
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "8080:80"
     environment:
+      # API Configuration
       - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3001}
-      - VITE_APP_ENV=${VITE_APP_ENV:-production}
+      
+      # Features
+      - VITE_APP_ENV=demo
     depends_on:
       backend:
         condition: service_healthy
@@ -118,17 +125,17 @@ services:
       minio:
         condition: service_healthy
     networks:
-      - stewardpos-network
+      - stewardpos-demo-network
 
 volumes:
-  postgres_data:
+  postgres_data_demo:
     driver: local
-  minio_data:
+  minio_data_demo:
     driver: local
-  backend_logs:
+  backend_logs_demo:
     driver: local
 
 networks:
-  stewardpos-network:
+  stewardpos-demo-network:
     driver: bridge
 

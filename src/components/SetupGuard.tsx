@@ -26,20 +26,23 @@ export default function SetupGuard({ children }: SetupGuardProps) {
   const checkSetupStatus = async () => {
     try {
       const response = await apiClient.get<{ success: boolean; data: SetupStatus }>('/api/setup/status');
-      if (response.success) {
+      if (response && response.success && response.data) {
         if (response.data.needsSetup) {
           setNeedsSetup(true);
           navigate('/setup');
         } else {
           setNeedsSetup(false);
         }
+      } else {
+        // If response is not successful, assume setup is complete (don't block access)
+        console.warn('Setup status check returned unsuccessful response, allowing access');
+        setNeedsSetup(false);
       }
     } catch (error: any) {
-      // If setup endpoint doesn't exist or fails, assume setup is needed
-      // This handles the case where the backend hasn't been set up yet
-      console.warn('Failed to check setup status, assuming setup needed:', error);
-      setNeedsSetup(true);
-      navigate('/setup');
+      // If setup endpoint doesn't exist or fails, assume setup is complete
+      // This allows the app to work even if setup endpoint is unavailable
+      console.warn('Failed to check setup status, allowing access:', error);
+      setNeedsSetup(false);
     } finally {
       setChecking(false);
     }
