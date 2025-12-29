@@ -26,8 +26,22 @@ export class AuthenticationError extends AppError {
   }
 }
 
+// Alias for AuthenticationError
+export class UnauthorizedError extends AppError {
+  constructor(message: string = 'Unauthorized') {
+    super(message, 401);
+  }
+}
+
 export class AuthorizationError extends AppError {
   constructor(message: string = 'Insufficient permissions') {
+    super(message, 403);
+  }
+}
+
+// Alias for AuthorizationError
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'Forbidden') {
     super(message, 403);
   }
 }

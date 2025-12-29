@@ -81,6 +81,14 @@ services:
       
       # Auto-seed database on first startup (set to false to prevent duplicate seeding)
       AUTO_SEED: ${AUTO_SEED:-false}
+      
+      # MinIO (Object Storage)
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-CHANGE_THIS_PASSWORD}
+      MINIO_BUCKET: stewardpos
+      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-localhost:9000}
     volumes:
       - backend_logs:/app/logs
     ports:

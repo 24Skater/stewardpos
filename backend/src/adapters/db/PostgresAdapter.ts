@@ -1680,4 +1680,199 @@ export class PostgresAdapter {
       throw new DatabaseError('Failed to get orders');
     }
   }
+
+  // ===== API Key Operations =====
+  async getAllApiKeys(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
+         FROM api_keys ak
+         LEFT JOIN users u ON ak.created_by = u.id
+         ORDER BY ak.created_at DESC`
+      );
+
+      return result.rows.map((k) => ({
+        id: k.id,
+        name: k.name,
+        description: k.description,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: k.scopes || ['read'],
+        rateLimit: k.rate_limit,
+        isActive: k.is_active,
+        lastUsedAt: k.last_used_at ? new Date(k.last_used_at).getTime() : null,
+        expiresAt: k.expires_at ? new Date(k.expires_at).getTime() : null,
+        createdBy: k.created_by,
+        createdByName: k.created_by_name,
+        createdByEmail: k.created_by_email,
+        createdAt: new Date(k.created_at).getTime(),
+        updatedAt: new Date(k.updated_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error getting all API keys:', error);
+      throw new DatabaseError('Failed to get API keys');
+    }
+  }
+
+  async getApiKeyById(id: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
+         FROM api_keys ak
+         LEFT JOIN users u ON ak.created_by = u.id
+         WHERE ak.id = $1`,
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const k = result.rows[0];
+      return {
+        id: k.id,
+        name: k.name,
+        description: k.description,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: k.scopes || ['read'],
+        rateLimit: k.rate_limit,
+        isActive: k.is_active,
+        lastUsedAt: k.last_used_at ? new Date(k.last_used_at).getTime() : null,
+        expiresAt: k.expires_at ? new Date(k.expires_at).getTime() : null,
+        createdBy: k.created_by,
+        createdByName: k.created_by_name,
+        createdByEmail: k.created_by_email,
+        createdAt: new Date(k.created_at).getTime(),
+        updatedAt: new Date(k.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error getting API key by ID:', error);
+      throw new DatabaseError('Failed to get API key');
+    }
+  }
+
+  async getApiKeyByPrefix(prefix: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM api_keys WHERE key_prefix = $1 AND is_active = true`,
+        [prefix]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const k = result.rows[0];
+      return {
+        id: k.id,
+        name: k.name,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: k.scopes || ['read'],
+        rateLimit: k.rate_limit,
+        isActive: k.is_active,
+        expiresAt: k.expires_at ? new Date(k.expires_at).getTime() : null,
+      };
+    } catch (error) {
+      logger.error('Error getting API key by prefix:', error);
+      throw new DatabaseError('Failed to get API key');
+    }
+  }
+
+  async createApiKey(apiKey: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO api_keys (name, description, key_prefix, key_hash, scopes, rate_limit, expires_at, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          apiKey.name,
+          apiKey.description,
+          apiKey.keyPrefix,
+          apiKey.keyHash,
+          JSON.stringify(apiKey.scopes || ['read']),
+          apiKey.rateLimit || 1000,
+          apiKey.expiresAt ? new Date(apiKey.expiresAt) : null,
+          apiKey.createdBy,
+        ]
+      );
+
+      const k = result.rows[0];
+      return {
+        id: k.id,
+        name: k.name,
+        description: k.description,
+        keyPrefix: k.key_prefix,
+        scopes: k.scopes || ['read'],
+        rateLimit: k.rate_limit,
+        isActive: k.is_active,
+        expiresAt: k.expires_at ? new Date(k.expires_at).getTime() : null,
+        createdBy: k.created_by,
+        createdAt: new Date(k.created_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error creating API key:', error);
+      throw new DatabaseError('Failed to create API key');
+    }
+  }
+
+  async updateApiKey(id: string, apiKey: any): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE api_keys SET
+           name = COALESCE($1, name),
+           description = COALESCE($2, description),
+           scopes = COALESCE($3, scopes),
+           rate_limit = COALESCE($4, rate_limit),
+           is_active = COALESCE($5, is_active),
+           expires_at = COALESCE($6, expires_at),
+           updated_at = NOW()
+         WHERE id = $7
+         RETURNING *`,
+        [
+          apiKey.name,
+          apiKey.description,
+          apiKey.scopes ? JSON.stringify(apiKey.scopes) : null,
+          apiKey.rateLimit,
+          apiKey.isActive,
+          apiKey.expiresAt ? new Date(apiKey.expiresAt) : null,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.getApiKeyById(id);
+    } catch (error) {
+      logger.error('Error updating API key:', error);
+      throw new DatabaseError('Failed to update API key');
+    }
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
+        [id]
+      );
+    } catch (error) {
+      logger.error('Error updating API key last used:', error);
+    }
+  }
+
+  async deleteApiKey(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM api_keys WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting API key:', error);
+      throw new DatabaseError('Failed to delete API key');
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError } from '../../utils/errors';
 
@@ -1718,6 +1719,209 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error getting orders by customer email:', error);
       throw new DatabaseError('Failed to get orders');
+    }
+  }
+
+  // ===== API Key Operations =====
+  async getAllApiKeys(): Promise<any[]> {
+    try {
+      const keys = this.db
+        .prepare(
+          `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
+           FROM api_keys ak
+           LEFT JOIN users u ON ak.created_by = u.id
+           ORDER BY ak.created_at DESC`
+        )
+        .all() as any[];
+
+      return keys.map((k) => ({
+        id: k.id,
+        name: k.name,
+        description: k.description,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: JSON.parse(k.scopes || '["read"]'),
+        rateLimit: k.rate_limit,
+        isActive: !!k.is_active,
+        lastUsedAt: k.last_used_at,
+        expiresAt: k.expires_at,
+        createdBy: k.created_by,
+        createdByName: k.created_by_name,
+        createdByEmail: k.created_by_email,
+        createdAt: k.created_at,
+        updatedAt: k.updated_at,
+      }));
+    } catch (error) {
+      logger.error('Error getting all API keys:', error);
+      throw new DatabaseError('Failed to get API keys');
+    }
+  }
+
+  async getApiKeyById(id: string): Promise<any | null> {
+    try {
+      const k = this.db
+        .prepare(
+          `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
+           FROM api_keys ak
+           LEFT JOIN users u ON ak.created_by = u.id
+           WHERE ak.id = ?`
+        )
+        .get(id) as any;
+
+      if (!k) {
+        return null;
+      }
+
+      return {
+        id: k.id,
+        name: k.name,
+        description: k.description,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: JSON.parse(k.scopes || '["read"]'),
+        rateLimit: k.rate_limit,
+        isActive: !!k.is_active,
+        lastUsedAt: k.last_used_at,
+        expiresAt: k.expires_at,
+        createdBy: k.created_by,
+        createdByName: k.created_by_name,
+        createdByEmail: k.created_by_email,
+        createdAt: k.created_at,
+        updatedAt: k.updated_at,
+      };
+    } catch (error) {
+      logger.error('Error getting API key by ID:', error);
+      throw new DatabaseError('Failed to get API key');
+    }
+  }
+
+  async getApiKeyByPrefix(prefix: string): Promise<any | null> {
+    try {
+      const k = this.db
+        .prepare(`SELECT * FROM api_keys WHERE key_prefix = ? AND is_active = 1`)
+        .get(prefix) as any;
+
+      if (!k) {
+        return null;
+      }
+
+      return {
+        id: k.id,
+        name: k.name,
+        keyPrefix: k.key_prefix,
+        keyHash: k.key_hash,
+        scopes: JSON.parse(k.scopes || '["read"]'),
+        rateLimit: k.rate_limit,
+        isActive: !!k.is_active,
+        expiresAt: k.expires_at,
+      };
+    } catch (error) {
+      logger.error('Error getting API key by prefix:', error);
+      throw new DatabaseError('Failed to get API key');
+    }
+  }
+
+  async createApiKey(apiKey: any): Promise<any> {
+    try {
+      const now = Date.now();
+      const id = crypto.randomUUID();
+
+      this.db
+        .prepare(
+          `INSERT INTO api_keys (id, name, description, key_prefix, key_hash, scopes, rate_limit, expires_at, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          apiKey.name,
+          apiKey.description,
+          apiKey.keyPrefix,
+          apiKey.keyHash,
+          JSON.stringify(apiKey.scopes || ['read']),
+          apiKey.rateLimit || 1000,
+          apiKey.expiresAt,
+          apiKey.createdBy,
+          now,
+          now
+        );
+
+      return {
+        id,
+        name: apiKey.name,
+        description: apiKey.description,
+        keyPrefix: apiKey.keyPrefix,
+        scopes: apiKey.scopes || ['read'],
+        rateLimit: apiKey.rateLimit || 1000,
+        isActive: true,
+        expiresAt: apiKey.expiresAt,
+        createdBy: apiKey.createdBy,
+        createdAt: now,
+      };
+    } catch (error) {
+      logger.error('Error creating API key:', error);
+      throw new DatabaseError('Failed to create API key');
+    }
+  }
+
+  async updateApiKey(id: string, apiKey: any): Promise<any | null> {
+    try {
+      const existing = this.db
+        .prepare('SELECT * FROM api_keys WHERE id = ?')
+        .get(id) as any;
+
+      if (!existing) {
+        return null;
+      }
+
+      this.db
+        .prepare(
+          `UPDATE api_keys SET
+             name = COALESCE(?, name),
+             description = COALESCE(?, description),
+             scopes = COALESCE(?, scopes),
+             rate_limit = COALESCE(?, rate_limit),
+             is_active = COALESCE(?, is_active),
+             expires_at = COALESCE(?, expires_at),
+             updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          apiKey.name,
+          apiKey.description,
+          apiKey.scopes ? JSON.stringify(apiKey.scopes) : null,
+          apiKey.rateLimit,
+          apiKey.isActive !== undefined ? (apiKey.isActive ? 1 : 0) : null,
+          apiKey.expiresAt,
+          Date.now(),
+          id
+        );
+
+      return this.getApiKeyById(id);
+    } catch (error) {
+      logger.error('Error updating API key:', error);
+      throw new DatabaseError('Failed to update API key');
+    }
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    try {
+      this.db
+        .prepare(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`)
+        .run(Date.now(), id);
+    } catch (error) {
+      logger.error('Error updating API key last used:', error);
+    }
+  }
+
+  async deleteApiKey(id: string): Promise<boolean> {
+    try {
+      const result = this.db
+        .prepare('DELETE FROM api_keys WHERE id = ?')
+        .run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting API key:', error);
+      throw new DatabaseError('Failed to delete API key');
     }
   }
 }

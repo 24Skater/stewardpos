@@ -15,6 +15,8 @@ import ordersRoutes from './api/routes/orders';
 import customersRoutes from './api/routes/customers';
 import servicesRoutes from './api/routes/services';
 import quotesRoutes from './api/routes/quotes';
+import uploadRoutes from './api/routes/upload';
+import apiKeysRoutes from './api/routes/apikeys';
 import adminRoutes from './api/routes/admin';
 import healthRoutes from './api/routes/health';
 import setupRoutes from './api/routes/setup';
@@ -76,6 +78,8 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/quotes', quotesRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/admin/api-keys', apiKeysRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 404 handler

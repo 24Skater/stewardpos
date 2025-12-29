@@ -23,6 +23,7 @@ import AdminRoles from "./pages/admin/AdminRoles";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminComponents from "./pages/admin/AdminComponents";
 import AdminQuotes from "./pages/admin/AdminQuotes";
+import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/admin/roles" element={<AdminRoles />} />
               <Route path="/admin/audit" element={<AdminAudit />} />
               <Route path="/admin/components" element={<AdminComponents />} />
+              <Route path="/admin/api-keys" element={<AdminApiKeys />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </SetupGuard>
