@@ -602,4 +602,580 @@ export class PostgresAdapter {
     await this.pool.end();
     logger.info('PostgreSQL connection pool closed');
   }
+
+  // ===== Service Operations =====
+  async getAllServices(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM services ORDER BY name ASC'
+      );
+
+      return result.rows.map((s) => ({
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        unitType: s.unit_type,
+        isActive: s.is_active,
+        createdAt: new Date(s.created_at).getTime(),
+        updatedAt: new Date(s.updated_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error getting all services:', error);
+      throw new DatabaseError('Failed to get services');
+    }
+  }
+
+  async getServiceById(id: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM services WHERE id = $1',
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const s = result.rows[0];
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        unitType: s.unit_type,
+        isActive: s.is_active,
+        createdAt: new Date(s.created_at).getTime(),
+        updatedAt: new Date(s.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error getting service by ID:', error);
+      throw new DatabaseError('Failed to get service');
+    }
+  }
+
+  async createService(service: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO services (name, category, description, base_price, unit_type, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          service.name,
+          service.category,
+          service.description,
+          service.basePrice,
+          service.unitType || 'flat',
+          service.isActive !== false,
+        ]
+      );
+
+      const s = result.rows[0];
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        unitType: s.unit_type,
+        isActive: s.is_active,
+        createdAt: new Date(s.created_at).getTime(),
+        updatedAt: new Date(s.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error creating service:', error);
+      throw new DatabaseError('Failed to create service');
+    }
+  }
+
+  async updateService(id: string, service: any): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE services 
+         SET name = COALESCE($1, name),
+             category = COALESCE($2, category),
+             description = COALESCE($3, description),
+             base_price = COALESCE($4, base_price),
+             unit_type = COALESCE($5, unit_type),
+             is_active = COALESCE($6, is_active),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $7
+         RETURNING *`,
+        [
+          service.name,
+          service.category,
+          service.description,
+          service.basePrice,
+          service.unitType,
+          service.isActive,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const s = result.rows[0];
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        unitType: s.unit_type,
+        isActive: s.is_active,
+        createdAt: new Date(s.created_at).getTime(),
+        updatedAt: new Date(s.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error updating service:', error);
+      throw new DatabaseError('Failed to update service');
+    }
+  }
+
+  async deleteService(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM services WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting service:', error);
+      throw new DatabaseError('Failed to delete service');
+    }
+  }
+
+  // ===== User Operations =====
+  async getAllUsers(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT u.*, 
+                COALESCE(array_agg(r.id) FILTER (WHERE r.id IS NOT NULL), ARRAY[]::uuid[]) as role_ids,
+                COALESCE(json_agg(json_build_object(
+                  'id', r.id,
+                  'name', r.name,
+                  'systemRole', r.system_role,
+                  'permissions', r.permissions
+                )) FILTER (WHERE r.id IS NOT NULL), '[]'::json) as roles
+         FROM users u
+         LEFT JOIN user_roles ur ON u.id = ur.user_id
+         LEFT JOIN roles r ON ur.role_id = r.id
+         GROUP BY u.id
+         ORDER BY u.name ASC`
+      );
+
+      return result.rows.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        status: u.status,
+        roleIds: u.role_ids || [],
+        roles: u.roles || [],
+        lastLoginAt: u.last_login_at ? new Date(u.last_login_at).getTime() : null,
+        createdAt: new Date(u.created_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error getting all users:', error);
+      throw new DatabaseError('Failed to get users');
+    }
+  }
+
+  async createUser(user: any): Promise<any> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(
+        `INSERT INTO users (email, password_hash, name, status)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [user.email, user.passwordHash, user.name, user.status || 'active']
+      );
+
+      const newUser = result.rows[0];
+
+      // Assign roles if provided
+      if (user.roleIds && user.roleIds.length > 0) {
+        for (const roleId of user.roleIds) {
+          await client.query(
+            'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+            [newUser.id, roleId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      return {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        status: newUser.status,
+        roleIds: user.roleIds || [],
+        createdAt: new Date(newUser.created_at).getTime(),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error creating user:', error);
+      throw new DatabaseError('Failed to create user');
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateUser(id: string, user: any): Promise<any | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (user.name !== undefined) {
+        updates.push(`name = $${paramIndex++}`);
+        values.push(user.name);
+      }
+      if (user.email !== undefined) {
+        updates.push(`email = $${paramIndex++}`);
+        values.push(user.email);
+      }
+      if (user.passwordHash !== undefined) {
+        updates.push(`password_hash = $${paramIndex++}`);
+        values.push(user.passwordHash);
+      }
+      if (user.status !== undefined) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(user.status);
+      }
+
+      values.push(id);
+
+      const result = await client.query(
+        `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      // Update roles if provided
+      if (user.roleIds !== undefined) {
+        await client.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
+        for (const roleId of user.roleIds) {
+          await client.query(
+            'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
+            [id, roleId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      const updatedUser = result.rows[0];
+      return {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        status: updatedUser.status,
+        roleIds: user.roleIds || [],
+        createdAt: new Date(updatedUser.created_at).getTime(),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error updating user:', error);
+      throw new DatabaseError('Failed to update user');
+    } finally {
+      client.release();
+    }
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM users WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting user:', error);
+      throw new DatabaseError('Failed to delete user');
+    }
+  }
+
+  // ===== Role Operations =====
+  async getAllRoles(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM roles ORDER BY name ASC'
+      );
+
+      return result.rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: typeof r.permissions === 'string' 
+          ? JSON.parse(r.permissions) 
+          : r.permissions,
+      }));
+    } catch (error) {
+      logger.error('Error getting all roles:', error);
+      throw new DatabaseError('Failed to get roles');
+    }
+  }
+
+  async getRoleById(id: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM roles WHERE id = $1',
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const r = result.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: typeof r.permissions === 'string' 
+          ? JSON.parse(r.permissions) 
+          : r.permissions,
+      };
+    } catch (error) {
+      logger.error('Error getting role by ID:', error);
+      throw new DatabaseError('Failed to get role');
+    }
+  }
+
+  async createRole(role: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO roles (name, system_role, permissions)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [role.name, role.systemRole, JSON.stringify(role.permissions)]
+      );
+
+      const r = result.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: typeof r.permissions === 'string' 
+          ? JSON.parse(r.permissions) 
+          : r.permissions,
+      };
+    } catch (error) {
+      logger.error('Error creating role:', error);
+      throw new DatabaseError('Failed to create role');
+    }
+  }
+
+  async updateRole(id: string, role: any): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE roles 
+         SET name = COALESCE($1, name),
+             system_role = COALESCE($2, system_role),
+             permissions = COALESCE($3, permissions)
+         WHERE id = $4
+         RETURNING *`,
+        [role.name, role.systemRole, role.permissions ? JSON.stringify(role.permissions) : null, id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const r = result.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: typeof r.permissions === 'string' 
+          ? JSON.parse(r.permissions) 
+          : r.permissions,
+      };
+    } catch (error) {
+      logger.error('Error updating role:', error);
+      throw new DatabaseError('Failed to update role');
+    }
+  }
+
+  async deleteRole(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM roles WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting role:', error);
+      throw new DatabaseError('Failed to delete role');
+    }
+  }
+
+  // ===== Settings Operations =====
+  async getSettings(): Promise<any | null> {
+    try {
+      const result = await this.pool.query('SELECT * FROM settings WHERE id = 1');
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const s = result.rows[0];
+      return {
+        taxRateDefault: s.tax_rate_default ? parseFloat(s.tax_rate_default) : 0,
+        storeName: s.store_name,
+        storeEmail: s.store_email,
+        storePhone: s.store_phone,
+        timezone: s.timezone,
+        logoUrl: s.logo_url,
+        iconUrl: s.icon_url,
+        brandColor: s.brand_color,
+        config: s.config || {},
+      };
+    } catch (error) {
+      logger.error('Error getting settings:', error);
+      throw new DatabaseError('Failed to get settings');
+    }
+  }
+
+  async updateSettings(settings: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO settings (id, tax_rate_default, store_name, store_email, store_phone, timezone, logo_url, icon_url, brand_color, config)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           tax_rate_default = COALESCE($1, settings.tax_rate_default),
+           store_name = COALESCE($2, settings.store_name),
+           store_email = COALESCE($3, settings.store_email),
+           store_phone = COALESCE($4, settings.store_phone),
+           timezone = COALESCE($5, settings.timezone),
+           logo_url = COALESCE($6, settings.logo_url),
+           icon_url = COALESCE($7, settings.icon_url),
+           brand_color = COALESCE($8, settings.brand_color),
+           config = COALESCE($9, settings.config)
+         RETURNING *`,
+        [
+          settings.taxRateDefault,
+          settings.storeName,
+          settings.storeEmail,
+          settings.storePhone,
+          settings.timezone,
+          settings.logoUrl,
+          settings.iconUrl,
+          settings.brandColor,
+          settings.config ? JSON.stringify(settings.config) : null,
+        ]
+      );
+
+      const s = result.rows[0];
+      return {
+        taxRateDefault: s.tax_rate_default ? parseFloat(s.tax_rate_default) : 0,
+        storeName: s.store_name,
+        storeEmail: s.store_email,
+        storePhone: s.store_phone,
+        timezone: s.timezone,
+        logoUrl: s.logo_url,
+        iconUrl: s.icon_url,
+        brandColor: s.brand_color,
+        config: s.config || {},
+      };
+    } catch (error) {
+      logger.error('Error updating settings:', error);
+      throw new DatabaseError('Failed to update settings');
+    }
+  }
+
+  // ===== Audit Log Operations =====
+  async createAuditLog(log: any): Promise<any> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO audit_logs (user_id, action, entity, entity_id, before, after)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [
+          log.userId,
+          log.action,
+          log.entity,
+          log.entityId,
+          log.before ? JSON.stringify(log.before) : null,
+          log.after ? JSON.stringify(log.after) : null,
+        ]
+      );
+
+      const l = result.rows[0];
+      return {
+        id: l.id,
+        timestamp: new Date(l.timestamp).getTime(),
+        userId: l.user_id,
+        action: l.action,
+        entity: l.entity,
+        entityId: l.entity_id,
+        before: l.before,
+        after: l.after,
+      };
+    } catch (error) {
+      logger.error('Error creating audit log:', error);
+      throw new DatabaseError('Failed to create audit log');
+    }
+  }
+
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<any[]> {
+    try {
+      let query = `
+        SELECT al.*, u.name as user_name, u.email as user_email
+        FROM audit_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+      `;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (options?.userId) {
+        query += ` WHERE al.user_id = $${paramIndex++}`;
+        params.push(options.userId);
+      }
+
+      query += ' ORDER BY al.timestamp DESC';
+
+      if (options?.limit) {
+        query += ` LIMIT $${paramIndex++}`;
+        params.push(options.limit);
+      }
+
+      if (options?.offset) {
+        query += ` OFFSET $${paramIndex++}`;
+        params.push(options.offset);
+      }
+
+      const result = await this.pool.query(query, params);
+
+      return result.rows.map((l) => ({
+        id: l.id,
+        timestamp: new Date(l.timestamp).getTime(),
+        userId: l.user_id,
+        userName: l.user_name,
+        userEmail: l.user_email,
+        action: l.action,
+        entity: l.entity,
+        entityId: l.entity_id,
+        before: l.before,
+        after: l.after,
+      }));
+    } catch (error) {
+      logger.error('Error getting audit logs:', error);
+      throw new DatabaseError('Failed to get audit logs');
+    }
+  }
 }

@@ -306,6 +306,17 @@ export class Seeder {
 
     for (const product of products) {
       if (this.adapter === 'postgres' && this.pgPool) {
+        // Check if product already exists by barcode
+        const existing = await this.pgPool.query(
+          'SELECT id FROM products WHERE barcode = $1',
+          [product.barcode]
+        );
+
+        if (existing.rows.length > 0) {
+          // Product exists, skip seeding
+          continue;
+        }
+
         const result = await this.pgPool.query(
           `INSERT INTO products (name, description, category, base_price, barcode) 
            VALUES ($1, $2, $3, $4, $5) 
@@ -319,15 +330,26 @@ export class Seeder {
           ]
         );
 
-        // Add default variant
+        // Add default variant only if product was inserted
         if (result.rows.length > 0) {
           await this.pgPool.query(
             `INSERT INTO product_variants (product_id, stock, enabled) 
-             VALUES ($1, 100, true)`,
+             VALUES ($1, 100, true)
+             ON CONFLICT DO NOTHING`,
             [result.rows[0].id]
           );
         }
       } else if (this.adapter === 'sqlite' && this.sqliteDb) {
+        // Check if product already exists by barcode
+        const existing = this.sqliteDb
+          .prepare('SELECT id FROM products WHERE barcode = ?')
+          .get(product.barcode) as { id: string } | undefined;
+
+        if (existing) {
+          // Product exists, skip seeding
+          continue;
+        }
+
         const result = this.sqliteDb
           .prepare(
             `INSERT INTO products (name, description, category, base_price, barcode) 
@@ -341,11 +363,11 @@ export class Seeder {
             product.barcode
           );
 
-        // Add default variant
+        // Add default variant only if product was inserted
         if (result.lastInsertRowid) {
           this.sqliteDb
             .prepare(
-              `INSERT INTO product_variants (product_id, stock, enabled) 
+              `INSERT OR IGNORE INTO product_variants (product_id, stock, enabled) 
                VALUES (?, 100, 1)`
             )
             .run(result.lastInsertRowid);

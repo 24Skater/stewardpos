@@ -79,8 +79,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE: /app/logs/app.log
       
-      # Auto-seed database on first startup
-      AUTO_SEED: ${AUTO_SEED:-true}
+      # Auto-seed database on first startup (set to false to prevent duplicate seeding)
+      AUTO_SEED: ${AUTO_SEED:-false}
     volumes:
       - backend_logs:/app/logs
     ports:

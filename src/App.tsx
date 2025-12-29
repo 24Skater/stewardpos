@@ -33,33 +33,29 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/setup" element={<Setup />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={
-              <SetupGuard>
-                <Routes>
-                  <Route path="/" element={<POS />} />
-                  <Route path="/pos" element={<POS />} />
-                  <Route path="/inventory" element={<Inventory />} />
-                  <Route path="/reports" element={<Reports />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/services" element={<ServicesPos />} />
-                  <Route path="/admin" element={<Dashboard />} />
-                  <Route path="/admin/inventory" element={<AdminInventory />} />
-                  <Route path="/admin/reports" element={<AdminReports />} />
-                  <Route path="/admin/exports" element={<AdminExports />} />
-                  <Route path="/admin/customers" element={<AdminCustomers />} />
-                  <Route path="/admin/services" element={<AdminServices />} />
-                  <Route path="/admin/settings" element={<AdminSettings />} />
-                  <Route path="/admin/roles" element={<AdminRoles />} />
-                  <Route path="/admin/audit" element={<AdminAudit />} />
-                  <Route path="/admin/components" element={<AdminComponents />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </SetupGuard>
-            } />
-          </Routes>
+          <SetupGuard>
+            <Routes>
+              <Route path="/setup" element={<Setup />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<POS />} />
+              <Route path="/pos" element={<POS />} />
+              <Route path="/inventory" element={<Inventory />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/services" element={<ServicesPos />} />
+              <Route path="/admin" element={<Dashboard />} />
+              <Route path="/admin/inventory" element={<AdminInventory />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
+              <Route path="/admin/exports" element={<AdminExports />} />
+              <Route path="/admin/customers" element={<AdminCustomers />} />
+              <Route path="/admin/services" element={<AdminServices />} />
+              <Route path="/admin/settings" element={<AdminSettings />} />
+              <Route path="/admin/roles" element={<AdminRoles />} />
+              <Route path="/admin/audit" element={<AdminAudit />} />
+              <Route path="/admin/components" element={<AdminComponents />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </SetupGuard>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

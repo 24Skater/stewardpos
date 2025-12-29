@@ -370,11 +370,13 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
     }
 
     // Step 4: Seed demo data if demo mode
+    // Note: Seeder now checks for existing products to prevent duplicates
     if (setupData.demoMode) {
       logger.info('Seeding demo data...');
       try {
         const seeder = new Seeder();
         await seeder.seed();
+        await seeder.close();
       } catch (error: any) {
         logger.warn('Demo seeding failed (non-critical):', error);
       }

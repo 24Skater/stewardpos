@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { apiClient } from '@/lib/api-client';
 import { Loader2 } from 'lucide-react';
 
@@ -14,14 +14,23 @@ interface SetupGuardProps {
   children: React.ReactNode;
 }
 
+// Routes that don't require setup check
+const PUBLIC_ROUTES = ['/setup', '/login'];
+
 export default function SetupGuard({ children }: SetupGuardProps) {
   const [checking, setChecking] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
+    // Skip setup check for public routes
+    if (PUBLIC_ROUTES.includes(location.pathname)) {
+      setChecking(false);
+      return;
+    }
     checkSetupStatus();
-  }, []);
+  }, [location.pathname]);
 
   const checkSetupStatus = async () => {
     try {
@@ -48,12 +57,17 @@ export default function SetupGuard({ children }: SetupGuardProps) {
     }
   };
 
+  // Don't show loading for public routes
+  if (PUBLIC_ROUTES.includes(location.pathname)) {
+    return <>{children}</>;
+  }
+
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Checking setup status...</p>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );

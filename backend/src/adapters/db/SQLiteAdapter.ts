@@ -610,4 +610,636 @@ export class SQLiteAdapter {
     this.db.close();
     logger.info('SQLite connection closed');
   }
+
+  // ===== Service Operations =====
+  async getAllServices(): Promise<any[]> {
+    try {
+      const services = this.db
+        .prepare('SELECT * FROM services ORDER BY name ASC')
+        .all() as any[];
+
+      return services.map((s) => ({
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price,
+        unitType: s.unit_type,
+        isActive: s.is_active === 1,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      }));
+    } catch (error) {
+      logger.error('Error getting all services:', error);
+      throw new DatabaseError('Failed to get services');
+    }
+  }
+
+  async getServiceById(id: string): Promise<any | null> {
+    try {
+      const s = this.db
+        .prepare('SELECT * FROM services WHERE id = ?')
+        .get(id) as any;
+
+      if (!s) {
+        return null;
+      }
+
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price,
+        unitType: s.unit_type,
+        isActive: s.is_active === 1,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      };
+    } catch (error) {
+      logger.error('Error getting service by ID:', error);
+      throw new DatabaseError('Failed to get service');
+    }
+  }
+
+  async createService(service: any): Promise<any> {
+    try {
+      const now = Date.now();
+      const result = this.db
+        .prepare(
+          `INSERT INTO services (name, category, description, base_price, unit_type, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          service.name,
+          service.category,
+          service.description,
+          service.basePrice,
+          service.unitType || 'flat',
+          service.isActive !== false ? 1 : 0,
+          now,
+          now
+        );
+
+      const s = this.db
+        .prepare('SELECT * FROM services WHERE rowid = ?')
+        .get(result.lastInsertRowid) as any;
+
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price,
+        unitType: s.unit_type,
+        isActive: s.is_active === 1,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      };
+    } catch (error) {
+      logger.error('Error creating service:', error);
+      throw new DatabaseError('Failed to create service');
+    }
+  }
+
+  async updateService(id: string, service: any): Promise<any | null> {
+    try {
+      const now = Date.now();
+      const existing = this.db
+        .prepare('SELECT * FROM services WHERE id = ?')
+        .get(id) as any;
+
+      if (!existing) {
+        return null;
+      }
+
+      this.db
+        .prepare(
+          `UPDATE services SET 
+             name = COALESCE(?, name),
+             category = COALESCE(?, category),
+             description = COALESCE(?, description),
+             base_price = COALESCE(?, base_price),
+             unit_type = COALESCE(?, unit_type),
+             is_active = COALESCE(?, is_active),
+             updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          service.name,
+          service.category,
+          service.description,
+          service.basePrice,
+          service.unitType,
+          service.isActive !== undefined ? (service.isActive ? 1 : 0) : null,
+          now,
+          id
+        );
+
+      const s = this.db
+        .prepare('SELECT * FROM services WHERE id = ?')
+        .get(id) as any;
+
+      return {
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        description: s.description,
+        basePrice: s.base_price,
+        unitType: s.unit_type,
+        isActive: s.is_active === 1,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      };
+    } catch (error) {
+      logger.error('Error updating service:', error);
+      throw new DatabaseError('Failed to update service');
+    }
+  }
+
+  async deleteService(id: string): Promise<boolean> {
+    try {
+      const result = this.db
+        .prepare('DELETE FROM services WHERE id = ?')
+        .run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting service:', error);
+      throw new DatabaseError('Failed to delete service');
+    }
+  }
+
+  // ===== User Operations =====
+  async getAllUsers(): Promise<any[]> {
+    try {
+      const users = this.db
+        .prepare('SELECT * FROM users ORDER BY name ASC')
+        .all() as any[];
+
+      return users.map((u) => {
+        // Get roles for user
+        const roleIds = this.db
+          .prepare('SELECT role_id FROM user_roles WHERE user_id = ?')
+          .all(u.id) as any[];
+        
+        const roles = [];
+        for (const { role_id } of roleIds) {
+          const role = this.db
+            .prepare('SELECT * FROM roles WHERE id = ?')
+            .get(role_id) as any;
+          if (role) {
+            roles.push({
+              id: role.id,
+              name: role.name,
+              systemRole: role.system_role,
+              permissions: JSON.parse(role.permissions || '{}'),
+            });
+          }
+        }
+
+        return {
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          status: u.status,
+          roleIds: roleIds.map((r: any) => r.role_id),
+          roles,
+          lastLoginAt: u.last_login_at,
+          createdAt: u.created_at,
+        };
+      });
+    } catch (error) {
+      logger.error('Error getting all users:', error);
+      throw new DatabaseError('Failed to get users');
+    }
+  }
+
+  async createUser(user: any): Promise<any> {
+    const transaction = this.db.transaction(() => {
+      const now = Date.now();
+      const result = this.db
+        .prepare(
+          `INSERT INTO users (email, password_hash, name, status, created_at)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(user.email, user.passwordHash, user.name, user.status || 'active', now);
+
+      const newUser = this.db
+        .prepare('SELECT * FROM users WHERE rowid = ?')
+        .get(result.lastInsertRowid) as any;
+
+      // Assign roles if provided
+      if (user.roleIds && user.roleIds.length > 0) {
+        for (const roleId of user.roleIds) {
+          this.db
+            .prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
+            .run(newUser.id, roleId);
+        }
+      }
+
+      return {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        status: newUser.status,
+        roleIds: user.roleIds || [],
+        createdAt: newUser.created_at,
+      };
+    });
+
+    try {
+      return transaction();
+    } catch (error) {
+      logger.error('Error creating user:', error);
+      throw new DatabaseError('Failed to create user');
+    }
+  }
+
+  async updateUser(id: string, user: any): Promise<any | null> {
+    const transaction = this.db.transaction(() => {
+      const existing = this.db
+        .prepare('SELECT * FROM users WHERE id = ?')
+        .get(id) as any;
+
+      if (!existing) {
+        return null;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if (user.name !== undefined) {
+        updates.push('name = ?');
+        values.push(user.name);
+      }
+      if (user.email !== undefined) {
+        updates.push('email = ?');
+        values.push(user.email);
+      }
+      if (user.passwordHash !== undefined) {
+        updates.push('password_hash = ?');
+        values.push(user.passwordHash);
+      }
+      if (user.status !== undefined) {
+        updates.push('status = ?');
+        values.push(user.status);
+      }
+
+      if (updates.length > 0) {
+        values.push(id);
+        this.db
+          .prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`)
+          .run(...values);
+      }
+
+      // Update roles if provided
+      if (user.roleIds !== undefined) {
+        this.db
+          .prepare('DELETE FROM user_roles WHERE user_id = ?')
+          .run(id);
+        for (const roleId of user.roleIds) {
+          this.db
+            .prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
+            .run(id, roleId);
+        }
+      }
+
+      const updatedUser = this.db
+        .prepare('SELECT * FROM users WHERE id = ?')
+        .get(id) as any;
+
+      return {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        status: updatedUser.status,
+        roleIds: user.roleIds || [],
+        createdAt: updatedUser.created_at,
+      };
+    });
+
+    try {
+      return transaction();
+    } catch (error) {
+      logger.error('Error updating user:', error);
+      throw new DatabaseError('Failed to update user');
+    }
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    try {
+      const result = this.db
+        .prepare('DELETE FROM users WHERE id = ?')
+        .run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting user:', error);
+      throw new DatabaseError('Failed to delete user');
+    }
+  }
+
+  // ===== Role Operations =====
+  async getAllRoles(): Promise<any[]> {
+    try {
+      const roles = this.db
+        .prepare('SELECT * FROM roles ORDER BY name ASC')
+        .all() as any[];
+
+      return roles.map((r) => ({
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: JSON.parse(r.permissions || '{}'),
+      }));
+    } catch (error) {
+      logger.error('Error getting all roles:', error);
+      throw new DatabaseError('Failed to get roles');
+    }
+  }
+
+  async getRoleById(id: string): Promise<any | null> {
+    try {
+      const r = this.db
+        .prepare('SELECT * FROM roles WHERE id = ?')
+        .get(id) as any;
+
+      if (!r) {
+        return null;
+      }
+
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: JSON.parse(r.permissions || '{}'),
+      };
+    } catch (error) {
+      logger.error('Error getting role by ID:', error);
+      throw new DatabaseError('Failed to get role');
+    }
+  }
+
+  async createRole(role: any): Promise<any> {
+    try {
+      const result = this.db
+        .prepare(
+          `INSERT INTO roles (name, system_role, permissions)
+           VALUES (?, ?, ?)`
+        )
+        .run(role.name, role.systemRole, JSON.stringify(role.permissions));
+
+      const r = this.db
+        .prepare('SELECT * FROM roles WHERE rowid = ?')
+        .get(result.lastInsertRowid) as any;
+
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: JSON.parse(r.permissions || '{}'),
+      };
+    } catch (error) {
+      logger.error('Error creating role:', error);
+      throw new DatabaseError('Failed to create role');
+    }
+  }
+
+  async updateRole(id: string, role: any): Promise<any | null> {
+    try {
+      const existing = this.db
+        .prepare('SELECT * FROM roles WHERE id = ?')
+        .get(id) as any;
+
+      if (!existing) {
+        return null;
+      }
+
+      this.db
+        .prepare(
+          `UPDATE roles SET 
+             name = COALESCE(?, name),
+             system_role = COALESCE(?, system_role),
+             permissions = COALESCE(?, permissions)
+           WHERE id = ?`
+        )
+        .run(
+          role.name,
+          role.systemRole,
+          role.permissions ? JSON.stringify(role.permissions) : null,
+          id
+        );
+
+      const r = this.db
+        .prepare('SELECT * FROM roles WHERE id = ?')
+        .get(id) as any;
+
+      return {
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+        permissions: JSON.parse(r.permissions || '{}'),
+      };
+    } catch (error) {
+      logger.error('Error updating role:', error);
+      throw new DatabaseError('Failed to update role');
+    }
+  }
+
+  async deleteRole(id: string): Promise<boolean> {
+    try {
+      const result = this.db
+        .prepare('DELETE FROM roles WHERE id = ?')
+        .run(id);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error deleting role:', error);
+      throw new DatabaseError('Failed to delete role');
+    }
+  }
+
+  // ===== Settings Operations =====
+  async getSettings(): Promise<any | null> {
+    try {
+      const s = this.db
+        .prepare('SELECT * FROM settings WHERE id = 1')
+        .get() as any;
+
+      if (!s) {
+        return null;
+      }
+
+      return {
+        taxRateDefault: s.tax_rate_default,
+        storeName: s.store_name,
+        storeEmail: s.store_email,
+        storePhone: s.store_phone,
+        timezone: s.timezone,
+        logoUrl: s.logo_url,
+        iconUrl: s.icon_url,
+        brandColor: s.brand_color,
+        config: s.config ? JSON.parse(s.config) : {},
+      };
+    } catch (error) {
+      logger.error('Error getting settings:', error);
+      throw new DatabaseError('Failed to get settings');
+    }
+  }
+
+  async updateSettings(settings: any): Promise<any> {
+    try {
+      // Try to insert or update settings
+      const existing = this.db
+        .prepare('SELECT * FROM settings WHERE id = 1')
+        .get();
+
+      if (existing) {
+        this.db
+          .prepare(
+            `UPDATE settings SET 
+               tax_rate_default = COALESCE(?, tax_rate_default),
+               store_name = COALESCE(?, store_name),
+               store_email = COALESCE(?, store_email),
+               store_phone = COALESCE(?, store_phone),
+               timezone = COALESCE(?, timezone),
+               logo_url = COALESCE(?, logo_url),
+               icon_url = COALESCE(?, icon_url),
+               brand_color = COALESCE(?, brand_color),
+               config = COALESCE(?, config)
+             WHERE id = 1`
+          )
+          .run(
+            settings.taxRateDefault,
+            settings.storeName,
+            settings.storeEmail,
+            settings.storePhone,
+            settings.timezone,
+            settings.logoUrl,
+            settings.iconUrl,
+            settings.brandColor,
+            settings.config ? JSON.stringify(settings.config) : null
+          );
+      } else {
+        this.db
+          .prepare(
+            `INSERT INTO settings (id, tax_rate_default, store_name, store_email, store_phone, timezone, logo_url, icon_url, brand_color, config)
+             VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            settings.taxRateDefault || 0,
+            settings.storeName || 'My Store',
+            settings.storeEmail,
+            settings.storePhone,
+            settings.timezone || 'UTC',
+            settings.logoUrl,
+            settings.iconUrl,
+            settings.brandColor,
+            settings.config ? JSON.stringify(settings.config) : null
+          );
+      }
+
+      const s = this.db
+        .prepare('SELECT * FROM settings WHERE id = 1')
+        .get() as any;
+
+      return {
+        taxRateDefault: s.tax_rate_default,
+        storeName: s.store_name,
+        storeEmail: s.store_email,
+        storePhone: s.store_phone,
+        timezone: s.timezone,
+        logoUrl: s.logo_url,
+        iconUrl: s.icon_url,
+        brandColor: s.brand_color,
+        config: s.config ? JSON.parse(s.config) : {},
+      };
+    } catch (error) {
+      logger.error('Error updating settings:', error);
+      throw new DatabaseError('Failed to update settings');
+    }
+  }
+
+  // ===== Audit Log Operations =====
+  async createAuditLog(log: any): Promise<any> {
+    try {
+      const now = Date.now();
+      const result = this.db
+        .prepare(
+          `INSERT INTO audit_logs (timestamp, user_id, action, entity, entity_id, before, after)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          now,
+          log.userId,
+          log.action,
+          log.entity,
+          log.entityId,
+          log.before ? JSON.stringify(log.before) : null,
+          log.after ? JSON.stringify(log.after) : null
+        );
+
+      const l = this.db
+        .prepare('SELECT * FROM audit_logs WHERE rowid = ?')
+        .get(result.lastInsertRowid) as any;
+
+      return {
+        id: l.id,
+        timestamp: l.timestamp,
+        userId: l.user_id,
+        action: l.action,
+        entity: l.entity,
+        entityId: l.entity_id,
+        before: l.before ? JSON.parse(l.before) : null,
+        after: l.after ? JSON.parse(l.after) : null,
+      };
+    } catch (error) {
+      logger.error('Error creating audit log:', error);
+      throw new DatabaseError('Failed to create audit log');
+    }
+  }
+
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<any[]> {
+    try {
+      let query = `
+        SELECT al.*, u.name as user_name, u.email as user_email
+        FROM audit_logs al
+        LEFT JOIN users u ON al.user_id = u.id
+      `;
+      const params: any[] = [];
+
+      if (options?.userId) {
+        query += ' WHERE al.user_id = ?';
+        params.push(options.userId);
+      }
+
+      query += ' ORDER BY al.timestamp DESC';
+
+      if (options?.limit) {
+        query += ' LIMIT ?';
+        params.push(options.limit);
+      }
+
+      if (options?.offset) {
+        query += ' OFFSET ?';
+        params.push(options.offset);
+      }
+
+      const logs = this.db.prepare(query).all(...params) as any[];
+
+      return logs.map((l) => ({
+        id: l.id,
+        timestamp: l.timestamp,
+        userId: l.user_id,
+        userName: l.user_name,
+        userEmail: l.user_email,
+        action: l.action,
+        entity: l.entity,
+        entityId: l.entity_id,
+        before: l.before ? JSON.parse(l.before) : null,
+        after: l.after ? JSON.parse(l.after) : null,
+      }));
+    } catch (error) {
+      logger.error('Error getting audit logs:', error);
+      throw new DatabaseError('Failed to get audit logs');
+    }
+  }
 }

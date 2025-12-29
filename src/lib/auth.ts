@@ -102,8 +102,8 @@ export function hasPermission(
 }
 
 export function hasAnyRole(session: AuthSession | null, roleNames: string[]): boolean {
-  if (!session) return false;
-  return session.roles.some(role => roleNames.includes(role.systemRole || role.name));
+  if (!session || !session.user?.roles) return false;
+  return session.user.roles.some(role => roleNames.includes(role.systemRole || role.name));
 }
 
 function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions {
