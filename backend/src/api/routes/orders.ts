@@ -82,6 +82,27 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
 });
 
 /**
+ * GET /api/orders/customer/:email
+ * Get orders by customer email
+ */
+router.get('/customer/:email', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { email } = req.params;
+    const adapter = db.getAdapter();
+    const orders = await adapter.getOrdersByCustomerEmail(email);
+
+    logger.info(`Retrieved ${orders.length} orders for customer: ${email}`);
+
+    res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/orders/:id
  * Get order by ID
  */

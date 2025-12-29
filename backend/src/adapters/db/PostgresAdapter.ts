@@ -598,6 +598,114 @@ export class PostgresAdapter {
     }
   }
 
+  async getCustomerById(id: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM customers WHERE id = $1',
+        [id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const c = result.rows[0];
+      return {
+        id: c.id,
+        name: c.name,
+        org: c.org,
+        email: c.email,
+        phone: c.phone,
+        address: c.address,
+        city: c.city,
+        state: c.state,
+        zip: c.zip,
+        country: c.country,
+        notes: c.notes,
+        tags: [],
+        lifetimeValue: 0,
+        createdAt: new Date(c.created_at).getTime(),
+        updatedAt: new Date(c.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error getting customer by ID:', error);
+      throw new DatabaseError('Failed to get customer');
+    }
+  }
+
+  async updateCustomer(id: string, customer: any): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE customers SET 
+           name = COALESCE($1, name),
+           org = COALESCE($2, org),
+           email = COALESCE($3, email),
+           phone = COALESCE($4, phone),
+           address = COALESCE($5, address),
+           city = COALESCE($6, city),
+           state = COALESCE($7, state),
+           zip = COALESCE($8, zip),
+           country = COALESCE($9, country),
+           notes = COALESCE($10, notes),
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = $11
+         RETURNING *`,
+        [
+          customer.name,
+          customer.org,
+          customer.email,
+          customer.phone,
+          customer.address,
+          customer.city,
+          customer.state,
+          customer.zip,
+          customer.country,
+          customer.notes,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const c = result.rows[0];
+      return {
+        id: c.id,
+        name: c.name,
+        org: c.org,
+        email: c.email,
+        phone: c.phone,
+        address: c.address,
+        city: c.city,
+        state: c.state,
+        zip: c.zip,
+        country: c.country,
+        notes: c.notes,
+        tags: [],
+        lifetimeValue: 0,
+        createdAt: new Date(c.created_at).getTime(),
+        updatedAt: new Date(c.updated_at).getTime(),
+      };
+    } catch (error) {
+      logger.error('Error updating customer:', error);
+      throw new DatabaseError('Failed to update customer');
+    }
+  }
+
+  async deleteCustomer(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM customers WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting customer:', error);
+      throw new DatabaseError('Failed to delete customer');
+    }
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
     logger.info('PostgreSQL connection pool closed');
@@ -1176,6 +1284,400 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting audit logs:', error);
       throw new DatabaseError('Failed to get audit logs');
+    }
+  }
+
+  // ===== Quote Operations =====
+  async getAllQuotes(): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT q.*, c.name as customer_name, c.email as customer_email
+         FROM quotes q
+         LEFT JOIN customers c ON q.customer_id = c.id
+         ORDER BY q.created_at DESC`
+      );
+
+      // Get all quote items
+      const quoteIds = result.rows.map(q => q.id);
+      let itemsMap = new Map<string, any[]>();
+
+      if (quoteIds.length > 0) {
+        const itemsResult = await this.pool.query(
+          `SELECT qi.*, s.name as service_name
+           FROM quote_items qi
+           LEFT JOIN services s ON qi.service_id = s.id
+           WHERE qi.quote_id = ANY($1::uuid[])`,
+          [quoteIds]
+        );
+
+        itemsResult.rows.forEach((item) => {
+          const quoteId = item.quote_id;
+          if (!itemsMap.has(quoteId)) {
+            itemsMap.set(quoteId, []);
+          }
+          itemsMap.get(quoteId)!.push({
+            id: item.id,
+            quoteId: item.quote_id,
+            serviceId: item.service_id,
+            serviceName: item.service_name,
+            description: item.description,
+            quantity: parseFloat(item.quantity),
+            unitPrice: parseFloat(item.unit_price),
+            lineTotal: parseFloat(item.line_total),
+          });
+        });
+      }
+
+      return result.rows.map((q) => ({
+        id: q.id,
+        customerId: q.customer_id,
+        customerName: q.customer_name,
+        customerEmail: q.customer_email,
+        status: q.status,
+        subtotal: parseFloat(q.subtotal),
+        taxTotal: parseFloat(q.tax_total),
+        total: parseFloat(q.total),
+        notes: q.notes,
+        createdAt: new Date(q.created_at).getTime(),
+        expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
+        items: itemsMap.get(q.id) || [],
+      }));
+    } catch (error) {
+      logger.error('Error getting all quotes:', error);
+      throw new DatabaseError('Failed to get quotes');
+    }
+  }
+
+  async getQuoteById(id: string): Promise<any | null> {
+    try {
+      const quoteResult = await this.pool.query(
+        `SELECT q.*, c.name as customer_name, c.email as customer_email
+         FROM quotes q
+         LEFT JOIN customers c ON q.customer_id = c.id
+         WHERE q.id = $1`,
+        [id]
+      );
+
+      if (quoteResult.rows.length === 0) {
+        return null;
+      }
+
+      const q = quoteResult.rows[0];
+
+      const itemsResult = await this.pool.query(
+        `SELECT qi.*, s.name as service_name
+         FROM quote_items qi
+         LEFT JOIN services s ON qi.service_id = s.id
+         WHERE qi.quote_id = $1`,
+        [id]
+      );
+
+      return {
+        id: q.id,
+        customerId: q.customer_id,
+        customerName: q.customer_name,
+        customerEmail: q.customer_email,
+        status: q.status,
+        subtotal: parseFloat(q.subtotal),
+        taxTotal: parseFloat(q.tax_total),
+        total: parseFloat(q.total),
+        notes: q.notes,
+        createdAt: new Date(q.created_at).getTime(),
+        expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
+        items: itemsResult.rows.map((item) => ({
+          id: item.id,
+          quoteId: item.quote_id,
+          serviceId: item.service_id,
+          serviceName: item.service_name,
+          description: item.description,
+          quantity: parseFloat(item.quantity),
+          unitPrice: parseFloat(item.unit_price),
+          lineTotal: parseFloat(item.line_total),
+        })),
+      };
+    } catch (error) {
+      logger.error('Error getting quote by ID:', error);
+      throw new DatabaseError('Failed to get quote');
+    }
+  }
+
+  async getQuotesByCustomer(customerId: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT q.*, c.name as customer_name, c.email as customer_email
+         FROM quotes q
+         LEFT JOIN customers c ON q.customer_id = c.id
+         WHERE q.customer_id = $1
+         ORDER BY q.created_at DESC`,
+        [customerId]
+      );
+
+      // Get items for these quotes
+      const quoteIds = result.rows.map(q => q.id);
+      let itemsMap = new Map<string, any[]>();
+
+      if (quoteIds.length > 0) {
+        const itemsResult = await this.pool.query(
+          `SELECT qi.*, s.name as service_name
+           FROM quote_items qi
+           LEFT JOIN services s ON qi.service_id = s.id
+           WHERE qi.quote_id = ANY($1::uuid[])`,
+          [quoteIds]
+        );
+
+        itemsResult.rows.forEach((item) => {
+          const quoteId = item.quote_id;
+          if (!itemsMap.has(quoteId)) {
+            itemsMap.set(quoteId, []);
+          }
+          itemsMap.get(quoteId)!.push({
+            id: item.id,
+            quoteId: item.quote_id,
+            serviceId: item.service_id,
+            serviceName: item.service_name,
+            description: item.description,
+            quantity: parseFloat(item.quantity),
+            unitPrice: parseFloat(item.unit_price),
+            lineTotal: parseFloat(item.line_total),
+          });
+        });
+      }
+
+      return result.rows.map((q) => ({
+        id: q.id,
+        customerId: q.customer_id,
+        customerName: q.customer_name,
+        customerEmail: q.customer_email,
+        status: q.status,
+        subtotal: parseFloat(q.subtotal),
+        taxTotal: parseFloat(q.tax_total),
+        total: parseFloat(q.total),
+        notes: q.notes,
+        createdAt: new Date(q.created_at).getTime(),
+        expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
+        items: itemsMap.get(q.id) || [],
+      }));
+    } catch (error) {
+      logger.error('Error getting quotes by customer:', error);
+      throw new DatabaseError('Failed to get quotes');
+    }
+  }
+
+  async createQuote(quote: any): Promise<any> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const quoteResult = await client.query(
+        `INSERT INTO quotes (customer_id, status, subtotal, tax_total, total, notes, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [
+          quote.customerId,
+          quote.status || 'draft',
+          quote.subtotal,
+          quote.taxTotal || 0,
+          quote.total,
+          quote.notes,
+          quote.expiresAt ? new Date(quote.expiresAt) : null,
+        ]
+      );
+
+      const newQuote = quoteResult.rows[0];
+      const items = [];
+
+      if (quote.items && quote.items.length > 0) {
+        for (const item of quote.items) {
+          const itemResult = await client.query(
+            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [
+              newQuote.id,
+              item.serviceId,
+              item.description,
+              item.quantity,
+              item.unitPrice,
+              item.lineTotal,
+            ]
+          );
+          items.push({
+            id: itemResult.rows[0].id,
+            quoteId: newQuote.id,
+            serviceId: itemResult.rows[0].service_id,
+            description: itemResult.rows[0].description,
+            quantity: parseFloat(itemResult.rows[0].quantity),
+            unitPrice: parseFloat(itemResult.rows[0].unit_price),
+            lineTotal: parseFloat(itemResult.rows[0].line_total),
+          });
+        }
+      }
+
+      await client.query('COMMIT');
+
+      return {
+        id: newQuote.id,
+        customerId: newQuote.customer_id,
+        status: newQuote.status,
+        subtotal: parseFloat(newQuote.subtotal),
+        taxTotal: parseFloat(newQuote.tax_total),
+        total: parseFloat(newQuote.total),
+        notes: newQuote.notes,
+        createdAt: new Date(newQuote.created_at).getTime(),
+        expiresAt: newQuote.expires_at ? new Date(newQuote.expires_at).getTime() : null,
+        items,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error creating quote:', error);
+      throw new DatabaseError('Failed to create quote');
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateQuote(id: string, quote: any): Promise<any | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(
+        `UPDATE quotes SET
+           customer_id = COALESCE($1, customer_id),
+           status = COALESCE($2, status),
+           subtotal = COALESCE($3, subtotal),
+           tax_total = COALESCE($4, tax_total),
+           total = COALESCE($5, total),
+           notes = COALESCE($6, notes),
+           expires_at = COALESCE($7, expires_at)
+         WHERE id = $8
+         RETURNING *`,
+        [
+          quote.customerId,
+          quote.status,
+          quote.subtotal,
+          quote.taxTotal,
+          quote.total,
+          quote.notes,
+          quote.expiresAt ? new Date(quote.expiresAt) : null,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      // Update items if provided
+      if (quote.items) {
+        await client.query('DELETE FROM quote_items WHERE quote_id = $1', [id]);
+        for (const item of quote.items) {
+          await client.query(
+            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [id, item.serviceId, item.description, item.quantity, item.unitPrice, item.lineTotal]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      return this.getQuoteById(id);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error updating quote:', error);
+      throw new DatabaseError('Failed to update quote');
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateQuoteStatus(id: string, status: string): Promise<any | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE quotes SET status = $1 WHERE id = $2 RETURNING *`,
+        [status, id]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return this.getQuoteById(id);
+    } catch (error) {
+      logger.error('Error updating quote status:', error);
+      throw new DatabaseError('Failed to update quote status');
+    }
+  }
+
+  async deleteQuote(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        'DELETE FROM quotes WHERE id = $1 RETURNING id',
+        [id]
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error deleting quote:', error);
+      throw new DatabaseError('Failed to delete quote');
+    }
+  }
+
+  // ===== Order Operations Extended =====
+  async getOrdersByCustomerEmail(email: string): Promise<any[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM orders WHERE customer_email = $1 ORDER BY created_at DESC`,
+        [email]
+      );
+
+      const orderIds = result.rows.map(o => o.id);
+      let itemsMap = new Map<string, any[]>();
+
+      if (orderIds.length > 0) {
+        const itemsResult = await this.pool.query(
+          `SELECT * FROM order_items WHERE order_id = ANY($1::uuid[])`,
+          [orderIds]
+        );
+
+        itemsResult.rows.forEach((item) => {
+          const orderId = item.order_id;
+          if (!itemsMap.has(orderId)) {
+            itemsMap.set(orderId, []);
+          }
+          itemsMap.get(orderId)!.push({
+            id: item.id,
+            orderId: item.order_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            nameSnapshot: item.name_snapshot,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity,
+            unitPrice: parseFloat(item.unit_price),
+            lineDiscount: parseFloat(item.line_discount),
+            lineTotal: parseFloat(item.line_total),
+            notes: item.notes,
+          });
+        });
+      }
+
+      return result.rows.map((order) => ({
+        id: order.id,
+        createdAt: new Date(order.created_at).getTime(),
+        subtotal: parseFloat(order.subtotal),
+        discountTotal: parseFloat(order.discount_total),
+        taxTotal: parseFloat(order.tax_total),
+        total: parseFloat(order.total),
+        paymentMethod: order.payment_method,
+        customerEmail: order.customer_email,
+        customerPhone: order.customer_phone,
+        items: itemsMap.get(order.id) || [],
+      }));
+    } catch (error) {
+      logger.error('Error getting orders by customer email:', error);
+      throw new DatabaseError('Failed to get orders');
     }
   }
 }

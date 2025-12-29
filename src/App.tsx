@@ -22,6 +22,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminRoles from "./pages/admin/AdminRoles";
 import AdminAudit from "./pages/admin/AdminAudit";
 import AdminComponents from "./pages/admin/AdminComponents";
+import AdminQuotes from "./pages/admin/AdminQuotes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/admin/exports" element={<AdminExports />} />
               <Route path="/admin/customers" element={<AdminCustomers />} />
               <Route path="/admin/services" element={<AdminServices />} />
+              <Route path="/admin/quotes" element={<AdminQuotes />} />
               <Route path="/admin/settings" element={<AdminSettings />} />
               <Route path="/admin/roles" element={<AdminRoles />} />
               <Route path="/admin/audit" element={<AdminAudit />} />

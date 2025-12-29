@@ -149,14 +149,40 @@ export default function ServicesPos() {
     const taxTotal = subtotal * taxRate;
     const total = subtotal + taxTotal;
 
-    // For now, we'll just show a success message
-    // TODO: Implement quotes API endpoint
-    toast({ 
-      title: 'Quote created successfully',
-      description: `Total: $${total.toFixed(2)}`,
-    });
-    setCart([]);
-    setSelectedCustomer(null);
+    try {
+      const quoteData = {
+        customerId: selectedCustomer.id,
+        items: cart.map(item => ({
+          serviceId: item.serviceId,
+          description: `${item.serviceName}${Object.keys(item.details).length > 0 ? ' - ' + Object.entries(item.details).map(([k, v]) => `${k}: ${v}`).join(', ') : ''}`,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.unitPrice * item.quantity,
+        })),
+        subtotal,
+        taxTotal,
+        total,
+        status: 'draft',
+        notes: '',
+      };
+
+      const response = await apiClient.post<{ success: boolean; data: any }>('/api/quotes', quoteData);
+      
+      if (response.success) {
+        toast({ 
+          title: 'Quote created successfully',
+          description: `Total: $${total.toFixed(2)}`,
+        });
+        setCart([]);
+        setSelectedCustomer(null);
+      }
+    } catch (error: any) {
+      toast({ 
+        title: 'Error creating quote',
+        description: error.message || 'Failed to create quote',
+        variant: 'destructive',
+      });
+    }
   };
 
   const getServiceFields = (service: Service) => {
