@@ -1,533 +1,577 @@
 <div align="center">
 
-# 🛒 stewardPOS
+<!-- Hero Section -->
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=stewardPOS&fontSize=80&fontAlignY=35&animation=twinkling&fontColor=ffffff&desc=Modern%20Point%20of%20Sale%20System&descAlignY=55&descSize=20" width="100%"/>
 
-**Modern, Open-Source Point of Sale System**
+<p align="center">
+  <b>Self-Hosted • Open Source • Docker-First • Production Ready</b>
+</p>
 
-*Self-hosted • Production-Ready • Docker-First*
+<!-- Badges -->
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/Version-1.0.0-22c55e?style=for-the-badge&logo=semver&logoColor=white" alt="Version"/></a>
+  <a href="docker-compose.yml"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/PRs-Welcome-ec4899?style=for-the-badge&logo=github&logoColor=white" alt="PRs Welcome"/></a>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+<p align="center">
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React"/></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js"/></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL"/></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind"/></a>
+</p>
 
-[🚀 Quick Start](#-quick-start) • [📖 Documentation](#-documentation) • [🏗️ Architecture](#️-architecture) • [🤝 Contributing](#-contributing)
+<!-- Navigation -->
+<p align="center">
+  <a href="#-quick-start"><b>🚀 Quick Start</b></a> •
+  <a href="#-features"><b>✨ Features</b></a> •
+  <a href="#-architecture"><b>🏗️ Architecture</b></a> •
+  <a href="#-documentation"><b>📖 Docs</b></a> •
+  <a href="#-deployment"><b>📦 Deploy</b></a> •
+  <a href="#-contributing"><b>🤝 Contribute</b></a>
+</p>
 
----
+<br/>
+
+<!-- Demo Preview -->
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
+
+<table>
+<tr>
+<td width="50%">
+
+### 💳 Modern POS Interface
+Fast, intuitive checkout with barcode scanning, variants, and real-time inventory
+
+</td>
+<td width="50%">
+
+### 📊 Analytics Dashboard
+Comprehensive reports, sales tracking, and business insights
+
+</td>
+</tr>
+</table>
+
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
 
 </div>
 
+<br/>
+
 ## 📑 Table of Contents
 
-- [✨ Features](#-features)
+<details open>
+<summary><b>Click to expand</b></summary>
+
 - [🚀 Quick Start](#-quick-start)
-  - [🐳 Docker (Recommended)](#-docker-recommended)
-  - [💻 Local Development](#-local-development)
-- [📖 Documentation](#-documentation)
+  - [Docker (Recommended)](#-docker-recommended)
+  - [Local Development](#-local-development)
+- [✨ Features](#-features)
 - [🏗️ Architecture](#️-architecture)
 - [🛠️ Tech Stack](#️-tech-stack)
-- [🔐 Security](#-security)
+- [📖 Documentation](#-documentation)
 - [📦 Deployment](#-deployment)
+- [🔐 Security](#-security)
 - [🤝 Contributing](#-contributing)
-- [📊 Project Status](#-project-status)
-- [💬 Community & Support](#-community--support)
+- [📊 Roadmap](#-roadmap)
 - [📄 License](#-license)
 
----
+</details>
 
-## ✨ Features
-
-### 💰 **Point of Sale**
-- ⚡ Fast, intuitive checkout interface
-- 📷 Barcode scanning support
-- 🎨 Product variants (size, color, SKU)
-- 💳 Multiple payment methods
-- 🧾 Receipt printing & email
-- 👤 Customer lookup & history
-- 💰 Discount & promotion management
-
-### 📦 **Inventory Management**
-- 📚 Product catalog with categories
-- 📊 Real-time stock tracking
-- ⚠️ Low stock alerts
-- 📥 Bulk import/export (CSV)
-- 🖼️ Product images
-- 🔄 Variant management
-
-### 👥 **Customer Management**
-- 📇 Comprehensive customer database
-- 📈 Purchase history tracking
-- 📞 Contact information management
-- 🏷️ Custom tags and fields
-- 💎 Lifetime value tracking
-
-### 🛠️ **Services Module**
-- 🔧 Service catalog management
-- 📝 Quote generation
-- ⏱️ Hourly/flat rate pricing
-- 🔄 Quote to order conversion
-
-### 📊 **Reports & Analytics**
-- 📈 Sales reports & analytics
-- 💵 Revenue tracking
-- 🏆 Product performance metrics
-- 📤 Export to CSV/PDF
-- 📅 Date range filtering
-- 📉 Trend analysis
-
-### 🔐 **Security & Access Control**
-- 🛡️ Role-based permissions (RBAC)
-- 👔 4 built-in roles + custom roles
-- 🔒 Granular permissions per module
-- 📝 Audit logging
-- 🔑 Session management
-- 🔐 bcrypt password hashing
-
-### ⚙️ **Production Setup Wizard**
-- 🎯 **First-Time Setup** - Guided configuration wizard
-- 👤 **Admin Account Creation** - Root user setup
-- 🗄️ **Database Configuration** - PostgreSQL or SQLite
-- 🔐 **Authentication Setup** - Local, Google OAuth, OIDC
-- 🌍 **Environment Configuration** - Dev/Staging/Production
-- 🎮 **Demo Mode** - Quick setup with sample data
-- 🔄 **Data Replication** - Multi-environment support
-
-### 🔌 **Flexible Architecture**
-- 🔌 **Pluggable Adapters** - Swap implementations without code changes
-- 🗄️ **Multiple Databases** - ✅ PostgreSQL, ✅ SQLite, IndexedDB
-- 🔐 **Auth Providers** - ✅ Local, Google OAuth, OIDC (Azure AD, Okta)
-- 📧 **Email Services** - Console, SMTP, Resend
-- 💾 **Storage Options** - LocalStorage, S3, Azure Blob
-- 📱 **SMS Providers** - Console, Twilio
+<br/>
 
 ---
+
+<br/>
 
 ## 🚀 Quick Start
 
 ### 🐳 Docker (Recommended)
 
-**The fastest way to get started - includes everything you need!**
+The fastest way to get started - everything you need in one command!
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourorg/stewardpos.git
 cd stewardpos
 
-# Start all services (PostgreSQL, Backend, Frontend)
+# Start all services
 docker-compose up -d
 
-# Access the application
-# Frontend: http://localhost:8080
-# Backend API: http://localhost:3001
+# 🎉 That's it! Open http://localhost:8080
 ```
 
-**First Time Setup:**
-1. Visit `http://localhost:8080`
+<details>
+<summary><b>📋 First Time Setup</b></summary>
+
+1. Open `http://localhost:8080`
 2. Complete the setup wizard:
-   - Create your admin account
-   - Configure database (or use demo mode)
+   - Create admin account
+   - Configure database
    - Set authentication methods
-   - Choose environment settings
-3. Login with your admin credentials
+3. Login with your credentials
+4. Start selling!
 
-📖 **Full Docker Guide:** [Docker Setup Documentation](DOCKER-SETUP.md)
+**Default Demo Credentials:**
+```
+Email: admin@demo.local
+Password: admin123
+```
 
----
+</details>
+
+<br/>
 
 ### 💻 Local Development
 
-#### Backend Setup
+<details>
+<summary><b>Backend Setup</b></summary>
 
 ```bash
-# Navigate to backend
 cd backend
-
-# Install dependencies
 npm install
-
-# Configure environment
-cp env.example .env
-# Edit .env with your database settings
-
-# Setup database (runs migrations + seeds data)
-npm run setup-db
-
-# Start development server
-npm run dev
+cp env.example .env    # Configure your settings
+npm run setup-db       # Run migrations
+npm run dev            # Start server at :3001
 ```
 
-**Backend runs at:** `http://localhost:3001`
+</details>
 
-#### Frontend Setup
+<details>
+<summary><b>Frontend Setup</b></summary>
 
 ```bash
-# In project root
 npm install
-
-# Start development server
-npm run dev
+npm run dev            # Start dev server at :5173
 ```
 
-**Frontend runs at:** `http://localhost:5173`
+</details>
 
-#### Default Credentials (Development)
-
-- **Email:** `admin@demo.local`
-- **Password:** `DemoPass!1`
-
-⚠️ **Important:** Change these immediately in production!
+<br/>
 
 ---
 
-## 📖 Documentation
+<br/>
 
-### 🚀 Getting Started
-- **[Setup Wizard Guide](SETUP-WIZARD-DOCUMENTATION.md)** - Production setup wizard
-- **[Docker Setup](DOCKER-SETUP.md)** - Complete Docker deployment guide
-- **[Quick Start (Backend)](backend/PHASE2-QUICKSTART.md)** - Backend API quick start
-- **[Installation Guide](INSTALL.md)** - Step-by-step installation for all platforms
+## ✨ Features
 
-### 📚 User Guides
-- **[Configuration Guide](CONFIGURATION.md)** - Complete configuration reference
-- **[Code Review Report](CODE-REVIEW-REPORT.md)** - Comprehensive code review findings
+<table>
+<tr>
+<td width="33%" valign="top">
 
-### 👨‍💻 Developer Guides
-- **[Backend README](backend/README.md)** - Backend API documentation
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
-- **[Testing Guide](backend/TESTING-PHASE2.md)** - Testing documentation
-- **[Implementation Guardrail](IMPLEMENTATION-GUARDRAIL.md)** - Development guidelines
+### 💰 Point of Sale
+- ⚡ Fast checkout interface
+- 📷 Barcode scanning
+- 🎨 Product variants
+- 💳 Multiple payment methods
+- 🧾 Receipt printing/email
+- 💰 Discounts & promotions
 
-### 📋 Architecture & Planning
-- **[Phase 0: Inventory](PHASE0-INVENTORY.md)** - Complete codebase inventory
-- **[Phase 1: File Mapping](PHASE1-FILE-MAPPING.md)** - File-by-file analysis
-- **[Phase 2: Stack Assessment](PHASE2-STACK-ASSESSMENT.md)** - Technology stack evaluation
-- **[Phase 3: Path Forward](PHASE3-PATH-FORWARD.md)** - Recommended architecture
-- **[Phase 4: Docker & Self-Hosting](PHASE4-DOCKER-SELF-HOSTING.md)** - Deployment strategy
-- **[Phase 5: Best Practices](PHASE5-BEST-PRACTICES.md)** - Development, DevOps, Security
-- **[Phase 6: Execution Plan](PHASE6-EXECUTION-PLAN.md)** - Step-by-step implementation plan
+</td>
+<td width="33%" valign="top">
 
-### 🔒 Security
-- **[Security Policy](SECURITY.md)** - Security best practices and reporting
+### 📦 Inventory
+- 📚 Product catalog
+- 📊 Real-time stock tracking
+- ⚠️ Low stock alerts
+- 📥 CSV import/export
+- 🖼️ Product images
+- 🔄 Variant management
+
+</td>
+<td width="33%" valign="top">
+
+### 👥 Customers
+- 📇 Customer database
+- 📈 Purchase history
+- 📞 Contact management
+- 🏷️ Tags & custom fields
+- 💎 Lifetime value
+- 📧 Email notifications
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 📊 Reports
+- 📈 Sales analytics
+- 💵 Revenue tracking
+- 🏆 Product performance
+- 📤 Export CSV/PDF
+- 📅 Date filtering
+- 📉 Trend analysis
+
+</td>
+<td width="33%" valign="top">
+
+### 🔐 Security
+- 🛡️ Role-based access (RBAC)
+- 👔 Custom roles
+- 🔒 Granular permissions
+- 📝 Audit logging
+- 🔑 Session management
+- 🔐 bcrypt hashing
+
+</td>
+<td width="33%" valign="top">
+
+### 🛠️ Services
+- 🔧 Service catalog
+- 📝 Quote generation
+- ⏱️ Flexible pricing
+- 🔄 Quote → Order
+- 📋 Customer booking
+- 📅 Scheduling
+
+</td>
+</tr>
+</table>
+
+<br/>
 
 ---
+
+<br/>
 
 ## 🏗️ Architecture
 
-stewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern for maximum flexibility:
+stewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Frontend Layer                        │
-│  React 18 + TypeScript • Vite • shadcn/ui • Tailwind   │
-├─────────────────────────────────────────────────────────┤
-│                    API Layer                             │
-│  Express + TypeScript • JWT Auth • Zod Validation       │
-├─────────────────────────────────────────────────────────┤
-│                 Core Business Logic                      │
-│         Domain Models • Ports (Interfaces)              │
-├─────────────────────────────────────────────────────────┤
-│              Adapters (Pluggable)                        │
-│  ┌──────────┬──────────┬──────────┬──────────┐        │
-│  │ Database │   Auth    │  Email   │ Storage  │        │
-│  ├──────────┼──────────┼──────────┼──────────┤        │
-│  │PostgreSQL│  Local    │  SMTP    │   S3    │        │
-│  │ SQLite   │  Google  │ Resend   │ Azure   │        │
-│  │IndexedDB │  OIDC    │ Console  │ Local   │        │
-│  └──────────┴──────────┴──────────┴──────────┘        │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         FRONTEND                                 │
+│       React 18  •  TypeScript  •  Vite  •  shadcn/ui            │
+├─────────────────────────────────────────────────────────────────┤
+│                           API                                    │
+│          Express  •  JWT Auth  •  Zod Validation                │
+├─────────────────────────────────────────────────────────────────┤
+│                      BUSINESS LOGIC                              │
+│              Domain Models  •  Use Cases  •  Ports              │
+├─────────────────────────────────────────────────────────────────┤
+│                    ADAPTERS (Pluggable)                          │
+│  ┌────────────┬────────────┬────────────┬────────────┐          │
+│  │  Database  │    Auth    │   Email    │  Storage   │          │
+│  ├────────────┼────────────┼────────────┼────────────┤          │
+│  │ PostgreSQL │   Local    │   SMTP     │    S3      │          │
+│  │   SQLite   │   Google   │  Resend    │   Azure    │          │
+│  │ IndexedDB  │   OIDC     │  Console   │   Local    │          │
+│  └────────────┴────────────┴────────────┴────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 🎯 Key Benefits
+<details>
+<summary><b>🎯 Why This Architecture?</b></summary>
 
-- ✅ **Swappable Implementations** - Change databases/auth without touching business logic
-- ✅ **Easy Testing** - Mock adapters for unit tests
-- ✅ **Extensible** - Add new providers by implementing interfaces
-- ✅ **Configuration-Driven** - Switch adapters via environment variables
-- ✅ **Production-Ready** - Battle-tested patterns
+| Benefit | Description |
+|---------|-------------|
+| **Swappable** | Change databases/auth without touching business logic |
+| **Testable** | Mock adapters for comprehensive unit tests |
+| **Extensible** | Add new providers by implementing interfaces |
+| **Configurable** | Switch adapters via environment variables |
+
+</details>
+
+<br/>
 
 ---
+
+<br/>
 
 ## 🛠️ Tech Stack
 
+<table>
+<tr>
+<td valign="top" width="50%">
+
 ### Frontend
-| Technology | Purpose | Status |
-|------------|---------|--------|
-| **React 18** | UI Framework | ✅ Production Ready |
-| **TypeScript** | Type Safety | ✅ Production Ready |
-| **Vite** | Build Tool | ✅ Production Ready |
-| **shadcn/ui** | UI Components | ✅ Production Ready |
-| **Tailwind CSS** | Styling | ✅ Production Ready |
-| **TanStack Query** | Data Fetching | ✅ Production Ready |
-| **React Router** | Routing | ✅ Production Ready |
+| Tech | Purpose |
+|------|---------|
+| ![React](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black) | UI Framework |
+| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) | Type Safety |
+| ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) | Build Tool |
+| ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) | Styling |
+| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat-square&logo=shadcnui&logoColor=white) | Components |
+
+</td>
+<td valign="top" width="50%">
 
 ### Backend
-| Technology | Purpose | Status |
-|------------|---------|--------|
-| **Node.js** | Runtime | ✅ Production Ready |
-| **Express** | Web Framework | ✅ Production Ready |
-| **TypeScript** | Type Safety | ✅ Production Ready |
-| **PostgreSQL** | Database | ✅ Production Ready |
-| **SQLite** | Database | ✅ Production Ready |
-| **JWT** | Authentication | ✅ Production Ready |
-| **bcrypt** | Password Hashing | ✅ Production Ready |
-| **Winston** | Logging | ✅ Production Ready |
-| **Zod** | Validation | ✅ Production Ready |
+| Tech | Purpose |
+|------|---------|
+| ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white) | Runtime |
+| ![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white) | Framework |
+| ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) | Database |
+| ![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white) | Auth |
+| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) | Container |
 
-### DevOps & Infrastructure
-| Technology | Purpose | Status |
-|------------|---------|--------|
-| **Docker** | Containerization | ✅ Production Ready |
-| **Docker Compose** | Orchestration | ✅ Production Ready |
-| **Nginx** | Reverse Proxy | ✅ Production Ready |
-| **PostgreSQL** | Database Server | ✅ Production Ready |
-| **MinIO** | S3 Storage | ✅ Production Ready |
+</td>
+</tr>
+</table>
+
+<br/>
 
 ---
 
-## 🔐 Security
+<br/>
 
-Security is our top priority. We follow industry best practices:
+## 📖 Documentation
 
-### ✅ Implemented Security Features
+<table>
+<tr>
+<td width="50%">
 
-- 🔐 **bcrypt Password Hashing** - Industry-standard password security
-- 🎫 **JWT Authentication** - Secure token-based auth
-- 🛡️ **Role-Based Access Control** - Granular permissions
-- 📝 **Audit Logging** - Track all system changes
-- ✅ **Input Validation** - Zod schema validation
-- 🚫 **SQL Injection Prevention** - Parameterized queries
-- 🛡️ **XSS Protection** - React's built-in escaping
-- 🔒 **Security Headers** - Helmet.js middleware
-- ⏱️ **Rate Limiting** - Prevent abuse
-- 🔐 **CORS Configuration** - Controlled cross-origin access
+### 🚀 Getting Started
+- [Setup Wizard Guide](ENVIRONMENT-SETUP.md)
+- [Demo Quick Start](README-DEMO.md)
+- [Deployment Guide](DEPLOYMENT.md)
 
-### 🚨 Reporting Vulnerabilities
+### 👨‍💻 Development
+- [Backend README](backend/README.md)
+- [Component Management](COMPONENT-MANAGEMENT.md)
+- [Code Review](CODE-REVIEW-SUMMARY.md)
 
-Found a security issue? Please report it privately:
+</td>
+<td width="50%">
 
-- 📧 **Email:** security@stewardpos.dev
-- 🔒 **PGP Key:** [Available on website]
+### 📚 API Reference
+- Products API: `/api/products`
+- Orders API: `/api/orders`
+- Customers API: `/api/customers`
+- Services API: `/api/services`
+- Admin API: `/api/admin/*`
 
-**Do not** open public GitHub issues for security vulnerabilities.
+### 🔧 Configuration
+- Environment variables: `.env`
+- Docker config: `docker-compose.yml`
 
-📖 **Full Security Policy:** [SECURITY.md](SECURITY.md)
+</td>
+</tr>
+</table>
+
+<br/>
 
 ---
+
+<br/>
 
 ## 📦 Deployment
 
-### 🐳 Docker (Recommended)
+<table>
+<tr>
+<td align="center" width="25%">
 
-**Best for:** Most users, easiest setup
+### 🐳 Docker
+**Recommended**
 
 ```bash
 docker-compose up -d
 ```
 
-Includes:
-- ✅ PostgreSQL database
-- ✅ Backend API server
-- ✅ Frontend web app
-- ✅ MinIO storage
-- ✅ Automatic migrations
-- ✅ Health checks
+[📖 Guide](DEPLOYMENT.md)
 
-📖 **Guide:** [Docker Setup](DOCKER-SETUP.md)
+</td>
+<td align="center" width="25%">
 
-### 🐧 Linux Server
+### 🐧 Linux
+Ubuntu • Debian • CentOS
 
-**Best for:** Production deployments, VPS hosting
+systemd service
+nginx proxy
 
-- Ubuntu 20.04+, Debian 11+, CentOS 8+
-- One-command installation script
-- systemd service management
-- Nginx reverse proxy
-- Automated backups
+[📖 Guide](DEPLOYMENT.md#linux)
 
-📖 **Guide:** [Installation Guide - Linux](INSTALL.md#linux)
+</td>
+<td align="center" width="25%">
 
-### 🪟 Windows Server
+### 🪟 Windows
+Server 2019+ • Win10/11
 
-**Best for:** Windows-based infrastructure
+PowerShell script
+IIS support
 
-- Windows Server 2019+, Windows 10/11
-- PowerShell installation script
-- Windows Service (NSSM)
-- IIS reverse proxy support
+[📖 Guide](DEPLOYMENT.md#windows)
 
-📖 **Guide:** [Installation Guide - Windows](INSTALL.md#windows)
+</td>
+<td align="center" width="25%">
 
-### ☁️ Cloud Providers
+### ☁️ Cloud
+AWS • Azure • GCP
+DigitalOcean • more
 
-**Supported Platforms:**
-- AWS (EC2, ECS, Lightsail)
-- Azure (VM, Container Instances)
-- Google Cloud (Compute Engine, Cloud Run)
-- DigitalOcean, Linode, Vultr, Hetzner
+Container ready
+Auto-scaling
 
-📖 **Guide:** [Cloud Deployment](docs/deployment/cloud.md)
+[📖 Guide](DEPLOYMENT.md#cloud)
+
+</td>
+</tr>
+</table>
+
+<br/>
 
 ---
+
+<br/>
+
+## 🔐 Security
+
+<table>
+<tr>
+<td width="50%">
+
+### ✅ Security Features
+- 🔐 bcrypt password hashing
+- 🎫 JWT authentication
+- 🛡️ Role-based access control
+- 📝 Complete audit logging
+- ✅ Zod schema validation
+- 🚫 SQL injection prevention
+- 🛡️ XSS protection
+- 🔒 Security headers (Helmet)
+- ⏱️ Rate limiting
+- 🔐 CORS configuration
+
+</td>
+<td width="50%">
+
+### 🚨 Report Vulnerabilities
+
+Found a security issue? Please report privately:
+
+📧 **Email:** security@stewardpos.dev
+
+**Do not** open public issues for security vulnerabilities.
+
+See [SECURITY.md](SECURITY.md) for details.
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how you can help:
-
-### 🎯 Ways to Contribute
-
-- 🐛 **Bug Reports** - Help us find and fix issues
-- 💡 **Feature Requests** - Suggest new features
-- 📝 **Documentation** - Improve our docs
-- 🔧 **Code Contributions** - Submit PRs
-- 🌍 **Translations** - Help translate the app
-- 🧪 **Testing** - Test and report issues
-
-### 🚀 Quick Contribution Guide
+We welcome contributions! Here's how to get started:
 
 ```bash
-# 1. Fork and clone
+# 1. Fork & clone
 git clone https://github.com/YOUR_USERNAME/stewardpos.git
-cd stewardpos
 
 # 2. Install dependencies
-npm install
-cd backend && npm install && cd ..
+npm install && cd backend && npm install
 
-# 3. Setup backend database
-cd backend
-npm run setup-db
-cd ..
+# 3. Create a branch
+git checkout -b feature/amazing-feature
 
-# 4. Start development servers
-# Terminal 1: Backend
-cd backend && npm run dev
+# 4. Make changes, then commit
+git commit -m "feat: add amazing feature"
 
-# Terminal 2: Frontend
-npm run dev
-
-# 5. Create a feature branch
-git checkout -b feature/your-feature-name
-
-# 6. Make changes and test
-npm run lint
-npm run typecheck
-
-# 7. Commit and push
-git commit -m "feat: your feature description"
-git push origin feature/your-feature-name
-
-# 8. Open a Pull Request
+# 5. Push and open a PR
+git push origin feature/amazing-feature
 ```
 
-### 📋 Contribution Guidelines
+<details>
+<summary><b>📋 Contribution Guidelines</b></summary>
 
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [open issues](https://github.com/yourorg/stewardpos/issues)
-3. Follow our code style (ESLint + Prettier)
-4. Write tests for new features
-5. Update documentation
+1. Check [open issues](https://github.com/yourorg/stewardpos/issues) first
+2. Follow our code style (ESLint + Prettier)
+3. Write tests for new features
+4. Update documentation as needed
+5. Use [conventional commits](https://www.conventionalcommits.org/)
+
+</details>
+
+<br/>
 
 ---
 
-## 📊 Project Status
+<br/>
 
-### 🎯 Current Version: **v1.0.0-beta**
+## 📊 Roadmap
 
-**Status:** ✅ Production Ready (Beta)
+<table>
+<tr>
+<td>
 
-### ✅ Completed Features
+### ✅ Completed
+- Full REST API
+- PostgreSQL & SQLite
+- JWT authentication
+- Role-based access
+- Docker support
+- Setup wizard
+- Reports & analytics
 
-- ✅ **Backend API** - Complete REST API with all CRUD operations
-- ✅ **Database Layer** - PostgreSQL & SQLite adapters
-- ✅ **Authentication** - JWT-based auth with RBAC
-- ✅ **Frontend** - React-based POS interface
-- ✅ **Inventory Management** - Full product & variant management
-- ✅ **Order Processing** - Complete checkout flow
-- ✅ **Reports** - Sales analytics and reporting
-- ✅ **Setup Wizard** - Production-ready first-time setup
-- ✅ **Docker Support** - Full containerization
-- ✅ **Security** - Industry-standard security practices
+</td>
+<td>
 
 ### 🔄 In Progress
+- Additional auth providers
+- Advanced reporting
+- Mobile responsive
+- Performance tuning
 
-- 🔄 Additional authentication providers (Google, OIDC)
-- 🔄 Advanced reporting features
-- 🔄 Mobile-responsive improvements
-- 🔄 Performance optimizations
+</td>
+<td>
 
-### 📋 Planned Features
+### 📋 Planned
+- Mobile app (iOS/Android)
+- Offline-first PWA
+- Multi-location support
+- Plugin marketplace
+- QuickBooks integration
 
-- 📋 Automated testing suite expansion
-- 📋 API documentation (Swagger/OpenAPI)
-- 📋 Mobile app (iOS/Android)
-- 📋 Offline-first PWA
-- 📋 Multi-location support
-- 📋 Third-party integrations (QuickBooks, Xero)
-- 📋 Plugin marketplace
+</td>
+</tr>
+</table>
 
----
-
-## 💬 Community & Support
-
-### 📞 Get Help
-
-- 💬 **Discord:** [Join our community](https://discord.gg/stewardpos)
-- 🐛 **GitHub Issues:** [Report bugs](https://github.com/yourorg/stewardpos/issues)
-- 💡 **Discussions:** [Ask questions](https://github.com/yourorg/stewardpos/discussions)
-- 📧 **Email:** support@stewardpos.dev
-
-### 📱 Follow Us
-
-- 🐦 **Twitter:** [@StewardPOS](https://twitter.com/StewardPOS)
-- 📺 **YouTube:** [Tutorials & Demos](https://youtube.com/@stewardpos)
-- 📰 **Blog:** [Latest updates](https://blog.stewardpos.dev)
+<br/>
 
 ---
+
+<br/>
 
 ## 📄 License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for details.
 
-See [LICENSE](LICENSE) for the full license text.
+<table>
+<tr>
+<td>✅ Commercial use</td>
+<td>✅ Modification</td>
+<td>✅ Distribution</td>
+<td>✅ Private use</td>
+</tr>
+</table>
 
-**TL;DR:** 
-- ✅ Use commercially
-- ✅ Modify and distribute
-- ✅ Private use
-- ✅ Patent use
-- ❌ No liability
-- ❌ No warranty
-
----
-
-## 🙏 Acknowledgments
-
-Built with amazing open-source technologies:
-
-- [React](https://react.dev/) - UI Framework
-- [TypeScript](https://www.typescriptlang.org/) - Type Safety
-- [Vite](https://vitejs.dev/) - Build Tool
-- [shadcn/ui](https://ui.shadcn.com/) - UI Components
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [PostgreSQL](https://www.postgresql.org/) - Database
-- [Node.js](https://nodejs.org/) - Runtime
-- [Express](https://expressjs.com/) - Web Framework
-
-**Special thanks to all our [contributors](https://github.com/yourorg/stewardpos/graphs/contributors)!**
+<br/>
 
 ---
 
 <div align="center">
 
-### ⭐ Star us on GitHub if you find this project useful!
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=120&section=footer" width="100%"/>
 
-**Made with ❤️ by the stewardPOS community**
+### ⭐ Star this repo if you find it useful!
 
-[Website](https://stewardpos.dev) • [Documentation](https://docs.stewardpos.dev) • [Demo](https://demo.stewardpos.dev) • [Discord](https://discord.gg/stewardpos)
+<p>
+  <b>Made with ❤️ by the stewardPOS community</b>
+</p>
 
----
-
-[⬆ Back to Top](#-stewardpos)
+<p>
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-documentation">Documentation</a> •
+  <a href="#-contributing">Contribute</a> •
+  <a href="#-stewardpos">Back to Top ↑</a>
+</p>
 
 </div>
