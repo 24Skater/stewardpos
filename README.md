@@ -4,7 +4,7 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=stewardPOS&fontSize=80&fontAlignY=35&animation=twinkling&fontColor=ffffff&desc=Modern%20Point%20of%20Sale%20System&descAlignY=55&descSize=20" width="100%"/>
 
 <p align="center">
-  <b>Self-Hosted • Open Source • Docker-First • Production Ready</b>
+  <b>Self-Hosted • Open Source • Docker-First • Built for Churches & Small Business</b>
 </p>
 
 <!-- Badges -->
@@ -78,6 +78,7 @@ Comprehensive reports, sales tracking, and business insights
 - [🔐 Security](#-security)
 - [🤝 Contributing](#-contributing)
 - [📊 Roadmap](#-roadmap)
+- [💒 About This Project](#-about-this-project)
 - [📄 License](#-license)
 
 </details>
@@ -645,6 +646,41 @@ git push origin feature/amazing-feature
 
 <br/>
 
+## 💒 About This Project
+
+<table>
+<tr>
+<td>
+
+### The Heart Behind stewardPOS
+
+This project was born out of a real need at my church. We needed a simple, reliable point-of-sale system for our bookstore and events, but most solutions were either too expensive or too complicated for our volunteers to use.
+
+So I built stewardPOS — not just as software, but as an act of service.
+
+> *"Whatever you do, work at it with all your heart, as working for the Lord, not for human masters."*
+> — **Colossians 3:23**
+
+While stewardPOS works great for any retail business, it was designed with **churches, ministries, and non-profits** in mind:
+- 🙏 Simple enough for volunteers
+- 💰 Free and open source
+- 🏠 Self-hosted (your data stays yours)
+- ⛪ Perfect for bookstores, cafés, gift shops, and events
+
+Every feature, every line of code was written as unto the Lord. My hope is that this tool blesses your ministry the way building it has blessed mine.
+
+**— The stewardPOS Team**
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
 ## 📄 License
 
 This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for details.
@@ -669,7 +705,7 @@ This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for 
 ### ⭐ Star this repo if you find it useful!
 
 <p>
-  <b>Made with ❤️ by the stewardPOS community</b>
+  <b>Made with ❤️ and 🙏 for the glory of God</b>
 </p>
 
 <p>
