@@ -16,6 +16,7 @@ import {
 import { Button } from './ui/button';
 import { logout, getCurrentSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import Logo from './Logo';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -48,7 +49,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Sidebar */}
       <aside className="w-64 bg-card border-r border-border flex flex-col">
         <div className="p-6 border-b border-border">
-          <h1 className="text-2xl font-bold text-foreground">Admin Portal</h1>
+          <div className="mb-3">
+            <Logo variant="icon" className="w-10" />
+          </div>
+          <h1 className="text-xl font-bold text-foreground font-headline">Admin Portal</h1>
           <p className="text-sm text-muted-foreground mt-1">{session?.user.name}</p>
         </div>
 

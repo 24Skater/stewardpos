@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <!-- All-black, single-color mark for print, emboss, stamps -->
+  <path d="M512 110
+           C420 170 315 190 250 205
+           V520
+           C250 710 374 858 512 930
+           C650 858 774 710 774 520
+           V205
+           C709 190 604 170 512 110 Z" fill="#111827"></path>
+
+  <!-- Receipt -->
+  <path d="M392 210
+           C392 198 402 188 414 188
+           H610
+           C622 188 632 198 632 210
+           V330
+           L612 316 L592 330 L572 316 L552 330 L532 316 L512 330
+           L492 316 L472 330 L452 316 L432 330 L412 316 L392 330
+           V210 Z" fill="#111827"></path>
+
+  <!-- Receipt cross (cutout effect by drawing white on top) -->
+  <rect x="498" y="220" width="28" height="94" rx="6" fill="#FFFFFF"></rect>
+  <rect x="468" y="252" width="88" height="28" rx="6" fill="#FFFFFF"></rect>
+
+  <!-- Terminal outer -->
+  <path d="M382 360
+           C382 338 400 320 422 320
+           H602
+           C624 320 642 338 642 360
+           V698
+           C642 720 624 738 602 738
+           H422
+           C400 738 382 720 382 698
+           V360 Z" fill="#111827"></path>
+
+  <!-- Screen -->
+  <rect x="432" y="372" width="160" height="136" rx="18" fill="#FFFFFF"></rect>
+
+  <!-- Screen cross -->
+  <rect x="500" y="400" width="24" height="80" rx="6" fill="#111827"></rect>
+  <rect x="472" y="428" width="80" height="24" rx="6" fill="#111827"></rect>
+
+  <!-- Keypad (simple blocks) -->
+  <g fill="#FFFFFF">
+    <rect x="430" y="560" width="56" height="44" rx="10"></rect>
+    <rect x="494" y="560" width="56" height="44" rx="10"></rect>
+    <rect x="558" y="560" width="56" height="44" rx="10"></rect>
+
+    <rect x="430" y="612" width="56" height="44" rx="10"></rect>
+    <rect x="494" y="612" width="56" height="44" rx="10"></rect>
+    <rect x="558" y="612" width="56" height="44" rx="10"></rect>
+
+    <rect x="430" y="664" width="56" height="44" rx="10"></rect>
+    <rect x="494" y="664" width="56" height="44" rx="10"></rect>
+    <rect x="558" y="664" width="56" height="44" rx="10"></rect>
+  </g>
+</svg>

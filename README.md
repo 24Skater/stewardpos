@@ -1,6 +1,10 @@
-# Persona POS (Steward POS)
+<div align="center">
+  <img src="branding/svg/stewardpos-logo-lockup.svg" alt="StewardPOS Logo" width="400">
+</div>
 
-**Open-source, self-hosted Point of Sale system for small to medium businesses.**
+# StewardPOS
+
+**StewardPOS is an open-source POS built originally for a church use case.** A modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -8,11 +12,22 @@
 
 ---
 
+## 🔗 Quick Links
+
+- **[Website](https://stewardpos.dev)** *(Coming Soon)*
+- **[Documentation](https://docs.stewardpos.dev)** *(Coming Soon)*
+- **[Demo](https://demo.stewardpos.dev)** *(Coming Soon)*
+- **[GitHub Issues](https://github.com/24Skater/stewardpos/issues)** - Report bugs or request features
+- **[Branding Guidelines](branding/README.md)** - Logo usage and brand assets
+
+---
+
 ## 🎯 Overview
 
-Persona POS is a modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
+StewardPOS is a modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
 
 **Perfect for:**
+- Churches and faith-based organizations
 - Retail stores
 - Restaurants & cafes
 - Service businesses
@@ -92,8 +107,8 @@ Persona POS is a modern, production-ready point of sale system that you can run 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourorg/persona-pos.git
-cd persona-pos/backend
+git clone https://github.com/24Skater/stewardpos.git
+cd stewardpos/backend
 
 # Install dependencies
 npm install
@@ -129,8 +144,8 @@ Frontend runs at: `http://localhost:5173`
 ### Docker (Full Stack)
 
 ```bash
-git clone https://github.com/yourorg/persona-pos.git
-cd persona-pos
+git clone https://github.com/24Skater/stewardpos.git
+cd stewardpos
 docker-compose up -d
 ```
 
@@ -231,6 +246,7 @@ The backend API is fully functional with the following endpoints:
 - **[Security Policy](SECURITY.md)** - Security best practices and reporting
 - **[Changelog](CHANGELOG.md)** - Version history and changes
 - **[Phase 2 Complete](PHASE2-COMPLETE.md)** - Database implementation details
+- **[Branding Guidelines](branding/README.md)** - Logo usage, colors, typography, and brand assets
 
 ---
 
@@ -283,14 +299,14 @@ We welcome contributions! Whether it's:
 
 **Get started:**
 1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [open issues](https://github.com/yourorg/persona-pos/issues)
-3. Join our [Discord community](https://discord.gg/persona-pos)
+2. Check [open issues](https://github.com/24Skater/stewardpos/issues)
+3. Join our [Discord community](https://discord.gg/stewardpos)
 
 **Quick contribution guide:**
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/persona-pos.git
-cd persona-pos
+git clone https://github.com/YOUR_USERNAME/stewardpos.git
+cd stewardpos
 
 # Install frontend dependencies
 npm install
@@ -327,7 +343,7 @@ git push origin feature/your-feature-name
 
 ## 🏗️ Architecture
 
-Persona POS uses **Clean Architecture** with the **Ports and Adapters** pattern:
+StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -379,7 +395,7 @@ Security is a top priority. We follow industry best practices:
 - ✅ Security headers
 - ✅ Rate limiting
 
-**Found a vulnerability?** Please report it privately to security@persona-pos.dev
+**Found a vulnerability?** Please report it privately to security@stewardpos.dev
 
 See [SECURITY.md](SECURITY.md) for details.
 
@@ -416,11 +432,11 @@ See [SECURITY.md](SECURITY.md) for details.
 
 ## 💬 Community & Support
 
-- 💬 **Discord:** [Join our community](https://discord.gg/persona-pos)
-- 🐛 **Issues:** [GitHub Issues](https://github.com/yourorg/persona-pos/issues)
-- 💡 **Discussions:** [GitHub Discussions](https://github.com/yourorg/persona-pos/discussions)
-- 📧 **Email:** support@persona-pos.dev
-- 🐦 **Twitter:** [@PersonaPOS](https://twitter.com/PersonaPOS)
+- 💬 **Discord:** [Join our community](https://discord.gg/stewardpos)
+- 🐛 **Issues:** [GitHub Issues](https://github.com/24Skater/stewardpos/issues)
+- 💡 **Discussions:** [GitHub Discussions](https://github.com/24Skater/stewardpos/discussions)
+- 📧 **Email:** support@stewardpos.dev
+- 🐦 **Twitter:** [@StewardPOS](https://twitter.com/StewardPOS)
 
 ---
 
@@ -443,7 +459,7 @@ Built with amazing open-source technologies:
 - [PostgreSQL](https://www.postgresql.org/)
 - [Node.js](https://nodejs.org/)
 
-Special thanks to all our [contributors](https://github.com/yourorg/persona-pos/graphs/contributors)!
+Special thanks to all our [contributors](https://github.com/24Skater/stewardpos/graphs/contributors)!
 
 ---
 
@@ -451,7 +467,7 @@ Special thanks to all our [contributors](https://github.com/yourorg/persona-pos/
 
 If you find this project useful, please consider giving it a star! ⭐
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yourorg/persona-pos&type=Date)](https://star-history.com/#yourorg/persona-pos&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=24Skater/stewardpos&type=Date)](https://star-history.com/#24Skater/stewardpos&Date)
 
 ---
 
@@ -482,6 +498,6 @@ If you find this project useful, please consider giving it a star! ⭐
 
 ---
 
-**Made with ❤️ by the Persona POS community**
+**Made with ❤️ by the StewardPOS community**
 
-[Website](https://persona-pos.dev) • [Documentation](https://docs.persona-pos.dev) • [Demo](https://demo.persona-pos.dev)
+[Website](https://stewardpos.dev) • [Documentation](https://docs.stewardpos.dev) • [Demo](https://demo.stewardpos.dev)

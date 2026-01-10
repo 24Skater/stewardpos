@@ -8,6 +8,16 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
+    /* StewardPOS Brand Colors */
+    --sp-primary: 252 40% 40%; /* #4B3F8F - Primary Indigo */
+    --sp-accent-blue: 214 65% 55%; /* #3B6FD8 - Blue Accent */
+    --sp-gold: 42 88% 61%; /* #F5B942 - Gold Accent */
+    --sp-gold-dark: 38 68% 50%; /* #D39A2F - Gold Dark */
+    --sp-charcoal: 220 20% 7%; /* #0F1115 - Charcoal */
+    --sp-slate: 220 15% 20%; /* #2A2F3A - Slate */
+    --sp-light-gray: 220 13% 91%; /* #E5E7EB - Light Gray */
+    --sp-white: 0 0% 100%; /* #FFFFFF - White */
+
     --background: 240 20% 99%;
     --foreground: 240 10% 10%;
 
@@ -17,10 +27,11 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 10%;
 
-    --primary: 262 52% 47%;
+    /* Updated to use StewardPOS brand colors */
+    --primary: 252 40% 40%; /* StewardPOS Primary Indigo */
     --primary-foreground: 0 0% 100%;
     
-    --primary-glow: 262 70% 65%;
+    --primary-glow: 214 65% 55%; /* StewardPOS Blue Accent */
 
     --secondary: 240 15% 96%;
     --secondary-foreground: 240 10% 20%;
@@ -28,7 +39,8 @@ All colors MUST be HSL.
     --muted: 240 15% 96%;
     --muted-foreground: 240 6% 46%;
 
-    --accent: 175 60% 45%;
+    /* Updated to use StewardPOS Blue Accent */
+    --accent: 214 65% 55%; /* StewardPOS Blue Accent */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
@@ -36,18 +48,19 @@ All colors MUST be HSL.
 
     --border: 240 12% 90%;
     --input: 240 12% 90%;
-    --ring: 262 52% 47%;
+    --ring: 252 40% 40%; /* StewardPOS Primary Indigo */
 
     --radius: 0.75rem;
     
-    --gradient-primary: linear-gradient(135deg, hsl(262 52% 47%), hsl(262 70% 65%));
-    --gradient-accent: linear-gradient(135deg, hsl(175 60% 45%), hsl(195 70% 50%));
+    /* Updated gradients to use StewardPOS colors */
+    --gradient-primary: linear-gradient(135deg, hsl(252 40% 40%), hsl(214 65% 55%));
+    --gradient-accent: linear-gradient(135deg, hsl(214 65% 55%), hsl(42 88% 61%));
     --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(240 20% 98%));
     
     --shadow-sm: 0 1px 2px 0 hsl(240 10% 10% / 0.05);
     --shadow-md: 0 4px 6px -1px hsl(240 10% 10% / 0.1);
     --shadow-lg: 0 10px 25px -5px hsl(240 10% 10% / 0.1);
-    --shadow-glow: 0 0 30px hsl(262 70% 65% / 0.3);
+    --shadow-glow: 0 0 30px hsl(214 65% 55% / 0.3);
     
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
@@ -58,10 +71,20 @@ All colors MUST be HSL.
     --sidebar-accent: 240 4.8% 95.9%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 262 52% 47%;
+    --sidebar-ring: 252 40% 40%; /* StewardPOS Primary Indigo */
   }
 
   .dark {
+    /* StewardPOS Brand Colors (same in dark mode) */
+    --sp-primary: 252 40% 40%; /* #4B3F8F - Primary Indigo */
+    --sp-accent-blue: 214 65% 55%; /* #3B6FD8 - Blue Accent */
+    --sp-gold: 42 88% 61%; /* #F5B942 - Gold Accent */
+    --sp-gold-dark: 38 68% 50%; /* #D39A2F - Gold Dark */
+    --sp-charcoal: 220 20% 7%; /* #0F1115 - Charcoal */
+    --sp-slate: 220 15% 20%; /* #2A2F3A - Slate */
+    --sp-light-gray: 220 13% 91%; /* #E5E7EB - Light Gray */
+    --sp-white: 0 0% 100%; /* #FFFFFF - White */
+
     --background: 240 10% 8%;
     --foreground: 240 5% 96%;
 
@@ -71,10 +94,11 @@ All colors MUST be HSL.
     --popover: 240 8% 12%;
     --popover-foreground: 240 5% 96%;
 
-    --primary: 262 70% 65%;
-    --primary-foreground: 240 10% 10%;
+    /* Updated to use StewardPOS brand colors (lighter for dark mode) */
+    --primary: 214 65% 55%; /* StewardPOS Blue Accent (lighter for dark mode) */
+    --primary-foreground: 0 0% 100%;
     
-    --primary-glow: 262 80% 75%;
+    --primary-glow: 214 70% 65%; /* Lighter blue for dark mode */
 
     --secondary: 240 8% 18%;
     --secondary-foreground: 240 5% 96%;
@@ -82,33 +106,35 @@ All colors MUST be HSL.
     --muted: 240 8% 18%;
     --muted-foreground: 240 5% 64%;
 
-    --accent: 175 60% 50%;
-    --accent-foreground: 240 10% 10%;
+    /* Updated to use StewardPOS Gold */
+    --accent: 42 88% 61%; /* StewardPOS Gold Accent */
+    --accent-foreground: 220 20% 7%; /* Charcoal text on gold */
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 240 5% 96%;
 
     --border: 240 8% 20%;
     --input: 240 8% 20%;
-    --ring: 262 70% 65%;
+    --ring: 214 65% 55%; /* StewardPOS Blue Accent */
     
-    --gradient-primary: linear-gradient(135deg, hsl(262 70% 65%), hsl(262 80% 75%));
-    --gradient-accent: linear-gradient(135deg, hsl(175 60% 50%), hsl(195 70% 55%));
+    /* Updated gradients to use StewardPOS colors */
+    --gradient-primary: linear-gradient(135deg, hsl(252 40% 40%), hsl(214 65% 55%));
+    --gradient-accent: linear-gradient(135deg, hsl(214 65% 55%), hsl(42 88% 61%));
     --gradient-surface: linear-gradient(180deg, hsl(240 8% 12%), hsl(240 10% 10%));
     
     --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
     --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.4);
     --shadow-lg: 0 10px 25px -5px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 30px hsl(262 80% 75% / 0.4);
+    --shadow-glow: 0 0 30px hsl(214 65% 55% / 0.4);
 
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 262 70% 65%;
-    --sidebar-primary-foreground: 240 10% 10%;
+    --sidebar-primary: 214 65% 55%; /* StewardPOS Blue Accent */
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 3.7% 15.9%;
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 262 70% 65%;
+    --sidebar-ring: 214 65% 55%; /* StewardPOS Blue Accent */
   }
 }
 
@@ -120,6 +146,18 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
+    /* StewardPOS Typography */
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+
+  /* Headlines use Playfair Display */
+  h1, h2, .font-headline {
+    font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  }
+
+  /* Code uses JetBrains Mono */
+  code, pre, .font-mono {
+    font-family: "JetBrains Mono", "Courier New", Courier, monospace;
   }
   
   button {

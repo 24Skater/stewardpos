@@ -5,6 +5,7 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
+import Logo from "@/components/Logo";
 import { Product, CartItem, getAllProducts, getProduct, getProductByBarcode, initializeSampleData, addOrder, addOrderItem, getSettings, calculateVariantPrice, getAllCategories } from "@/lib/db";
 import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -290,11 +291,9 @@ export default function POS() {
       <header className="border-b border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-primary to-primary-glow p-2 rounded-lg">
-              <Package className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Persona POS</h1>
+            <Logo responsive className="hidden md:block" />
+            <Logo variant="icon" className="md:hidden" />
+            <div className="hidden md:block">
               <p className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</p>
             </div>
           </div>
