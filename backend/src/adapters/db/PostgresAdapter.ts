@@ -49,7 +49,7 @@ export class PostgresAdapter {
   }
 
   // User Operations
-  async getUserByEmail(email: string): Promise<any> {
+  async getUserByEmail(email: string): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `SELECT u.*, 
@@ -75,12 +75,12 @@ export class PostgresAdapter {
       const user = result.rows[0];
       
       // Parse roles - roles is now a JSON array
-      let roles: any[] = [];
+      const roles: unknown[] = [];
       if (user.roles) {
         try {
           const rolesArray = typeof user.roles === 'string' ? JSON.parse(user.roles) : user.roles;
           if (Array.isArray(rolesArray)) {
-            roles = rolesArray.map((r: any) => ({
+            roles = rolesArray.map((r: Record<string, unknown>) => ({
               id: r.id,
               name: r.name,
               systemRole: r.system_role,
@@ -125,7 +125,7 @@ export class PostgresAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<any[]> {
+  async getAllProducts(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT p.*, 
@@ -166,7 +166,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getProductById(id: string): Promise<any | null> {
+  async getProductById(id: string): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `SELECT p.*, 
@@ -213,7 +213,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createProduct(product: any): Promise<any> {
+  async createProduct(product: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
     
     try {
@@ -284,7 +284,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateProduct(id: string, product: any): Promise<any> {
+  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `UPDATE products 
@@ -339,7 +339,7 @@ export class PostgresAdapter {
   }
 
   // Order Operations
-  async createOrder(order: any): Promise<any> {
+  async createOrder(order: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
     
     try {
@@ -423,7 +423,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getAllOrders(): Promise<any[]> {
+  async getAllOrders(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT * FROM orders ORDER BY created_at DESC`
@@ -431,7 +431,7 @@ export class PostgresAdapter {
 
       // Get all order items in one query for efficiency
       const orderIds = result.rows.map(o => o.id);
-      let itemsMap = new Map<string, any[]>();
+      const itemsMap = new Map<string, unknown[]>();
       
       if (orderIds.length > 0) {
         const itemsResult = await this.pool.query(
@@ -480,7 +480,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getOrderById(id: string): Promise<any | null> {
+  async getOrderById(id: string): Promise<Record<string, unknown> | null> {
     try {
       const orderResult = await this.pool.query(
         'SELECT * FROM orders WHERE id = $1',
@@ -529,7 +529,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getAllCustomers(): Promise<any[]> {
+  async getAllCustomers(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM customers ORDER BY name ASC'
@@ -556,7 +556,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createCustomer(customer: any): Promise<any> {
+  async createCustomer(customer: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO customers (name, org, email, phone, address, city, state, zip, country, notes)
@@ -598,7 +598,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getCustomerById(id: string): Promise<any | null> {
+  async getCustomerById(id: string): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM customers WHERE id = $1',
@@ -633,7 +633,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateCustomer(id: string, customer: any): Promise<any | null> {
+  async updateCustomer(id: string, customer: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE customers SET 
@@ -831,7 +831,7 @@ export class PostgresAdapter {
         await client.query('DELETE FROM receipt_emails WHERE return_id = ANY($1)', [returnIdList]);
       }
       if (orderIds.rows.length > 0) {
-        const orderIdList = orderIds.rows.map((o: any) => o.id);
+        const orderIdList = orderIds.rows.map((o: Record<string, unknown>) => o.id as string);
         await client.query('DELETE FROM refund_transactions WHERE order_id = ANY($1)', [orderIdList]);
         await client.query('DELETE FROM receipt_emails WHERE order_id = ANY($1)', [orderIdList]);
         // Delete discount_usage and loyalty_transactions for these orders
@@ -880,7 +880,7 @@ export class PostgresAdapter {
   }
 
   // ===== Service Operations =====
-  async getAllServices(): Promise<any[]> {
+  async getAllServices(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM services ORDER BY name ASC'
@@ -932,7 +932,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createService(service: any): Promise<any> {
+  async createService(service: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO services (name, category, description, base_price, unit_type, is_active)
@@ -966,7 +966,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateService(id: string, service: any): Promise<any | null> {
+  async updateService(id: string, service: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE services 
@@ -1026,7 +1026,7 @@ export class PostgresAdapter {
   }
 
   // ===== User Operations =====
-  async getAllUsers(): Promise<any[]> {
+  async getAllUsers(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT u.*, 
@@ -1060,7 +1060,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createUser(user: any): Promise<any> {
+  async createUser(user: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1103,13 +1103,13 @@ export class PostgresAdapter {
     }
   }
 
-  async updateUser(id: string, user: any): Promise<any | null> {
+  async updateUser(id: string, user: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
 
       const updates: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
       let paramIndex = 1;
 
       if (user.name !== undefined) {
@@ -1186,7 +1186,7 @@ export class PostgresAdapter {
   }
 
   // ===== Role Operations =====
-  async getAllRoles(): Promise<any[]> {
+  async getAllRoles(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM roles ORDER BY name ASC'
@@ -1232,7 +1232,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createRole(role: any): Promise<any> {
+  async createRole(role: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO roles (name, system_role, permissions)
@@ -1256,7 +1256,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateRole(id: string, role: any): Promise<any | null> {
+  async updateRole(id: string, role: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE roles 
@@ -1338,7 +1338,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateSettings(settings: any): Promise<any> {
+  async updateSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       // Build dynamic update query for all fields
       const result = await this.pool.query(
@@ -1422,7 +1422,7 @@ export class PostgresAdapter {
   }
 
   // ===== Audit Log Operations =====
-  async createAuditLog(log: any): Promise<any> {
+  async createAuditLog(log: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO audit_logs (user_id, action, entity, entity_id, before, after)
@@ -1455,14 +1455,14 @@ export class PostgresAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<any[]> {
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<unknown[]> {
     try {
       let query = `
         SELECT al.*, u.name as user_name, u.email as user_email
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
       let paramIndex = 1;
 
       if (options?.userId) {
@@ -1503,7 +1503,7 @@ export class PostgresAdapter {
   }
 
   // ===== Quote Operations =====
-  async getAllQuotes(): Promise<any[]> {
+  async getAllQuotes(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT q.*, c.name as customer_name, c.email as customer_email
@@ -1514,7 +1514,7 @@ export class PostgresAdapter {
 
       // Get all quote items
       const quoteIds = result.rows.map(q => q.id);
-      let itemsMap = new Map<string, any[]>();
+      const itemsMap = new Map<string, unknown[]>();
 
       if (quoteIds.length > 0) {
         const itemsResult = await this.pool.query(
@@ -1616,7 +1616,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getQuotesByCustomer(customerId: string): Promise<any[]> {
+  async getQuotesByCustomer(customerId: string): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT q.*, c.name as customer_name, c.email as customer_email
@@ -1629,7 +1629,7 @@ export class PostgresAdapter {
 
       // Get items for these quotes
       const quoteIds = result.rows.map(q => q.id);
-      let itemsMap = new Map<string, any[]>();
+      const itemsMap = new Map<string, unknown[]>();
 
       if (quoteIds.length > 0) {
         const itemsResult = await this.pool.query(
@@ -1678,7 +1678,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createQuote(quote: any): Promise<any> {
+  async createQuote(quote: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1751,7 +1751,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateQuote(id: string, quote: any): Promise<any | null> {
+  async updateQuote(id: string, quote: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1840,7 +1840,7 @@ export class PostgresAdapter {
   }
 
   // ===== Order Operations Extended =====
-  async getOrdersByCustomerEmail(email: string): Promise<any[]> {
+  async getOrdersByCustomerEmail(email: string): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT * FROM orders WHERE customer_email = $1 ORDER BY created_at DESC`,
@@ -1848,7 +1848,7 @@ export class PostgresAdapter {
       );
 
       const orderIds = result.rows.map(o => o.id);
-      let itemsMap = new Map<string, any[]>();
+      const itemsMap = new Map<string, unknown[]>();
 
       if (orderIds.length > 0) {
         const itemsResult = await this.pool.query(
@@ -1897,7 +1897,7 @@ export class PostgresAdapter {
   }
 
   // ===== API Key Operations =====
-  async getAllApiKeys(): Promise<any[]> {
+  async getAllApiKeys(): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
@@ -1995,7 +1995,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createApiKey(apiKey: any): Promise<any> {
+  async createApiKey(apiKey: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO api_keys (name, description, key_prefix, key_hash, scopes, rate_limit, expires_at, created_by)
@@ -2032,7 +2032,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateApiKey(id: string, apiKey: any): Promise<any | null> {
+  async updateApiKey(id: string, apiKey: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE api_keys SET
@@ -2093,7 +2093,7 @@ export class PostgresAdapter {
 
   // ===== Returns & Refunds Operations =====
 
-  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<any[]> {
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<unknown[]> {
     try {
       let query = `
         SELECT r.*, 
@@ -2106,7 +2106,7 @@ export class PostgresAdapter {
         LEFT JOIN customers c ON r.customer_id = c.id
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
       let paramIndex = 1;
 
       if (filters?.status) {
@@ -2191,7 +2191,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsByOrder(orderId: string): Promise<any[]> {
+  async getReturnsByOrder(orderId: string): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT r.*, u.name as created_by_name
@@ -2226,7 +2226,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsByCustomer(customerId: string): Promise<any[]> {
+  async getReturnsByCustomer(customerId: string): Promise<unknown[]> {
     try {
       const result = await this.pool.query(
         `SELECT r.*, o.total as original_order_total
@@ -2244,7 +2244,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createReturn(returnData: any): Promise<any> {
+  async createReturn(returnData: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -2347,7 +2347,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateReturnRefundStatus(id: string, data: any): Promise<any | null> {
+  async updateReturnRefundStatus(id: string, data: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE returns SET
@@ -2380,10 +2380,10 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
+  async getReturnStats(filters?: { startDate?: number; endDate?: number }): Promise<Record<string, unknown>> {
     try {
       let whereClause = '';
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.startDate) {
         whereClause += ' AND created_at >= to_timestamp($1 / 1000.0)';
@@ -2424,7 +2424,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createRefundTransaction(data: any): Promise<any> {
+  async createRefundTransaction(data: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO refund_transactions (
@@ -2452,7 +2452,7 @@ export class PostgresAdapter {
     }
   }
 
-  async createStoreCredit(data: any): Promise<any> {
+  async createStoreCredit(data: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
         `INSERT INTO store_credits (
@@ -2479,7 +2479,7 @@ export class PostgresAdapter {
     }
   }
 
-  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<any[]> {
+  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<unknown[]> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -2494,7 +2494,7 @@ export class PostgresAdapter {
       }
 
       const itemsResult = await client.query(query, params);
-      const restockedItems: any[] = [];
+      const restockedItems: unknown[] = [];
 
       for (const item of itemsResult.rows) {
         // Update stock in product_variants
@@ -2594,7 +2594,7 @@ export class PostgresAdapter {
         LEFT JOIN order_items oi ON o.id = oi.order_id
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
       let paramIndex = 1;
 
       if (filters.query) {
@@ -2756,7 +2756,7 @@ export class PostgresAdapter {
   async updateDiscountType(id: string, data: any): Promise<any | null> {
     try {
       const fields: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
       let idx = 1;
 
       if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
@@ -2896,7 +2896,7 @@ export class PostgresAdapter {
   async updatePromoCode(id: string, data: any): Promise<any | null> {
     try {
       const fields: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
       let idx = 1;
 
       if (data.code !== undefined) { fields.push(`code = $${idx++}`); values.push(data.code.toUpperCase()); }
@@ -3108,7 +3108,7 @@ export class PostgresAdapter {
         LEFT JOIN users a ON du.approved_by = a.id
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
       let idx = 1;
 
       if (filters?.orderId) {
@@ -3190,7 +3190,7 @@ export class PostgresAdapter {
   async getDiscountStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
     try {
       let whereClause = '';
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.startDate) {
         whereClause += ' AND applied_at >= to_timestamp($1 / 1000.0)';

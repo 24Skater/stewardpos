@@ -266,7 +266,7 @@ router.post('/:id/start-return', async (req: AuthRequest, res: Response, next: N
     }
 
     // Build returnable items
-    const returnableItems = (order.items || []).map((item: any) => {
+    const returnableItems = (order.items || []).map((item: Record<string, unknown>) => {
       const key = item.id || item.productId;
       const alreadyReturned = returnedItems[key] || 0;
       const returnableQty = item.quantity - alreadyReturned;
@@ -298,7 +298,7 @@ router.post('/:id/start-return', async (req: AuthRequest, res: Response, next: N
           paymentMethod: order.paymentMethod,
         },
         returnableItems,
-        hasReturnableItems: returnableItems.some((i: any) => i.canReturn),
+        hasReturnableItems: returnableItems.some((i: Record<string, unknown>) => (i.canReturn as boolean) === true),
         existingReturns: existingReturns.length,
       },
     });

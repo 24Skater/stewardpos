@@ -96,7 +96,7 @@ router.put('/users/:id', async (req: AuthRequest, res: Response, next: NextFunct
     const userData = updateUserSchema.parse(req.body);
     const adapter = db.getAdapter();
 
-    const updateData: any = { ...userData };
+    const updateData: Record<string, unknown> = { ...userData };
     
     // Hash password if provided
     if (userData.password) {
@@ -389,7 +389,7 @@ router.post('/reset-database', async (req: AuthRequest, res: Response, next: Nex
     // Check if user has admin role
     const adapter = db.getAdapter();
     const user = await adapter.getUserByEmail(req.user.email);
-    if (!user || !user.roles.some((r: any) => r.systemRole === 'admin')) {
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 

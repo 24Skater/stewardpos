@@ -158,7 +158,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction
       success: true,
       message: 'Customer deleted successfully',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle foreign key constraint violations with a user-friendly message
     if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
       const constraint = error.constraint || '';
@@ -217,7 +217,7 @@ router.post('/:id/archive', async (req: AuthRequest, res: Response, next: NextFu
       success: true,
       message: `Customer "${customer.name}" has been archived along with their quotes and orders.`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       next(new ValidationError(error.errors[0].message));
     } else {

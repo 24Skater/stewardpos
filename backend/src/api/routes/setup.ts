@@ -122,7 +122,7 @@ router.post('/test-database', async (req: Request, res: Response, next: NextFunc
         success: true,
         message: 'Database connection successful',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       res.status(400).json({
         success: false,
         error: `Database connection failed: ${error.message}`,
@@ -209,7 +209,7 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
         db.prepare('SELECT 1').get();
         db.close();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       return res.status(400).json({
         success: false,
         error: `Database connection failed: ${error.message}`,
@@ -232,7 +232,7 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
 
       const migrator = new Migrator();
       await migrator.runMigrations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Migration failed:', error);
       return res.status(500).json({
         success: false,
@@ -361,7 +361,7 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
           `INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)`
         ).run(userId, role.id);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Failed to create admin user:', error);
       return res.status(500).json({
         success: false,
@@ -377,7 +377,7 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
         const seeder = new Seeder();
         await seeder.seed();
         await seeder.close();
-      } catch (error: any) {
+      } catch (error: unknown) {
         logger.warn('Demo seeding failed (non-critical):', error);
       }
     }

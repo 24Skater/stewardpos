@@ -49,7 +49,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     await adapter.updateUserLastLogin(user.id);
 
     // Generate JWT token
-    // @ts-ignore - expiresIn type compatibility
+    // @ts-expect-error - expiresIn type compatibility
     const token = jwt.sign(
       {
         id: user.id,
@@ -144,7 +144,7 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response, ne
     }
 
     // Generate new token
-    // @ts-ignore - expiresIn type compatibility
+    // @ts-expect-error - expiresIn type compatibility
     const token = jwt.sign(
       {
         id: req.user.id,

@@ -64,7 +64,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
     const apiKeys = await adapter.getAllApiKeys();
     
     // Never return the hash
-    const sanitizedKeys = apiKeys.map(({ keyHash, ...rest }: any) => rest);
+    const sanitizedKeys = apiKeys.map(({ keyHash, ...rest }: Record<string, unknown>) => rest);
     
     res.json({
       success: true,

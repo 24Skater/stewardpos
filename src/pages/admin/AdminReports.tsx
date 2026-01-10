@@ -52,10 +52,11 @@ export default function AdminReports() {
   const getStartDate = () => {
     const now = Date.now();
     switch (period) {
-      case 'today':
+      case 'today': {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         return today.getTime();
+      }
       case '7days':
         return now - 7 * 24 * 60 * 60 * 1000;
       case '30days':

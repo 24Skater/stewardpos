@@ -25,7 +25,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
 
     const adapter = (await import('../../services/database')).default.getAdapter();
     const user = await adapter.getUserByEmail(req.user.email);
-    if (!user || !user.roles.some((r: any) => r.systemRole === 'admin')) {
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -42,7 +42,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
       fs.readFile(backendPackagePath, 'utf-8').catch(() => null),
     ]);
 
-    const components: any[] = [];
+    const components: unknown[] = [];
 
     // Parse frontend dependencies
     if (rootPackage) {
@@ -106,7 +106,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
 
     const adapter = (await import('../../services/database')).default.getAdapter();
     const user = await adapter.getUserByEmail(req.user.email);
-    if (!user || !user.roles.some((r: any) => r.systemRole === 'admin')) {
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -121,7 +121,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
       fs.readFile(backendPackagePath, 'utf-8').catch(() => null),
     ]);
 
-    const components: any[] = [];
+    const components: unknown[] = [];
 
     // Parse frontend dependencies
     if (rootPackage) {
@@ -160,7 +160,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
         logger.error('Error parsing backend package.json:', error);
       }
     }
-    const updates: any[] = [];
+    const updates: unknown[] = [];
 
     // Check each package for updates (limited to avoid timeout)
     for (const component of components.slice(0, 50)) { // Limit to 50 to avoid timeout
@@ -207,7 +207,7 @@ router.post('/update', async (req: AuthRequest, res: Response, next: NextFunctio
 
     const adapter = (await import('../../services/database')).default.getAdapter();
     const user = await adapter.getUserByEmail(req.user.email);
-    if (!user || !user.roles.some((r: any) => r.systemRole === 'admin')) {
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -251,7 +251,7 @@ router.post('/update', async (req: AuthRequest, res: Response, next: NextFunctio
         errors: stderr || null,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error updating packages:', error);
     res.status(500).json({
       success: false,
@@ -274,7 +274,7 @@ router.post('/update-all', async (req: AuthRequest, res: Response, next: NextFun
 
     const adapter = (await import('../../services/database')).default.getAdapter();
     const user = await adapter.getUserByEmail(req.user.email);
-    if (!user || !user.roles.some((r: any) => r.systemRole === 'admin')) {
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -312,7 +312,7 @@ router.post('/update-all', async (req: AuthRequest, res: Response, next: NextFun
         errors: stderr || null,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('Error updating all packages:', error);
     res.status(500).json({
       success: false,

@@ -40,7 +40,7 @@ export class SQLiteAdapter {
   }
 
   // User Operations
-  async getUserByEmail(email: string): Promise<any> {
+  async getUserByEmail(email: string): Promise<Record<string, unknown> | null> {
     try {
       const user = this.db
         .prepare(
@@ -107,17 +107,17 @@ export class SQLiteAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<any[]> {
+  async getAllProducts(): Promise<unknown[]> {
     try {
       const products = this.db
         .prepare('SELECT * FROM products ORDER BY name ASC')
-        .all() as any[];
+        .all() as unknown[];
 
       // Get variants for each product
       const productsWithVariants = products.map((product) => {
         const variants = this.db
           .prepare('SELECT * FROM product_variants WHERE product_id = ?')
-          .all(product.id) as any[];
+          .all(product.id) as unknown[];
 
         return {
           id: product.id,
@@ -162,7 +162,7 @@ export class SQLiteAdapter {
 
       const variants = this.db
         .prepare('SELECT * FROM product_variants WHERE product_id = ?')
-        .all(id) as any[];
+        .all(id) as unknown[];
 
       return {
         id: product.id,
@@ -192,7 +192,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createProduct(product: any): Promise<any> {
+  async createProduct(product: Record<string, unknown>): Promise<Record<string, unknown>> {
     const transaction = this.db.transaction(() => {
       // Insert product
       const now = Date.now();
@@ -281,7 +281,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateProduct(id: string, product: any): Promise<any> {
+  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const now = Date.now();
       const result = this.db
@@ -340,7 +340,7 @@ export class SQLiteAdapter {
   }
 
   // Order Operations
-  async createOrder(order: any): Promise<any> {
+  async createOrder(order: Record<string, unknown>): Promise<Record<string, unknown>> {
     const transaction = this.db.transaction(() => {
       // Insert order
       const now = Date.now();
@@ -429,21 +429,21 @@ export class SQLiteAdapter {
     }
   }
 
-  async getAllOrders(): Promise<any[]> {
+  async getAllOrders(): Promise<unknown[]> {
     try {
       const orders = this.db
         .prepare('SELECT * FROM orders ORDER BY created_at DESC')
-        .all() as any[];
+        .all() as unknown[];
 
       // Get all order items
-      const itemsMap = new Map<string, any[]>();
+      const itemsMap = new Map<string, unknown[]>();
       const orderIds = orders.map(o => o.id);
       
       if (orderIds.length > 0) {
         const placeholders = orderIds.map(() => '?').join(',');
         const items = this.db
           .prepare(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`)
-          .all(...orderIds) as any[];
+          .all(...orderIds) as unknown[];
         
         // Group items by order_id
         items.forEach((item) => {
@@ -498,7 +498,7 @@ export class SQLiteAdapter {
 
       const items = this.db
         .prepare('SELECT * FROM order_items WHERE order_id = ?')
-        .all(id) as any[];
+        .all(id) as unknown[];
 
       return {
         id: order.id,
@@ -532,11 +532,11 @@ export class SQLiteAdapter {
   }
 
   // Customer Operations
-  async getAllCustomers(): Promise<any[]> {
+  async getAllCustomers(): Promise<unknown[]> {
     try {
       const customers = this.db
         .prepare('SELECT * FROM customers ORDER BY name ASC')
-        .all() as any[];
+        .all() as unknown[];
 
       return customers.map((c) => ({
         id: c.id,
@@ -559,7 +559,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createCustomer(customer: any): Promise<any> {
+  async createCustomer(customer: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const now = Date.now();
       const result = this.db
@@ -640,7 +640,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateCustomer(id: string, customer: any): Promise<any | null> {
+  async updateCustomer(id: string, customer: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const existing = this.db
         .prepare('SELECT * FROM customers WHERE id = ?')
@@ -747,7 +747,7 @@ export class SQLiteAdapter {
       // Archive associated quotes
       const quotes = this.db
         .prepare('SELECT * FROM quotes WHERE customer_id = ?')
-        .all(id) as any[];
+        .all(id) as unknown[];
 
       for (const quote of quotes) {
         this.db.prepare(
@@ -765,7 +765,7 @@ export class SQLiteAdapter {
       // Archive associated orders
       const orders = this.db
         .prepare('SELECT * FROM orders WHERE customer_id = ?')
-        .all(id) as any[];
+        .all(id) as unknown[];
 
       for (const order of orders) {
         this.db.prepare(
@@ -878,11 +878,11 @@ export class SQLiteAdapter {
   }
 
   // ===== Service Operations =====
-  async getAllServices(): Promise<any[]> {
+  async getAllServices(): Promise<unknown[]> {
     try {
       const services = this.db
         .prepare('SELECT * FROM services ORDER BY name ASC')
-        .all() as any[];
+        .all() as unknown[];
 
       return services.map((s) => ({
         id: s.id,
@@ -928,7 +928,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createService(service: any): Promise<any> {
+  async createService(service: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const now = Date.now();
       const result = this.db
@@ -968,7 +968,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateService(id: string, service: any): Promise<any | null> {
+  async updateService(id: string, service: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const now = Date.now();
       const existing = this.db
@@ -1036,17 +1036,17 @@ export class SQLiteAdapter {
   }
 
   // ===== User Operations =====
-  async getAllUsers(): Promise<any[]> {
+  async getAllUsers(): Promise<unknown[]> {
     try {
       const users = this.db
         .prepare('SELECT * FROM users ORDER BY name ASC')
-        .all() as any[];
+        .all() as unknown[];
 
       return users.map((u) => {
         // Get roles for user
         const roleIds = this.db
           .prepare('SELECT role_id FROM user_roles WHERE user_id = ?')
-          .all(u.id) as any[];
+          .all(u.id) as unknown[];
         
         const roles = [];
         for (const { role_id } of roleIds) {
@@ -1068,7 +1068,7 @@ export class SQLiteAdapter {
           email: u.email,
           name: u.name,
           status: u.status,
-          roleIds: roleIds.map((r: any) => r.role_id),
+          roleIds: roleIds.map((r: Record<string, unknown>) => r.role_id as string),
           roles,
           lastLoginAt: u.last_login_at,
           createdAt: u.created_at,
@@ -1080,7 +1080,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createUser(user: any): Promise<any> {
+  async createUser(user: Record<string, unknown>): Promise<Record<string, unknown>> {
     const transaction = this.db.transaction(() => {
       const now = Date.now();
       const result = this.db
@@ -1121,7 +1121,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateUser(id: string, user: any): Promise<any | null> {
+  async updateUser(id: string, user: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     const transaction = this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM users WHERE id = ?')
@@ -1132,7 +1132,7 @@ export class SQLiteAdapter {
       }
 
       const updates: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
 
       if (user.name !== undefined) {
         updates.push('name = ?');
@@ -1205,11 +1205,11 @@ export class SQLiteAdapter {
   }
 
   // ===== Role Operations =====
-  async getAllRoles(): Promise<any[]> {
+  async getAllRoles(): Promise<unknown[]> {
     try {
       const roles = this.db
         .prepare('SELECT * FROM roles ORDER BY name ASC')
-        .all() as any[];
+        .all() as unknown[];
 
       return roles.map((r) => ({
         id: r.id,
@@ -1245,7 +1245,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createRole(role: any): Promise<any> {
+  async createRole(role: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = this.db
         .prepare(
@@ -1270,7 +1270,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateRole(id: string, role: any): Promise<any | null> {
+  async updateRole(id: string, role: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const existing = this.db
         .prepare('SELECT * FROM roles WHERE id = ?')
@@ -1362,7 +1362,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateSettings(settings: any): Promise<any> {
+  async updateSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       // Try to insert or update settings
       const existing = this.db
@@ -1480,7 +1480,7 @@ export class SQLiteAdapter {
   }
 
   // ===== Audit Log Operations =====
-  async createAuditLog(log: any): Promise<any> {
+  async createAuditLog(log: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const now = Date.now();
       const result = this.db
@@ -1518,14 +1518,14 @@ export class SQLiteAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<any[]> {
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<unknown[]> {
     try {
       let query = `
         SELECT al.*, u.name as user_name, u.email as user_email
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (options?.userId) {
         query += ' WHERE al.user_id = ?';
@@ -1544,7 +1544,7 @@ export class SQLiteAdapter {
         params.push(options.offset);
       }
 
-      const logs = this.db.prepare(query).all(...params) as any[];
+      const logs = this.db.prepare(query).all(...params) as unknown[];
 
       return logs.map((l) => ({
         id: l.id,
@@ -1565,7 +1565,7 @@ export class SQLiteAdapter {
   }
 
   // ===== Quote Operations =====
-  async getAllQuotes(): Promise<any[]> {
+  async getAllQuotes(): Promise<unknown[]> {
     try {
       const quotes = this.db
         .prepare(
@@ -1574,7 +1574,7 @@ export class SQLiteAdapter {
            LEFT JOIN customers c ON q.customer_id = c.id
            ORDER BY q.created_at DESC`
         )
-        .all() as any[];
+        .all() as unknown[];
 
       return quotes.map((q) => {
         const items = this.db
@@ -1584,7 +1584,7 @@ export class SQLiteAdapter {
              LEFT JOIN services s ON qi.service_id = s.id
              WHERE qi.quote_id = ?`
           )
-          .all(q.id) as any[];
+          .all(q.id) as unknown[];
 
         return {
           id: q.id,
@@ -1638,7 +1638,7 @@ export class SQLiteAdapter {
            LEFT JOIN services s ON qi.service_id = s.id
            WHERE qi.quote_id = ?`
         )
-        .all(id) as any[];
+        .all(id) as unknown[];
 
       return {
         id: q.id,
@@ -1669,7 +1669,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async getQuotesByCustomer(customerId: string): Promise<any[]> {
+  async getQuotesByCustomer(customerId: string): Promise<unknown[]> {
     try {
       const quotes = this.db
         .prepare(
@@ -1679,7 +1679,7 @@ export class SQLiteAdapter {
            WHERE q.customer_id = ?
            ORDER BY q.created_at DESC`
         )
-        .all(customerId) as any[];
+        .all(customerId) as unknown[];
 
       return quotes.map((q) => {
         const items = this.db
@@ -1689,7 +1689,7 @@ export class SQLiteAdapter {
              LEFT JOIN services s ON qi.service_id = s.id
              WHERE qi.quote_id = ?`
           )
-          .all(q.id) as any[];
+          .all(q.id) as unknown[];
 
         return {
           id: q.id,
@@ -1721,7 +1721,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createQuote(quote: any): Promise<any> {
+  async createQuote(quote: Record<string, unknown>): Promise<Record<string, unknown>> {
     const transaction = this.db.transaction(() => {
       const now = Date.now();
       const quoteResult = this.db
@@ -1799,7 +1799,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateQuote(id: string, quote: any): Promise<any | null> {
+  async updateQuote(id: string, quote: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     const transaction = this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM quotes WHERE id = ?')
@@ -1885,16 +1885,16 @@ export class SQLiteAdapter {
   }
 
   // ===== Order Operations Extended =====
-  async getOrdersByCustomerEmail(email: string): Promise<any[]> {
+  async getOrdersByCustomerEmail(email: string): Promise<unknown[]> {
     try {
       const orders = this.db
         .prepare('SELECT * FROM orders WHERE customer_email = ? ORDER BY created_at DESC')
-        .all(email) as any[];
+        .all(email) as unknown[];
 
       return orders.map((order) => {
         const items = this.db
           .prepare('SELECT * FROM order_items WHERE order_id = ?')
-          .all(order.id) as any[];
+          .all(order.id) as unknown[];
 
         return {
           id: order.id,
@@ -1929,7 +1929,7 @@ export class SQLiteAdapter {
   }
 
   // ===== API Key Operations =====
-  async getAllApiKeys(): Promise<any[]> {
+  async getAllApiKeys(): Promise<unknown[]> {
     try {
       const keys = this.db
         .prepare(
@@ -1938,7 +1938,7 @@ export class SQLiteAdapter {
            LEFT JOIN users u ON ak.created_by = u.id
            ORDER BY ak.created_at DESC`
         )
-        .all() as any[];
+        .all() as unknown[];
 
       return keys.map((k) => ({
         id: k.id,
@@ -2027,7 +2027,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async createApiKey(apiKey: any): Promise<any> {
+  async createApiKey(apiKey: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const now = Date.now();
       const id = crypto.randomUUID();
@@ -2069,7 +2069,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateApiKey(id: string, apiKey: any): Promise<any | null> {
+  async updateApiKey(id: string, apiKey: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const existing = this.db
         .prepare('SELECT * FROM api_keys WHERE id = ?')
@@ -2133,7 +2133,7 @@ export class SQLiteAdapter {
 
   // ===== Returns & Refunds Operations =====
 
-  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<any[]> {
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<unknown[]> {
     try {
       let query = `
         SELECT r.*, 
@@ -2146,7 +2146,7 @@ export class SQLiteAdapter {
         LEFT JOIN customers c ON r.customer_id = c.id
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.status) {
         query += ' AND r.status = ?';
@@ -2167,7 +2167,7 @@ export class SQLiteAdapter {
 
       query += ' ORDER BY r.created_at DESC';
 
-      const returns = this.db.prepare(query).all(...params) as any[];
+      const returns = this.db.prepare(query).all(...params) as unknown[];
 
       return returns.map(r => this.mapReturnRow(r));
     } catch (error) {
@@ -2199,7 +2199,7 @@ export class SQLiteAdapter {
       // Get return items
       const items = this.db.prepare(
         'SELECT * FROM return_items WHERE return_id = ?'
-      ).all(id) as any[];
+      ).all(id) as unknown[];
 
       const returnData = this.mapReturnRow(row);
       returnData.items = items.map(item => ({
@@ -2228,7 +2228,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async getReturnsByOrder(orderId: string): Promise<any[]> {
+  async getReturnsByOrder(orderId: string): Promise<unknown[]> {
     try {
       const returns = this.db.prepare(
         `SELECT r.*, u.name as created_by_name
@@ -2244,7 +2244,7 @@ export class SQLiteAdapter {
       for (const ret of result) {
         const items = this.db.prepare(
           'SELECT * FROM return_items WHERE return_id = ?'
-        ).all(ret.id) as any[];
+        ).all(ret.id) as unknown[];
         ret.items = items.map(item => ({
           id: item.id,
           productId: item.product_id,
@@ -2412,7 +2412,7 @@ export class SQLiteAdapter {
         FROM returns
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.startDate) {
         query += ' AND created_at >= ?';
@@ -2602,7 +2602,7 @@ export class SQLiteAdapter {
         FROM orders o
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters.query) {
         query += ' AND (o.id LIKE ? OR o.customer_email LIKE ?)';
@@ -2762,7 +2762,7 @@ export class SQLiteAdapter {
   async updateDiscountType(id: string, data: any): Promise<any | null> {
     try {
       const fields: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
 
       if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
       if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
@@ -2902,7 +2902,7 @@ export class SQLiteAdapter {
   async updatePromoCode(id: string, data: any): Promise<any | null> {
     try {
       const fields: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
 
       if (data.code !== undefined) { fields.push('code = ?'); values.push(data.code.toUpperCase()); }
       if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
@@ -3116,7 +3116,7 @@ export class SQLiteAdapter {
         LEFT JOIN users a ON du.approved_by = a.id
         WHERE 1=1
       `;
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.orderId) {
         query += ' AND du.order_id = ?';
@@ -3196,7 +3196,7 @@ export class SQLiteAdapter {
   async getDiscountStats(filters?: { startDate?: number; endDate?: number }): Promise<any> {
     try {
       let whereClause = '';
-      const params: any[] = [];
+      const params: unknown[] = [];
 
       if (filters?.startDate) {
         whereClause += ' AND applied_at >= ?';
