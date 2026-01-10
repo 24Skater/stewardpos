@@ -214,7 +214,7 @@ export class Seeder {
 
     const settings = {
       tax_rate_default: 0.0,
-      store_name: 'My Store',
+      store_name: 'StewardPOS',
       store_email: 'store@example.com',
       store_phone: '+1234567890',
       timezone: 'UTC',

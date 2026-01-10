@@ -15,7 +15,8 @@ COPY . .
 
 # Build the application with environment variables
 # Vite requires env vars at build time, not runtime
-ARG VITE_API_BASE_URL=http://localhost:3001
+# Use empty string for relative paths (works with nginx proxy)
+ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 

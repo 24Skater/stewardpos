@@ -1427,7 +1427,7 @@ export class SQLiteAdapter {
           )
           .run(
             settings.taxRateDefault || 0,
-            settings.storeName || 'My Store',
+            settings.storeName || 'StewardPOS',
             settings.storeEmail,
             settings.storePhone,
             settings.timezone || 'UTC',

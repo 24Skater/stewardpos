@@ -313,7 +313,7 @@ router.get('/settings', async (_req: AuthRequest, res: Response, next: NextFunct
       success: true,
       data: settings || {
         taxRateDefault: 0,
-        storeName: 'My Store',
+        storeName: 'StewardPOS',
         storeEmail: '',
         storePhone: '',
         timezone: 'UTC',

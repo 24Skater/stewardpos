@@ -161,7 +161,7 @@ CREATE TABLE quote_items (
 CREATE TABLE settings (
   id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   tax_rate_default REAL DEFAULT 0,
-  store_name TEXT DEFAULT 'My Store',
+  store_name TEXT DEFAULT 'StewardPOS',
   store_email TEXT,
   store_phone TEXT,
   timezone TEXT DEFAULT 'UTC',

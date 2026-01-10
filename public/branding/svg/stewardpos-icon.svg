@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <!-- Brand gradients -->
+    <linearGradient id="shieldGrad" x1="220" y1="160" x2="804" y2="864" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4B3F8F"></stop>
+      <stop offset="0.55" stop-color="#3B6FD8"></stop>
+      <stop offset="1" stop-color="#2A2F3A"></stop>
+    </linearGradient>
+
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F5B942"></stop>
+      <stop offset="1" stop-color="#D39A2F"></stop>
+    </linearGradient>
+
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#0F1115" flood-opacity="0.25"></feDropShadow>
+    </filter>
+  </defs>
+
+  <!-- Shield -->
+  <path d="M512 110
+       C420 170 315 190 250 205
+       V520
+       C250 710 374 858 512 930
+       C650 858 774 710 774 520
+       V205
+       C709 190 604 170 512 110 Z" fill="url(#shieldGrad)" filter="url(#softShadow)"></path>
+
+  <!-- Inner highlight -->
+  <path d="M512 170
+       C437 215 345 232 300 244
+       V514
+       C300 676 402 802 512 865
+       C622 802 724 676 724 514
+       V244
+       C679 232 587 215 512 170 Z" fill="#FFFFFF" opacity="0.08"></path>
+
+  <!-- Receipt (top) -->
+  <path d="M392 210
+       C392 198 402 188 414 188
+       H610
+       C622 188 632 198 632 210
+       V330
+       L612 316
+       L592 330
+       L572 316
+       L552 330
+       L532 316
+       L512 330
+       L492 316
+       L472 330
+       L452 316
+       L432 330
+       L412 316
+       L392 330
+       V210 Z" fill="url(#goldGrad)"></path>
+
+  <!-- Receipt Cross (subtle Christian nod) -->
+  <rect x="498" y="220" width="28" height="94" rx="6" fill="#FFFFFF" opacity="0.95"></rect>
+  <rect x="468" y="252" width="88" height="28" rx="6" fill="#FFFFFF" opacity="0.95"></rect>
+
+  <!-- POS terminal body -->
+  <g filter="url(#softShadow)">
+    <path d="M352 360
+         C352 328 378 302 410 302
+         H614
+         C646 302 672 328 672 360
+         V710
+         C672 748 642 778 604 778
+         H420
+         C382 778 352 748 352 710
+         V360 Z" fill="#0F1115" opacity="0.18"></path>
+
+    <path d="M368 350
+         C368 322 391 300 419 300
+         H605
+         C633 300 656 322 656 350
+         V706
+         C656 734 633 756 605 756
+         H419
+         C391 756 368 734 368 706
+         V350 Z" fill="#FFFFFF" opacity="0.10"></path>
+
+    <path d="M382 360
+         C382 338 400 320 422 320
+         H602
+         C624 320 642 338 642 360
+         V698
+         C642 720 624 738 602 738
+         H422
+         C400 738 382 720 382 698
+         V360 Z" fill="#10131A" opacity="0.22"></path>
+  </g>
+
+  <!-- Screen -->
+  <rect x="420" y="360" width="184" height="160" rx="22" fill="#FFFFFF" opacity="0.18"></rect>
+  <rect x="432" y="372" width="160" height="136" rx="18" fill="#3B6FD8" opacity="0.85"></rect>
+
+  <!-- Screen Cross -->
+  <rect x="500" y="400" width="24" height="80" rx="6" fill="#FFFFFF"></rect>
+  <rect x="472" y="428" width="80" height="24" rx="6" fill="#FFFFFF"></rect>
+
+  <!-- Keypad -->
+  <g opacity="0.92">
+    <rect x="430" y="560" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.70"></rect>
+    <rect x="494" y="560" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.65"></rect>
+    <rect x="558" y="560" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.60"></rect>
+
+    <rect x="430" y="612" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.65"></rect>
+    <rect x="494" y="612" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.60"></rect>
+    <rect x="558" y="612" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.55"></rect>
+
+    <rect x="430" y="664" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.60"></rect>
+    <rect x="494" y="664" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.55"></rect>
+    <rect x="558" y="664" width="56" height="44" rx="10" fill="#3B6FD8" opacity="0.50"></rect>
+  </g>
+
+  <!-- Thin white stroke for crispness on dark backgrounds -->
+  <path d="M512 110
+       C420 170 315 190 250 205
+       V520
+       C250 710 374 858 512 930
+       C650 858 774 710 774 520
+       V205
+       C709 190 604 170 512 110 Z" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="10" fill="none"></path>
+</svg>

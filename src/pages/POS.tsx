@@ -5,7 +5,6 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import Logo from "@/components/Logo";
 import { CartItem } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
 import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
@@ -96,7 +95,7 @@ export default function POS() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   
   // Store branding
-  const [storeName, setStoreName] = useState("POS");
+  const [storeName, setStoreName] = useState("StewardPOS");
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -585,14 +584,9 @@ export default function POS() {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
-            ) : (
-              <>
-                <Logo responsive className="hidden md:block" />
-                <Logo variant="icon" className="md:hidden" />
-              </>
-            )}
-            <div className={storeLogo ? "" : "hidden md:block"}>
-              {storeLogo && <h1 className="text-xl font-bold text-foreground">{storeName}</h1>}
+            ) : null}
+            <div>
+              <h1 className="text-xl font-bold text-foreground">{storeName}</h1>
               <p className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</p>
             </div>
           </div>

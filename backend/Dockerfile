@@ -48,9 +48,10 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 # Copy migrations (needed at runtime)
 COPY --chown=nodejs:nodejs migrations ./migrations
 
-# Copy entrypoint script
+# Copy entrypoint script and ensure Unix line endings
 COPY --chown=nodejs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' ./docker-entrypoint.sh && \
+    chmod +x ./docker-entrypoint.sh
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app/logs
@@ -69,5 +70,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Start application (entrypoint handles migrations)
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "./docker-entrypoint.sh"]
 

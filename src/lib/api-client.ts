@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Use relative path for API calls to leverage Vite proxy
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export interface ApiError {
   message: string;

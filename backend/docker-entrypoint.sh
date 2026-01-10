@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 echo "🚀 Starting stewardPOS Backend..."
 
