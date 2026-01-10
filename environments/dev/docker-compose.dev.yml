@@ -1,0 +1,58 @@
+# Development Environment Configuration
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+version: '3.8'
+
+services:
+  postgres:
+    container_name: stewardpos-db-dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+
+  minio:
+    container_name: stewardpos-storage-dev
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-devadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-dev_password_change_me}
+    ports:
+      - "9002:9000"  # Different ports
+      - "9003:9001"
+
+  backend:
+    container_name: stewardpos-backend-dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      AUTO_SEED: "true"
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://localhost:3000,http://localhost:5173}
+      RATE_LIMIT_WINDOW_MS: 600000  # 10 minutes
+      RATE_LIMIT_MAX_REQUESTS: 1000  # More lenient for dev
+    ports:
+      - "3002:3001"  # Different port
+    volumes:
+      - ./backend/src:/app/src:ro  # Mount source for hot reload (if using nodemon)
+      - backend_logs_dev:/app/logs
+
+  frontend:
+    container_name: stewardpos-frontend-dev
+    build:
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3002}
+    ports:
+      - "8081:80"  # Different port
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3002}
+      - VITE_APP_ENV=development
+
+volumes:
+  postgres_data_dev:
+    driver: local
+  backend_logs_dev:
+    driver: local
+

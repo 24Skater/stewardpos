@@ -1,0 +1,57 @@
+# QA/Staging Environment Configuration
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.qa.yml up -d
+
+version: '3.8'
+
+services:
+  postgres:
+    container_name: stewardpos-db-qa
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos_qa}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_qa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qa_secure_password_change_me}
+    ports:
+      - "5434:5432"  # Different port
+    volumes:
+      - postgres_data_qa:/var/lib/postgresql/data
+
+  minio:
+    container_name: stewardpos-storage-qa
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qaadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-qa_secure_password_change_me}
+    ports:
+      - "9004:9000"
+      - "9005:9001"
+
+  backend:
+    container_name: stewardpos-backend-qa
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      AUTO_SEED: "false"  # Don't auto-seed in QA
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://qa.stewardpos.example.com,http://localhost:8080}
+      RATE_LIMIT_WINDOW_MS: 900000  # 15 minutes
+      RATE_LIMIT_MAX_REQUESTS: 200
+    ports:
+      - "3003:3001"  # Different port
+    volumes:
+      - backend_logs_qa:/app/logs
+
+  frontend:
+    container_name: stewardpos-frontend-qa
+    build:
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3003}
+    ports:
+      - "8082:80"  # Different port
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3003}
+      - VITE_APP_ENV=staging
+
+volumes:
+  postgres_data_qa:
+    driver: local
+  backend_logs_qa:
+    driver: local
+

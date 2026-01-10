@@ -2,13 +2,90 @@
   <img src="branding/svg/stewardpos-logo-lockup.svg" alt="StewardPOS Logo" width="400">
 </div>
 
-# StewardPOS
+<!-- Hero Section -->
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=stewardPOS&fontSize=80&fontAlignY=35&animation=twinkling&fontColor=ffffff&desc=Modern%20Point%20of%20Sale%20System&descAlignY=55&descSize=20" width="100%"/>
 
-**StewardPOS is an open-source POS built originally for a church use case.** A modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
+<p align="center">
+  <b>Self-Hosted • Open Source • Docker-First • Built for Churches & Small Business</b>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](docker-compose.yml)
+<!-- Badges -->
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/Version-1.0.0-22c55e?style=for-the-badge&logo=semver&logoColor=white" alt="Version"/></a>
+  <a href="docker-compose.yml"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/></a>
+  <a href="#"><img src="https://img.shields.io/badge/PRs-Welcome-ec4899?style=for-the-badge&logo=github&logoColor=white" alt="PRs Welcome"/></a>
+</p>
+
+<p align="center">
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React"/></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js"/></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL"/></a>
+  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind"/></a>
+</p>
+
+<!-- Navigation -->
+<p align="center">
+  <a href="#-quick-start"><b>🚀 Quick Start</b></a> •
+  <a href="#-features"><b>✨ Features</b></a> •
+  <a href="#-branding--customization"><b>🎨 Branding</b></a> •
+  <a href="#-documentation"><b>📖 Docs</b></a> •
+  <a href="#-deployment"><b>📦 Deploy</b></a> •
+  <a href="#-contributing"><b>🤝 Contribute</b></a>
+</p>
+
+<br/>
+
+<!-- Demo Preview -->
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
+
+<table>
+<tr>
+<td width="50%">
+
+### 💳 Modern POS Interface
+Fast, intuitive checkout with barcode scanning, variants, and real-time inventory
+
+</td>
+<td width="50%">
+
+### 📊 Analytics Dashboard
+Comprehensive reports, sales tracking, and business insights
+
+</td>
+</tr>
+</table>
+
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
+
+</div>
+
+<br/>
+
+## 📑 Table of Contents
+
+<details open>
+<summary><b>Click to expand</b></summary>
+
+- [🚀 Quick Start](#-quick-start)
+  - [Docker (Recommended)](#-docker-recommended)
+  - [Local Development](#-local-development)
+- [✨ Features](#-features)
+- [🏗️ Architecture](#️-architecture)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [📖 Documentation](#-documentation)
+- [📦 Deployment](#-deployment)
+- [🎨 Branding & Customization](#-branding--customization)
+- [🔐 Security](#-security)
+- [🤝 Contributing](#-contributing)
+- [📊 Roadmap](#-roadmap)
+- [💒 About This Project](#-about-this-project)
+- [📄 License](#-license)
+
+</details>
+
+<br/>
 
 ---
 
@@ -20,484 +97,636 @@
 - **[GitHub Issues](https://github.com/24Skater/stewardpos/issues)** - Report bugs or request features
 - **[Branding Guidelines](branding/README.md)** - Logo usage and brand assets
 
----
-
-## 🎯 Overview
-
-StewardPOS is a modern, production-ready point of sale system that you can run on your own servers. No vendor lock-in, no monthly fees, complete control over your data.
-
-**Perfect for:**
-- Churches and faith-based organizations
-- Retail stores
-- Restaurants & cafes
-- Service businesses
-- Small to medium enterprises
-- Anyone who wants to own their POS system
-
----
-
-## ✨ Features
-
-### 💰 Point of Sale
-- Fast, intuitive checkout interface
-- Barcode scanning support
-- Product variants (size, color)
-- Multiple payment methods
-- Receipt printing & email
-- Customer lookup
-- Discount management
-
-### 📦 Inventory Management
-- Product catalog with categories
-- Stock tracking
-- Low stock alerts
-- Bulk import/export (CSV)
-- Product images
-- Variant management
-
-### 👥 Customer Management
-- Customer database
-- Purchase history
-- Contact information
-- Custom fields
-
-### 🛠️ Services Module
-- Service catalog
-- Quote generation
-- Hourly/flat rate pricing
-- Quote to order conversion
-
-### 📊 Reports & Analytics
-- Sales reports
-- Revenue analytics
-- Product performance
-- Export to CSV/PDF
-- Date range filtering
-
-### 🔐 Security & Access Control
-- Role-based permissions (RBAC)
-- 4 built-in roles + custom roles
-- Granular permissions per module
-- Audit logging
-- Session management
-- bcrypt password hashing
-
-### 🔌 Flexible Architecture
-- **Pluggable adapters** - swap databases, auth providers, email services
-- **Multiple database options** - ✅ SQLite (production-ready), ✅ PostgreSQL (production-ready), IndexedDB (browser)
-- **Authentication options** - ✅ Local (production-ready), Google OAuth, OIDC (Azure AD, Okta)
-- **Email providers** - Console (dev), SMTP, Resend
-- **Storage options** - LocalStorage, S3, Azure Blob
-- **SMS providers** - Console (dev), Twilio
-
-### 🎯 Development Status
-- ✅ **Phase 1**: Backend API Foundation (Complete)
-- ✅ **Phase 2**: Database Implementation (Complete)
-  - PostgreSQL & SQLite adapters fully functional
-  - Complete CRUD operations for all entities
-  - Migrations and seed data
-  - Full API integration
-- 🔄 **Phase 3**: Installation & Deployment (In Progress)
-
----
+<br/>
 
 ## 🚀 Quick Start
 
-### Backend API (5 minutes)
+### 🐳 Docker (Recommended)
+
+The fastest way to get started - everything you need in one command!
 
 ```bash
 # Clone the repository
 git clone https://github.com/24Skater/stewardpos.git
-cd stewardpos/backend
-
-# Install dependencies
-npm install
-
-# Configure environment
-cp env.example .env
-# Edit .env (SQLite works out of the box)
-
-# Setup database (migrations + seed data)
-npm run setup-db
-
-# Start the server
-npm run dev
-```
-
-Server runs at: `http://localhost:3001`
-
-**Default Login:**
-- Email: `admin@example.com`
-- Password: `admin123`
-- ⚠️ **Change immediately after first login!**
-
-### Frontend (Development)
-
-```bash
-# In the project root
-npm install
-npm run dev
-```
-
-Frontend runs at: `http://localhost:5173`
-
-### Docker (Full Stack)
-
-```bash
-git clone https://github.com/24Skater/stewardpos.git
 cd stewardpos
+
+# Start all services
 docker-compose up -d
+
+# 🎉 That's it! Open http://localhost:8080
 ```
 
-📖 **Full guides:** [Backend Quick Start](backend/PHASE2-QUICKSTART.md) | [Installation Guide](INSTALL.md)
+<details>
+<summary><b>📋 First Time Setup</b></summary>
 
----
+1. Open `http://localhost:8080`
+2. Complete the setup wizard:
+   - Create admin account
+   - Configure database
+   - Set authentication methods
+3. Login with your credentials
+4. Start selling!
 
-## 🔌 API Endpoints
+**Default Demo Credentials:**
+```
+Email: admin@demo.local
+Password: admin123
+```
 
-The backend API is fully functional with the following endpoints:
+</details>
 
-### Authentication
-- `POST /api/auth/login` - User login
-- `GET /api/auth/session` - Get current session
-- `POST /api/auth/logout` - User logout
-- `POST /api/auth/refresh` - Refresh JWT token
+<br/>
 
-### Products
-- `GET /api/products` - List all products with variants
-- `GET /api/products/:id` - Get single product
-- `POST /api/products` - Create new product
-- `PUT /api/products/:id` - Update product
-- `DELETE /api/products/:id` - Delete product
+### 💻 Local Development
 
-### Orders
-- `GET /api/orders` - List all orders
-- `GET /api/orders/:id` - Get order with items
-- `POST /api/orders` - Create new order
+<details>
+<summary><b>Backend Setup</b></summary>
 
-### Customers
-- `GET /api/customers` - List all customers
-- `POST /api/customers` - Create new customer
-
-### Health
-- `GET /api/health` - API health check
-
-📖 **Full API documentation:** [Backend README](backend/README.md) | [Testing Guide](backend/TESTING-PHASE2.md)
-
----
-
-## 📋 System Requirements
-
-**Minimum:**
-- 2 CPU cores
-- 2 GB RAM
-- 10 GB disk space
-- Ubuntu 20.04+, Debian 11+, CentOS 8+, Windows Server 2019+, or Windows 10/11
-
-**Recommended:**
-- 4+ CPU cores
-- 4+ GB RAM
-- 50+ GB SSD
-- Ubuntu 22.04 LTS or Windows Server 2022
-
----
-
-## 🛠️ Tech Stack
-
-**Frontend:**
-- React 18 + TypeScript
-- Vite (build tool)
-- shadcn/ui (UI components)
-- Tailwind CSS
-- TanStack Query
-- React Router
-
-**Backend:**
-- ✅ Node.js + Express
-- ✅ TypeScript
-- ✅ PostgreSQL / SQLite (production-ready)
-- ✅ JWT authentication
-- ✅ bcrypt password hashing
-- Winston logging
-- Redis (sessions - planned)
-
-**Architecture:**
-- Clean Architecture (Hexagonal)
-- Ports and Adapters pattern
-- Dependency Injection
-- Configuration-driven
-
----
-
-## 📚 Documentation
-
-### User Guides
-- **[Installation Guide](INSTALL.md)** - Step-by-step installation for Linux, Windows, and Docker
-- **[Configuration Guide](CONFIGURATION.md)** - Complete configuration reference
-- **[Quick Start](backend/PHASE2-QUICKSTART.md)** - Get started in 5 minutes
-
-### Developer Guides
-- **[Backend README](backend/README.md)** - Backend API documentation
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
-- **[Development Roadmap](ROADMAP.md)** - Future plans and timeline
-- **[Testing Guide](backend/TESTING-PHASE2.md)** - How to test the application
-
-### Reference
-- **[Security Policy](SECURITY.md)** - Security best practices and reporting
-- **[Changelog](CHANGELOG.md)** - Version history and changes
-- **[Phase 2 Complete](PHASE2-COMPLETE.md)** - Database implementation details
-- **[Branding Guidelines](branding/README.md)** - Logo usage, colors, typography, and brand assets
-
----
-
-## 🗺️ Development Roadmap
-
-We're actively working towards a production-ready v1.0 release. See our [detailed roadmap](ROADMAP.md) for the complete plan.
-
-**Current Status:** Beta (v0.9.x) - ~40% complete to v1.0
-
-**Completed (Phase 1 & 2):**
-- ✅ Backend API foundation (Express + TypeScript)
-- ✅ PostgreSQL & SQLite adapters (production-ready)
-- ✅ Database migrations system
-- ✅ Authentication (JWT + bcrypt)
-- ✅ Products, Orders, Customers APIs
-- ✅ Seed data and setup scripts
-- ✅ Security hardening (rate limiting, input validation)
-- ✅ Comprehensive documentation
-
-**In Progress (Phase 3):**
-- 🔄 One-command installers (Linux/Windows)
-- 🔄 Docker improvements
-- 🔄 Backup utilities
-- 🔄 API documentation (Swagger)
-
-**Planned (Phase 4-7):**
-- 📋 Automated testing suite
-- 📋 Frontend-backend integration
-- 📋 Production deployment guides
-- 📋 Performance optimization
-
-**Future Plans:**
-- Mobile app (iOS/Android)
-- Offline-first PWA
-- Multi-location support
-- Advanced reporting
-- Third-party integrations (QuickBooks, Xero)
-- Plugin marketplace
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Whether it's:
-- 🐛 Bug reports
-- 💡 Feature requests
-- 📝 Documentation improvements
-- 🔧 Code contributions
-- 🌍 Translations
-
-**Get started:**
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-2. Check [open issues](https://github.com/24Skater/stewardpos/issues)
-3. Join our [Discord community](https://discord.gg/stewardpos)
-
-**Quick contribution guide:**
 ```bash
-# Fork and clone
-git clone https://github.com/YOUR_USERNAME/stewardpos.git
-cd stewardpos
-
-# Install frontend dependencies
-npm install
-
-# Install backend dependencies
 cd backend
 npm install
-
-# Setup backend database
-npm run setup-db
-
-# Start backend (in backend/)
-npm run dev
-
-# Start frontend (in root)
-cd ..
-npm run dev
-
-# Create a branch
-git checkout -b feature/your-feature-name
-
-# Make changes and test
-npm run lint
-npm run typecheck
-
-# Commit and push
-git commit -m "feat: your feature description"
-git push origin feature/your-feature-name
-
-# Open a Pull Request
+cp env.example .env    # Configure your settings
+npm run setup-db       # Run migrations
+npm run dev            # Start server at :3001
 ```
 
+</details>
+
+<details>
+<summary><b>Frontend Setup</b></summary>
+
+```bash
+npm install
+npm run dev            # Start dev server at :5173
+```
+
+</details>
+
+<br/>
+
 ---
+
+<br/>
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 💰 Point of Sale
+- ⚡ Fast checkout interface
+- 📷 Barcode scanning
+- 🎨 Product variants
+- 💳 Multiple payment methods
+- 🧾 Receipt printing/email
+- 💰 Discounts & promotions
+- 🔄 Quick returns from POS
+
+</td>
+<td width="33%" valign="top">
+
+### 📦 Inventory
+- 📚 Product catalog
+- 📊 Real-time stock tracking
+- ⚠️ Low stock alerts
+- 📥 CSV import/export
+- 🖼️ Product images
+- 🔄 Variant management
+
+</td>
+<td width="33%" valign="top">
+
+### 👥 Customers
+- 📇 Customer database
+- 📈 Purchase history
+- 📞 Contact management
+- 🏷️ Tags & custom fields
+- 💎 Lifetime value
+- 📧 Email notifications
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 📊 Reports & Exports
+- 📈 Sales & service analytics
+- 💵 Revenue tracking
+- 🏆 Product performance
+- 📤 Export PDF/Excel/CSV
+- 📅 Date filtering
+- 📉 Trend analysis
+
+</td>
+<td width="33%" valign="top">
+
+### 🔐 Security
+- 🛡️ Role-based access (RBAC)
+- 👔 Custom roles
+- 🔒 Granular permissions
+- 📝 Audit logging
+- 🔑 API key management
+- 🔐 bcrypt hashing
+
+</td>
+<td width="33%" valign="top">
+
+### 🛠️ Services
+- 🔧 Service catalog
+- 📝 Quote generation
+- ⏱️ Flexible pricing
+- 🔄 Quote → Order workflow
+- 📋 Customer booking
+- 📅 Scheduling
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🎨 Branding
+- 🏪 Store identity config
+- 🎨 Custom brand colors
+- 📷 Logo everywhere
+- 🧾 Receipt customization
+- 📝 Custom header/footer
+- 🌈 Live color preview
+
+</td>
+<td width="33%" valign="top">
+
+### 💸 Discounts & Promos
+- 🏷️ Quick discount buttons
+- 🎟️ Promo code system
+- 👔 Employee discounts
+- ✍️ Manual discounts
+- 📊 Usage tracking
+- 🔒 Approval workflow
+
+</td>
+<td width="33%" valign="top">
+
+### 🔄 Returns & Refunds
+- 🧾 Receipt lookup
+- 📦 Item-level returns
+- 💵 Multiple refund methods
+- ⚡ Quick POS returns
+- 📝 Return reasons
+- 🔄 Auto restock option
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
 
 ## 🏗️ Architecture
 
 StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 
 ```
-┌─────────────────────────────────────────────┐
-│           Frontend (React)                  │
-│     • Vite + TypeScript                     │
-│     • shadcn/ui + Tailwind                  │
-├─────────────────────────────────────────────┤
-│           Backend API (Express)             │
-│     • Node.js + TypeScript                  │
-│     • JWT Authentication                    │
-│     • Input Validation (Zod)                │
-├─────────────────────────────────────────────┤
-│         Core Business Logic                 │
-│         (Domain Models & Ports)             │
-├─────────────────────────────────────────────┤
-│              Adapters (Pluggable)           │
-│  ┌──────────┬──────────┬──────────────┐   │
-│  │ Database │   Auth   │    Email     │   │
-│  │          │          │              │   │
-│  │ ✅ Postgres│ ✅ Local │ • Console   │   │
-│  │ ✅ SQLite  │ • Google │ • SMTP      │   │
-│  │ • IndexDB│ • OIDC   │ • Resend    │   │
-│  └──────────┴──────────┴──────────────┘   │
-└─────────────────────────────────────────────┘
-
-✅ = Production Ready
-• = Planned
+┌─────────────────────────────────────────────────────────────────┐
+│                         FRONTEND                                 │
+│       React 18  •  TypeScript  •  Vite  •  shadcn/ui            │
+├─────────────────────────────────────────────────────────────────┤
+│                           API                                    │
+│          Express  •  JWT Auth  •  Zod Validation                │
+├─────────────────────────────────────────────────────────────────┤
+│                      BUSINESS LOGIC                              │
+│              Domain Models  •  Use Cases  •  Ports              │
+├─────────────────────────────────────────────────────────────────┤
+│                    ADAPTERS (Pluggable)                          │
+│  ┌────────────┬────────────┬────────────┬────────────┐          │
+│  │  Database  │    Auth    │   Email    │  Storage   │          │
+│  ├────────────┼────────────┼────────────┼────────────┤          │
+│  │ PostgreSQL │   Local    │   SMTP     │    S3      │          │
+│  │   SQLite   │   Google   │  Resend    │   Azure    │          │
+│  │ IndexedDB  │   OIDC     │  Console   │   Local    │          │
+│  └────────────┴────────────┴────────────┴────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Benefits:**
-- Swap implementations without changing business logic
-- Easy to test and maintain
-- Add new providers by implementing interfaces
-- Configuration-driven (no code changes)
+<details>
+<summary><b>🎯 Why This Architecture?</b></summary>
+
+| Benefit | Description |
+|---------|-------------|
+| **Swappable** | Change databases/auth without touching business logic |
+| **Testable** | Mock adapters for comprehensive unit tests |
+| **Extensible** | Add new providers by implementing interfaces |
+| **Configurable** | Switch adapters via environment variables |
+
+</details>
+
+<br/>
 
 ---
+
+<br/>
+
+## 🛠️ Tech Stack
+
+<table>
+<tr>
+<td valign="top" width="50%">
+
+### Frontend
+| Tech | Purpose |
+|------|---------|
+| ![React](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black) | UI Framework |
+| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) | Type Safety |
+| ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) | Build Tool |
+| ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) | Styling |
+| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat-square&logo=shadcnui&logoColor=white) | Components |
+
+</td>
+<td valign="top" width="50%">
+
+### Backend
+| Tech | Purpose |
+|------|---------|
+| ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white) | Runtime |
+| ![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white) | Framework |
+| ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) | Database |
+| ![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white) | Auth |
+| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) | Container |
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
+## 📖 Documentation
+
+<table>
+<tr>
+<td width="50%">
+
+### 🚀 Getting Started
+- [Setup Wizard Guide](ENVIRONMENT-SETUP.md)
+- [Demo Quick Start](README-DEMO.md)
+- [Deployment Guide](DEPLOYMENT.md)
+
+### 👨‍💻 Development
+- [Backend README](backend/README.md)
+- [Component Management](COMPONENT-MANAGEMENT.md)
+- [Code Review](CODE-REVIEW-SUMMARY.md)
+
+</td>
+<td width="50%">
+
+### 📚 API Reference
+- Products API: `/api/products`
+- Orders API: `/api/orders`
+- Customers API: `/api/customers`
+- Services API: `/api/services`
+- Quotes API: `/api/quotes`
+- Returns API: `/api/returns`
+- Discounts API: `/api/discounts`
+- Receipts API: `/api/receipts`
+- Admin API: `/api/admin/*`
+- API Keys: `/api/admin/api-keys`
+
+### 🔧 Configuration
+- Environment variables: `.env`
+- Docker config: `docker-compose.yml`
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
+## 📦 Deployment
+
+<table>
+<tr>
+<td align="center" width="25%">
+
+### 🐳 Docker
+**Recommended**
+
+```bash
+docker-compose up -d
+```
+
+[📖 Guide](DEPLOYMENT.md)
+
+</td>
+<td align="center" width="25%">
+
+### 🐧 Linux
+Ubuntu • Debian • CentOS
+
+systemd service
+nginx proxy
+
+[📖 Guide](DEPLOYMENT.md#linux)
+
+</td>
+<td align="center" width="25%">
+
+### 🪟 Windows
+Server 2019+ • Win10/11
+
+PowerShell script
+IIS support
+
+[📖 Guide](DEPLOYMENT.md#windows)
+
+</td>
+<td align="center" width="25%">
+
+### ☁️ Cloud
+AWS • Azure • GCP
+DigitalOcean • more
+
+Container ready
+Auto-scaling
+
+[📖 Guide](DEPLOYMENT.md#cloud)
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
+## 🎨 Branding & Customization
+
+Make stewardPOS your own with comprehensive branding options:
+
+<table>
+<tr>
+<td width="50%">
+
+### 🏪 Store Identity
+Configure your business details that appear across the system:
+- **Store Name** - Displayed in POS header
+- **Store Number** - For multi-location tracking
+- **Contact Info** - Phone, email
+- **Address** - Full location details
+
+### 🎨 Visual Branding
+- **Logo** - Appears in POS header
+- **Favicon** - Browser tab icon
+- **Brand Color** - Applied to buttons, links, accents
+- **Live Preview** - See changes instantly!
+
+</td>
+<td width="50%">
+
+### 🧾 Receipt Customization
+Create professional, branded receipts:
+- **Receipt Logo** - Separate from main logo
+- **Store Info** - Name, address, phone
+- **Header Message** - Welcome text
+- **Footer Message** - Return policy, social media
+- **Barcode** - For easy scanning
+- **Print & Email** - Multiple delivery options
+
+### 🌈 Theme Support
+Brand color automatically updates:
+- Primary buttons
+- Links and accents
+- Focus rings
+- Gradients and glows
+
+</td>
+</tr>
+</table>
+
+> **Tip:** Go to **Admin → Branding** to customize all these options with a live preview!
+
+<br/>
+
+---
+
+<br/>
 
 ## 🔐 Security
 
-Security is a top priority. We follow industry best practices:
+<table>
+<tr>
+<td width="50%">
 
-- ✅ bcrypt password hashing
-- ✅ JWT authentication
-- ✅ Role-based access control
-- ✅ Audit logging
-- ✅ Input validation (Zod)
-- ✅ SQL injection prevention
-- ✅ XSS protection
-- ✅ Security headers
-- ✅ Rate limiting
+### ✅ Security Features
+- 🔐 bcrypt password hashing
+- 🎫 JWT authentication
+- 🛡️ Role-based access control
+- 📝 Complete audit logging
+- ✅ Zod schema validation
+- 🚫 SQL injection prevention
+- 🛡️ XSS protection
+- 🔒 Security headers (Helmet)
+- ⏱️ Rate limiting
+- 🔐 CORS configuration
 
-**Found a vulnerability?** Please report it privately to security@stewardpos.dev
+</td>
+<td width="50%">
+
+### 🚨 Report Vulnerabilities
+
+Found a security issue? Please report privately:
+
+📧 **Email:** security@stewardpos.dev
+
+**Do not** open public issues for security vulnerabilities.
 
 See [SECURITY.md](SECURITY.md) for details.
 
----
+</td>
+</tr>
+</table>
 
-## 📦 Deployment Options
-
-### 1. Linux Server (Recommended)
-- Ubuntu, Debian, CentOS, RHEL
-- One-command installation
-- systemd service
-- Nginx reverse proxy
-- [Full guide](INSTALL.md#linux)
-
-### 2. Windows Server
-- Windows Server 2019+, Windows 10/11
-- PowerShell installation script
-- Windows Service (NSSM)
-- [Full guide](INSTALL.md#windows)
-
-### 3. Docker
-- Docker Compose setup
-- Includes PostgreSQL, Redis, MinIO
-- Easy scaling
-- [Full guide](INSTALL.md#docker)
-
-### 4. Cloud Providers
-- AWS, Azure, Google Cloud
-- DigitalOcean, Linode, Vultr
-- Deploy as VPS or container
-- [Cloud deployment guide](docs/deployment/cloud.md)
+<br/>
 
 ---
 
-## 💬 Community & Support
+<br/>
 
-- 💬 **Discord:** [Join our community](https://discord.gg/stewardpos)
-- 🐛 **Issues:** [GitHub Issues](https://github.com/24Skater/stewardpos/issues)
-- 💡 **Discussions:** [GitHub Discussions](https://github.com/24Skater/stewardpos/discussions)
-- 📧 **Email:** support@stewardpos.dev
-- 🐦 **Twitter:** [@StewardPOS](https://twitter.com/StewardPOS)
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+```bash
+# 1. Fork & clone
+git clone https://github.com/YOUR_USERNAME/stewardpos.git
+
+# 2. Install dependencies
+npm install && cd backend && npm install
+
+# 3. Create a branch
+git checkout -b feature/amazing-feature
+
+# 4. Make changes, then commit
+git commit -m "feat: add amazing feature"
+
+# 5. Push and open a PR
+git push origin feature/amazing-feature
+```
+
+<details>
+<summary><b>📋 Contribution Guidelines</b></summary>
+
+1. Check [open issues](https://github.com/24Skater/stewardpos/issues) first
+2. Follow our code style (ESLint + Prettier)
+3. Write tests for new features
+4. Update documentation as needed
+5. Use [conventional commits](https://www.conventionalcommits.org/)
+
+</details>
+
+<br/>
 
 ---
+
+<br/>
+
+## 📊 Roadmap
+
+<table>
+<tr>
+<td>
+
+### ✅ Completed
+- Full REST API
+- PostgreSQL & SQLite
+- JWT authentication
+- Role-based access
+- Docker support
+- Setup wizard
+- Reports & analytics
+- **Discounts & promotions**
+- **Returns & refunds**
+- **Custom branding**
+- **Receipt customization**
+- **PDF/Excel exports**
+- **API key management**
+- **Service quotes workflow**
+
+</td>
+<td>
+
+### 🔄 In Progress
+- Google OAuth integration
+- OIDC/SSO providers
+- Mobile responsive
+- Performance tuning
+- Loyalty programs
+
+</td>
+<td>
+
+### 📋 Planned
+- Mobile app (iOS/Android)
+- Offline-first PWA
+- Multi-location support
+- Plugin marketplace
+- QuickBooks integration
+- Hardware integrations
+- Inventory alerts
+- Customer loyalty points
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
+
+## 💒 About This Project
+
+<table>
+<tr>
+<td>
+
+### The Heart Behind stewardPOS
+
+This project was born out of a real need at my church. We needed a simple, reliable point-of-sale system for our bookstore and events, but most solutions were either too expensive or too complicated for our volunteers to use.
+
+So I built stewardPOS — not just as software, but as an act of service.
+
+> *"Whatever you do, work at it with all your heart, as working for the Lord, not for human masters."*
+> — **Colossians 3:23**
+
+While stewardPOS works great for any retail business, it was designed with **churches, ministries, and non-profits** in mind:
+- 🙏 Simple enough for volunteers
+- 💰 Free and open source
+- 🏠 Self-hosted (your data stays yours)
+- ⛪ Perfect for bookstores, cafés, gift shops, and events
+
+Every feature, every line of code was written as unto the Lord. My hope is that this tool blesses your ministry the way building it has blessed mine.
+
+**— The stewardPOS Team**
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+---
+
+<br/>
 
 ## 📄 License
 
 This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for details.
 
-**TL;DR:** You can use this software for free, modify it, and even sell it. Just keep the copyright notice.
+<table>
+<tr>
+<td>✅ Commercial use</td>
+<td>✅ Modification</td>
+<td>✅ Distribution</td>
+<td>✅ Private use</td>
+</tr>
+</table>
+
+<br/>
 
 ---
 
-## 🙏 Acknowledgments
+<div align="center">
 
-Built with amazing open-source technologies:
-- [React](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [PostgreSQL](https://www.postgresql.org/)
-- [Node.js](https://nodejs.org/)
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=120&section=footer" width="100%"/>
+
+### ⭐ Star this repo if you find it useful!
 
 Special thanks to all our [contributors](https://github.com/24Skater/stewardpos/graphs/contributors)!
 
----
+<p>
+  <b>Made with ❤️ and 🙏 for the glory of God</b>
+</p>
 
-## 🌟 Star History
-
-If you find this project useful, please consider giving it a star! ⭐
+<p>
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-documentation">Documentation</a> •
+  <a href="#-contributing">Contribute</a> •
+  <a href="#-stewardpos">Back to Top ↑</a>
+</p>
 
 [![Star History Chart](https://api.star-history.com/svg?repos=24Skater/stewardpos&type=Date)](https://star-history.com/#24Skater/stewardpos&Date)
 
----
-
-## 📊 Project Status
-
-- **Version:** 0.9.x (Beta)
-- **Status:** Active Development
-- **Progress:** ~40% to v1.0
-- **Target v1.0:** Q2 2025
-- **Backend API:** ✅ Production Ready
-- **Database Layer:** ✅ Production Ready
-- **Frontend:** 🔄 In Development
-- **Deployment:** 🔄 In Progress
-
-### What's Working Now
-- ✅ Complete backend API with PostgreSQL/SQLite
-- ✅ Authentication and authorization
-- ✅ Product, order, and customer management
-- ✅ Database migrations and seed data
-- ✅ Security features (JWT, bcrypt, rate limiting)
-- ✅ Comprehensive API documentation
-
-### What's Next
-- 🔄 Automated installation scripts
-- 🔄 Frontend-backend integration
-- 🔄 Complete testing suite
-- 🔄 Production deployment guides
-
----
-
-**Made with ❤️ by the StewardPOS community**
-
-[Website](https://stewardpos.dev) • [Documentation](https://docs.stewardpos.dev) • [Demo](https://demo.stewardpos.dev)
+</div>

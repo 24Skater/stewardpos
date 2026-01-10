@@ -29,3 +29,12 @@ dist-ssr
 *.bak
 *.old
 *~
+
+# Environment variables (keep examples, ignore actual configs)
+.env
+.env.local
+.env.*.local
+.env.dev
+.env.qa
+.env.prod
+environments/*/.env.*

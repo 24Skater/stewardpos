@@ -1,33 +1,35 @@
-version: '3.8'
+# Base Docker Compose Configuration
+# This is the base configuration used by environment-specific overrides
+# For a standalone demo, use docker-compose.demo.yml instead
 
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: persona-pos-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: persona_pos
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stewardpos_secure_password_123}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stewardpos_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - stewardpos-network
 
   # MinIO (S3-compatible storage)
   minio:
     image: minio/minio:latest
-    container_name: persona-pos-storage
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_THIS_PASSWORD}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -39,48 +41,105 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    networks:
+      - stewardpos-network
 
-  # Persona POS Application
-  app:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # Server
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3001
+      HOST: 0.0.0.0
+      
+      # Database
+      DB_ADAPTER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-stewardpos}
+      DB_USER: ${DB_USER:-stewardpos_user}
+      DB_PASSWORD: ${DB_PASSWORD:-stewardpos_secure_password_123}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-CHANGE_THIS_MIN_32_CHARACTERS_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://localhost:3001}
+      
+      # Rate Limiting
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: /app/logs/app.log
+      
+      # Auto-seed database on first startup (set to false to prevent duplicate seeding)
+      AUTO_SEED: ${AUTO_SEED:-false}
+      
+      # MinIO (Object Storage)
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-CHANGE_THIS_PASSWORD}
+      MINIO_BUCKET: stewardpos
+      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-localhost:9000}
+    volumes:
+      - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - stewardpos-network
+
+  # Frontend Application
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: persona-pos-app
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8080}:80"
     environment:
-      # Database
-      - VITE_DB_ADAPTER=postgres
-      - VITE_DB_HOST=postgres
-      - VITE_DB_PORT=5432
-      - VITE_DB_NAME=persona_pos
-      - VITE_DB_USER=postgres
-      - VITE_DB_PASSWORD=postgres
-      
-      # Storage
-      - VITE_STORAGE_ADAPTER=s3
-      - VITE_STORAGE_S3_ENDPOINT=http://minio:9000
-      - VITE_STORAGE_S3_REGION=us-east-1
-      - VITE_STORAGE_S3_BUCKET=assets
-      - VITE_STORAGE_S3_ACCESS_KEY_ID=minioadmin
-      - VITE_STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
-      
-      # Features
-      - VITE_FEATURE_STORAGE=true
-      - VITE_APP_ENV=production
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:3001}
+      - VITE_APP_ENV=${VITE_APP_ENV:-production}
     depends_on:
+      backend:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
+    networks:
+      - stewardpos-network
 
 volumes:
   postgres_data:
     driver: local
   minio_data:
     driver: local
+  backend_logs:
+    driver: local
+  backend_uploads:
+    driver: local
 
 networks:
-  default:
-    name: persona-pos-network
+  stewardpos-network:
+    driver: bridge
+

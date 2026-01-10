@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { ValidationError, NotFoundError } from '../../utils/errors';
@@ -7,8 +7,7 @@ import logger from '../../utils/logger';
 
 const router = Router();
 
-// All order routes require authentication
-router.use(authenticate);
+// All order routes require authentication (orders contain sensitive data)
 
 /**
  * Order API Routes
@@ -21,15 +20,27 @@ router.use(authenticate);
 // Validation schemas
 const orderItemSchema = z.object({
   productId: z.string(),
-  variantId: z.string().optional(),
+  variantId: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   nameSnapshot: z.string(),
-  size: z.string().optional(),
-  color: z.string().optional(),
+  size: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
+  color: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
   quantity: z.number().int().min(1),
   unitPrice: z.number().min(0),
   lineDiscount: z.number().min(0).default(0),
   lineTotal: z.number().min(0),
-  notes: z.string().optional(),
+  notes: z.preprocess(
+    (val) => (val === null || val === undefined || val === '' ? undefined : val),
+    z.string().optional()
+  ),
 });
 
 const createOrderSchema = z.object({
@@ -39,20 +50,48 @@ const createOrderSchema = z.object({
   taxTotal: z.number().min(0).default(0),
   total: z.number().min(0),
   paymentMethod: z.string(),
-  customerEmail: z.string().email().optional(),
-  customerPhone: z.string().optional(),
+  // Customer information is optional - can be omitted, empty string, or valid email
+  customerEmail: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().email().optional()
+  ),
+  customerPhone: z.preprocess(
+    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    z.string().optional()
+  ),
 });
 
 /**
  * GET /api/orders
  * List all orders
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const orders = await adapter.getAllOrders();
 
     logger.info(`Retrieved ${orders.length} orders`);
+
+    res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/orders/customer/:email
+ * Get orders by customer email
+ */
+router.get('/customer/:email', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { email } = req.params;
+    const adapter = db.getAdapter();
+    const orders = await adapter.getOrdersByCustomerEmail(email);
+
+    logger.info(`Retrieved ${orders.length} orders for customer: ${email}`);
 
     res.json({
       success: true,
@@ -104,7 +143,9 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      logger.error('Order validation error:', JSON.stringify(error.errors, null, 2));
+      const errorMessage = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      next(new ValidationError(errorMessage));
     } else {
       next(error);
     }

@@ -7,7 +7,7 @@ const router = Router();
  * GET /api/health
  * Health check endpoint
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
     const health = {
       status: 'healthy',
@@ -34,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
  * GET /api/health/db
  * Database health check
  */
-router.get('/db', async (req: Request, res: Response) => {
+router.get('/db', async (_req: Request, res: Response) => {
   try {
     // TODO: Implement actual database health check
     // For now, return basic status

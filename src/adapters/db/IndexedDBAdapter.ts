@@ -29,7 +29,7 @@ export class IndexedDBAdapter implements DBPort {
   }
 
   async updateItem(item: Item): Promise<void> {
-    await db.updateProduct({ ...item, updatedAt: Date.now() });
+    await db.updateProduct(item.id, item);
   }
 
   async deleteItem(id: string): Promise<void> {
@@ -70,7 +70,7 @@ export class IndexedDBAdapter implements DBPort {
     // Variants are part of products in current schema
     const product = await db.getProduct(itemId);
     if (product) {
-      await db.updateProduct({ ...product, variants: [] });
+      await db.updateProduct(itemId, { variants: [] });
     }
   }
 

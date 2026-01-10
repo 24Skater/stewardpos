@@ -134,47 +134,57 @@ export class Seeder {
   private async seedAdminUser(): Promise<void> {
     logger.info('Seeding admin user...');
 
-    const passwordHash = await bcrypt.hash('admin123', 10);
+    const passwordHash = await bcrypt.hash('DemoPass!1', 10);
 
     if (this.adapter === 'postgres' && this.pgPool) {
-      // Insert user
+      // Update or insert user
       const userResult = await this.pgPool.query(
         `INSERT INTO users (email, password_hash, name, status) 
          VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (email) DO NOTHING
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, name = EXCLUDED.name, status = EXCLUDED.status
          RETURNING id`,
-        ['admin@example.com', passwordHash, 'Admin User', 'active']
+        ['admin@demo.local', passwordHash, 'Admin User', 'active']
       );
 
+      // Get user ID (either from insert or existing user)
+      let userId: string;
       if (userResult.rows.length > 0) {
-        const userId = userResult.rows[0].id;
-        
-        // Get admin role
-        const roleResult = await this.pgPool.query(
-          `SELECT id FROM roles WHERE system_role = $1`,
-          ['admin']
+        userId = userResult.rows[0].id;
+      } else {
+        // If no rows returned (shouldn't happen with RETURNING, but just in case)
+        const existingUser = await this.pgPool.query(
+          'SELECT id FROM users WHERE email = $1',
+          ['admin@demo.local']
         );
+        userId = existingUser.rows[0].id;
+      }
+      
+      // Get admin role
+      const roleResult = await this.pgPool.query(
+        `SELECT id FROM roles WHERE system_role = $1`,
+        ['admin']
+      );
 
-        if (roleResult.rows.length > 0) {
-          const roleId = roleResult.rows[0].id;
-          
-          // Assign role to user
-          await this.pgPool.query(
-            `INSERT INTO user_roles (user_id, role_id) 
-             VALUES ($1, $2) 
-             ON CONFLICT DO NOTHING`,
-            [userId, roleId]
-          );
-        }
+      if (roleResult.rows.length > 0) {
+        const roleId = roleResult.rows[0].id;
+        
+        // Assign role to user
+        await this.pgPool.query(
+          `INSERT INTO user_roles (user_id, role_id) 
+           VALUES ($1, $2) 
+           ON CONFLICT DO NOTHING`,
+          [userId, roleId]
+        );
       }
     } else if (this.adapter === 'sqlite' && this.sqliteDb) {
-      // Insert user
+      // Update or insert user
       const result = this.sqliteDb
         .prepare(
-          `INSERT OR IGNORE INTO users (email, password_hash, name, status) 
-           VALUES (?, ?, ?, ?)`
+          `INSERT INTO users (email, password_hash, name, status) 
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, name = excluded.name, status = excluded.status`
         )
-        .run('admin@example.com', passwordHash, 'Admin User', 'active');
+        .run('admin@demo.local', passwordHash, 'Admin User', 'active');
 
       if (result.changes > 0) {
         const userId = result.lastInsertRowid;
@@ -196,7 +206,7 @@ export class Seeder {
       }
     }
 
-    logger.info('✓ Admin user seeded (email: admin@example.com, password: admin123)');
+    logger.info('✓ Admin user seeded (email: admin@demo.local, password: DemoPass!1)');
   }
 
   private async seedSettings(): Promise<void> {
@@ -248,11 +258,9 @@ export class Seeder {
     logger.info('Seeding sample categories...');
 
     const categories = [
-      { name: 'Electronics', icon: 'laptop' },
-      { name: 'Clothing', icon: 'shirt' },
-      { name: 'Food & Beverage', icon: 'coffee' },
-      { name: 'Books', icon: 'book' },
-      { name: 'Home & Garden', icon: 'home' },
+      { name: 'Chips & Snacks', icon: 'package' },
+      { name: 'Drinks', icon: 'coffee' },
+      { name: 'Candy', icon: 'candy' },
     ];
 
     for (const category of categories) {
@@ -277,31 +285,38 @@ export class Seeder {
     logger.info('Seeding sample products...');
 
     const products = [
-      {
-        name: 'Laptop',
-        description: 'High-performance laptop',
-        category: 'Electronics',
-        base_price: 999.99,
-        barcode: '123456789',
-      },
-      {
-        name: 'T-Shirt',
-        description: 'Cotton t-shirt',
-        category: 'Clothing',
-        base_price: 19.99,
-        barcode: '987654321',
-      },
-      {
-        name: 'Coffee Beans',
-        description: 'Premium coffee beans',
-        category: 'Food & Beverage',
-        base_price: 12.99,
-        barcode: '456789123',
-      },
+      // Chips & Snacks
+      { name: 'Takis', description: 'Spicy rolled tortilla chips', category: 'Chips & Snacks', base_price: 1.00, barcode: '101' },
+      { name: 'Pringles', description: 'Stackable potato crisps', category: 'Chips & Snacks', base_price: 2.00, barcode: '102' },
+      { name: 'Oreo', description: 'Chocolate sandwich cookies', category: 'Chips & Snacks', base_price: 1.00, barcode: '103' },
+      { name: 'Cookies (2 for $1)', description: 'Assorted cookies', category: 'Chips & Snacks', base_price: 0.50, barcode: '104' },
+      { name: 'Peanut', description: 'Salted peanuts', category: 'Chips & Snacks', base_price: 1.00, barcode: '105' },
+      
+      // Drinks
+      { name: 'SunnyD', description: 'Orange flavored drink', category: 'Drinks', base_price: 1.00, barcode: '201' },
+      { name: 'Apple Juice', description: '100% apple juice', category: 'Drinks', base_price: 1.00, barcode: '202' },
+      { name: 'Small Juice', description: 'Small fruit juice', category: 'Drinks', base_price: 1.00, barcode: '203' },
+      { name: 'Payaso', description: 'Flavored drink', category: 'Drinks', base_price: 2.00, barcode: '204' },
+      
+      // Candy
+      { name: 'Ring Pop', description: 'Ring-shaped lollipop', category: 'Candy', base_price: 1.00, barcode: '301' },
+      { name: 'Chocolate (2 for $1)', description: 'Assorted chocolate bars', category: 'Candy', base_price: 0.50, barcode: '302' },
+      { name: 'Lollipop (2 for $1)', description: 'Assorted lollipops', category: 'Candy', base_price: 0.50, barcode: '303' },
     ];
 
     for (const product of products) {
       if (this.adapter === 'postgres' && this.pgPool) {
+        // Check if product already exists by barcode
+        const existing = await this.pgPool.query(
+          'SELECT id FROM products WHERE barcode = $1',
+          [product.barcode]
+        );
+
+        if (existing.rows.length > 0) {
+          // Product exists, skip seeding
+          continue;
+        }
+
         const result = await this.pgPool.query(
           `INSERT INTO products (name, description, category, base_price, barcode) 
            VALUES ($1, $2, $3, $4, $5) 
@@ -315,15 +330,26 @@ export class Seeder {
           ]
         );
 
-        // Add default variant
+        // Add default variant only if product was inserted
         if (result.rows.length > 0) {
           await this.pgPool.query(
             `INSERT INTO product_variants (product_id, stock, enabled) 
-             VALUES ($1, 100, true)`,
+             VALUES ($1, 100, true)
+             ON CONFLICT DO NOTHING`,
             [result.rows[0].id]
           );
         }
       } else if (this.adapter === 'sqlite' && this.sqliteDb) {
+        // Check if product already exists by barcode
+        const existing = this.sqliteDb
+          .prepare('SELECT id FROM products WHERE barcode = ?')
+          .get(product.barcode) as { id: string } | undefined;
+
+        if (existing) {
+          // Product exists, skip seeding
+          continue;
+        }
+
         const result = this.sqliteDb
           .prepare(
             `INSERT INTO products (name, description, category, base_price, barcode) 
@@ -337,11 +363,11 @@ export class Seeder {
             product.barcode
           );
 
-        // Add default variant
+        // Add default variant only if product was inserted
         if (result.lastInsertRowid) {
           this.sqliteDb
             .prepare(
-              `INSERT INTO product_variants (product_id, stock, enabled) 
+              `INSERT OR IGNORE INTO product_variants (product_id, stock, enabled) 
                VALUES (?, 100, 1)`
             )
             .run(result.lastInsertRowid);

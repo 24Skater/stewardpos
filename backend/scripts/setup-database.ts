@@ -51,8 +51,8 @@ async function setupDatabase() {
     logger.info('='.repeat(60));
     logger.info('');
     logger.info('Default admin credentials:');
-    logger.info('  Email: admin@example.com');
-    logger.info('  Password: admin123');
+    logger.info('  Email: admin@demo.local');
+    logger.info('  Password: DemoPass!1');
     logger.info('');
     logger.info('⚠️  IMPORTANT: Change the admin password after first login!');
     logger.info('');

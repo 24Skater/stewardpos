@@ -1,62 +1,94 @@
-import { User, Role, RolePermissions } from './db';
-import { getUserByEmail, verifyPassword, getAllRoles, updateUser } from './db-operations';
+import { apiClient } from './api-client';
+import { authStore } from './auth-store';
+import type { SessionResponse } from './api-types';
+import type { RolePermissions } from './db';
+import { logger } from './logger';
 
 export interface AuthSession {
-  user: User;
-  roles: Role[];
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleIds: string[];
+    roles: Array<{
+      id: string;
+      name: string;
+      systemRole?: string;
+      permissions: RolePermissions;
+    }>;
+  };
   permissions: RolePermissions;
 }
 
 let currentSession: AuthSession | null = null;
 
-export async function login(email: string, password: string): Promise<AuthSession | null> {
-  const user = await getUserByEmail(email);
-  
-  if (!user || user.status !== 'active') {
+export async function getCurrentSession(): Promise<AuthSession | null> {
+  // Check if token exists and is not expired
+  if (!authStore.getToken() || authStore.isTokenExpired()) {
+    currentSession = null;
     return null;
   }
 
-  const isValid = await verifyPassword(password, user.passwordHash);
-  if (!isValid) {
-    return null;
-  }
-
-  // Update last login
-  await updateUser({ ...user, lastLoginAt: Date.now() });
-
-  // Get user roles
-  const allRoles = await getAllRoles();
-  const userRoles = allRoles.filter(role => user.roleIds.includes(role.id));
-
-  // Merge permissions from all roles
-  const permissions = mergePermissions(userRoles.map(r => r.permissions));
-
-  const session: AuthSession = {
-    user,
-    roles: userRoles,
-    permissions,
-  };
-
-  currentSession = session;
-  sessionStorage.setItem('auth-session', JSON.stringify(session));
-
-  return session;
-}
-
-export function logout() {
-  currentSession = null;
-  sessionStorage.removeItem('auth-session');
-}
-
-export function getCurrentSession(): AuthSession | null {
-  if (currentSession) return currentSession;
-
-  const stored = sessionStorage.getItem('auth-session');
-  if (stored) {
-    currentSession = JSON.parse(stored);
+  // If we have a cached session, return it
+  if (currentSession) {
     return currentSession;
   }
 
+  try {
+    const response = await apiClient.get<SessionResponse>('/api/auth/session');
+    if (response.success && response.data?.user) {
+      const user = response.data.user;
+      
+      // Ensure user has required properties
+      if (!user.id || !user.email || !user.name) {
+        logger.warn('Session response missing required user fields');
+        authStore.clearToken();
+        currentSession = null;
+        return null;
+      }
+
+      // Merge permissions from roles
+      const permissions = mergePermissions(
+        (user.roles || []).map((r: any) => r.permissions || {})
+      );
+
+      currentSession = {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roleIds: user.roleIds || [],
+          roles: user.roles || [],
+        },
+        permissions,
+      };
+      return currentSession;
+    }
+  } catch (error) {
+    // Token invalid, clear it
+    authStore.clearToken();
+    currentSession = null;
+  }
+
+  return null;
+}
+
+export function logout(): void {
+  authStore.clearToken();
+  currentSession = null;
+  // Optionally call backend logout endpoint
+  apiClient.post('/api/auth/logout').catch(() => {
+    // Ignore errors on logout
+  });
+}
+
+// Legacy login function - now redirects to API-based flow
+// This is kept for backward compatibility during migration
+export async function login(email: string, password: string): Promise<AuthSession | null> {
+  // This should now be handled by the Login page component
+  // which calls the API directly
+  // This function is kept for compatibility but will return null
+  // The actual login is done via API in Login.tsx
   return null;
 }
 
@@ -70,8 +102,12 @@ export function hasPermission(
 }
 
 export function hasAnyRole(session: AuthSession | null, roleNames: string[]): boolean {
-  if (!session) return false;
-  return session.roles.some(role => roleNames.includes(role.systemRole || role.name));
+  if (!session || !session.user?.roles) return false;
+  return session.user.roles.some(role => roleNames.includes(role.systemRole || role.name));
+}
+
+export function hasRole(session: AuthSession | null, roleName: string): boolean {
+  return hasAnyRole(session, [roleName]);
 }
 
 function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions {

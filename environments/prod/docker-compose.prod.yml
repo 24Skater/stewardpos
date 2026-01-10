@@ -1,0 +1,84 @@
+# Production Environment Configuration
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# IMPORTANT: Use strong passwords and secrets in production!
+
+version: '3.8'
+
+services:
+  postgres:
+    container_name: stewardpos-db-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # MUST be set in .env.prod
+    ports:
+      - "5432:5432"  # Or remove port mapping and use internal network only
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    # Production: Consider using external managed database instead
+    # external: true
+    # name: stewardpos-prod-db
+
+  minio:
+    container_name: stewardpos-storage-prod
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}  # MUST be set in .env.prod
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}  # MUST be set in .env.prod
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    # Production: Consider using external S3-compatible storage
+    # external: true
+    # name: stewardpos-prod-storage
+
+  backend:
+    container_name: stewardpos-backend-prod
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn  # Less verbose in production
+      AUTO_SEED: "false"  # Never auto-seed in production
+      CORS_ORIGIN: ${CORS_ORIGIN}  # MUST be set in .env.prod
+      RATE_LIMIT_WINDOW_MS: 900000  # 15 minutes
+      RATE_LIMIT_MAX_REQUESTS: 100  # Stricter limits
+      JWT_SECRET: ${JWT_SECRET}  # MUST be set in .env.prod (min 32 chars)
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - backend_logs_prod:/app/logs
+    restart: always  # Always restart on failure
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  frontend:
+    container_name: stewardpos-frontend-prod
+    build:
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}  # MUST be set in .env.prod
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    environment:
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+      - VITE_APP_ENV=production
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  postgres_data_prod:
+    driver: local
+    # Production: Consider using named volumes or external storage
+  backend_logs_prod:
+    driver: local
+

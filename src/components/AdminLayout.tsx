@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -7,14 +7,21 @@ import {
   Download, 
   Users, 
   Briefcase, 
+  FileCheck,
   Settings, 
   Shield, 
   FileText,
   LogOut,
-  ArrowLeft
+  ArrowLeft,
+  Code,
+  Key,
+  RotateCcw,
+  Receipt,
+  Tag,
+  Palette
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { logout, getCurrentSession } from '@/lib/auth';
+import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import Logo from './Logo';
 
@@ -25,24 +32,59 @@ interface AdminLayoutProps {
 const navItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
+  { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
+  { path: '/admin/branding', label: 'Branding', icon: Palette },
+  { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
+  { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { path: '/admin/exports', label: 'Exports', icon: Download },
   { path: '/admin/customers', label: 'Customers', icon: Users },
   { path: '/admin/services', label: 'Services', icon: Briefcase },
+  { path: '/admin/quotes', label: 'Quotes', icon: FileCheck },
   { path: '/admin/settings', label: 'Settings', icon: Settings },
   { path: '/admin/roles', label: 'Roles & Users', icon: Shield },
+  { path: '/admin/components', label: 'Components', icon: Code },
+  { path: '/admin/api-keys', label: 'API Keys', icon: Key },
   { path: '/admin/audit', label: 'Audit Log', icon: FileText },
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const session = getCurrentSession();
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      setIsLoading(true);
+      try {
+        const currentSession = await getCurrentSession();
+        setSession(currentSession);
+      } catch (error) {
+        console.error('Failed to load session:', error);
+        setSession(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadSession();
+  }, []);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  // Show loading state while session is being fetched
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg text-muted-foreground">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -53,7 +95,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Logo variant="icon" className="w-10" />
           </div>
           <h1 className="text-xl font-bold text-foreground font-headline">Admin Portal</h1>
-          <p className="text-sm text-muted-foreground mt-1">{session?.user.name}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {session?.user?.name ?? 'User'}
+          </p>
         </div>
 
         <div className="p-4 border-b border-border">

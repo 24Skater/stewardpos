@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Product, ProductVariant, getAllProducts, addProduct, updateProduct, deleteProduct } from "@/lib/db";
+import { ProductVariant } from "@/lib/db";
+import { apiClient } from "@/lib/api-client";
+import type { Product, CreateProductRequest, UpdateProductRequest } from "@/lib/api-types";
 import { ArrowLeft, Plus, Pencil, Trash2, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +17,7 @@ export default function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -23,8 +26,21 @@ export default function Inventory() {
   }, []);
 
   const loadProducts = async () => {
-    const allProducts = await getAllProducts();
-    setProducts(allProducts);
+    try {
+      setLoading(true);
+      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
+      if (response.success) {
+        setProducts(response.data);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to load products',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddProduct = () => {
@@ -56,27 +72,74 @@ export default function Inventory() {
       return;
     }
 
-    const isNew = !products.find(p => p.id === currentProduct.id);
-    currentProduct.updatedAt = Date.now();
+    try {
+      const isNew = !products.find(p => p.id === currentProduct.id);
 
-    if (isNew) {
-      await addProduct(currentProduct);
-      toast({ title: "Product added successfully" });
-    } else {
-      await updateProduct(currentProduct);
-      toast({ title: "Product updated successfully" });
+      if (isNew) {
+        const createData: CreateProductRequest = {
+          name: currentProduct.name,
+          description: currentProduct.description,
+          category: currentProduct.category,
+          basePrice: currentProduct.basePrice,
+          barcode: currentProduct.barcode,
+          image: currentProduct.image,
+          variants: currentProduct.variants.map(v => ({
+            size: v.size,
+            color: v.color,
+            priceOverride: v.priceOverride,
+            priceDelta: v.priceDelta,
+            sku: v.sku,
+            barcode: v.barcode,
+            stock: v.stock,
+            enabled: v.enabled,
+          })),
+        };
+        const response = await apiClient.post<{ success: boolean; data: Product }>('/api/products', createData);
+        if (response.success) {
+          toast({ title: "Product added successfully" });
+        }
+      } else {
+        const updateData: UpdateProductRequest = {
+          name: currentProduct.name,
+          description: currentProduct.description,
+          category: currentProduct.category,
+          basePrice: currentProduct.basePrice,
+          barcode: currentProduct.barcode,
+          image: currentProduct.image,
+        };
+        const response = await apiClient.put<{ success: boolean; data: Product }>(`/api/products/${currentProduct.id}`, updateData);
+        if (response.success) {
+          toast({ title: "Product updated successfully" });
+        }
+      }
+
+      await loadProducts();
+      setEditDialogOpen(false);
+      setCurrentProduct(null);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to save product',
+        variant: 'destructive',
+      });
     }
-
-    await loadProducts();
-    setEditDialogOpen(false);
-    setCurrentProduct(null);
   };
 
   const handleDeleteProduct = async (id: string) => {
     if (confirm("Delete this product?")) {
-      await deleteProduct(id);
-      toast({ title: "Product deleted" });
-      await loadProducts();
+      try {
+        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${id}`);
+        if (response.success) {
+          toast({ title: "Product deleted" });
+          await loadProducts();
+        }
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || 'Failed to delete product',
+          variant: 'destructive',
+        });
+      }
     }
   };
 

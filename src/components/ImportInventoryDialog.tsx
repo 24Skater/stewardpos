@@ -97,7 +97,14 @@ export default function ImportInventoryDialog({
     for (const product of productMap.values()) {
       const existing = await getProduct(product.id);
       if (existing) {
-        await updateProduct(product);
+        await updateProduct(product.id, {
+          name: product.name,
+          description: product.description,
+          category: product.category,
+          basePrice: product.basePrice,
+          barcode: product.barcode,
+          image: product.image,
+        });
         updated++;
       } else {
         await addProduct(product);
