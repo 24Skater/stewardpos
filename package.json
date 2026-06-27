@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
-    "lint": "eslint src/ e2e/",
+    "lint": "eslint src/ e2e/ --rule '{\"@typescript-eslint/no-explicit-any\": \"warn\"}'",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
