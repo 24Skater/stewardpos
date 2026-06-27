@@ -364,8 +364,8 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
@@ -375,7 +375,9 @@ export class SQLiteAdapter {
           order.total,
           order.paymentMethod,
           order.customerEmail,
-          order.customerPhone
+          order.customerPhone,
+          order.cardTransactionId ?? null,
+          order.cardAuthCode ?? null
         );
 
       const createdOrder = this.db

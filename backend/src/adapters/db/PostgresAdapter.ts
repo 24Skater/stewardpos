@@ -365,8 +365,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
         [
           order.subtotal,
@@ -376,6 +376,8 @@ export class PostgresAdapter {
           order.paymentMethod,
           order.customerEmail,
           order.customerPhone,
+          order.cardTransactionId ?? null,
+          order.cardAuthCode ?? null,
         ]
       );
 
