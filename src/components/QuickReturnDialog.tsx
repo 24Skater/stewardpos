@@ -136,7 +136,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         setOrder(orderResponse.data);
         
         // Check for existing returns on this order
-        const returnsResponse = await apiClient.get<{ success: boolean; data: any[] }>(`/api/returns/order/${orderId}`);
+        const returnsResponse = await apiClient.get<{ success: boolean; data: Record<string, unknown>[] }>(`/api/returns/order/${orderId}`);
         if (returnsResponse.success) {
           setExistingReturns(returnsResponse.data);
         }
@@ -168,8 +168,8 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         
         setStep('select');
       }
-    } catch (error: any) {
-      toast({ title: 'Failed to load order', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to load order', description: (error as Error).message, variant: 'destructive' });
     } finally {
       setSearching(false);
     }
@@ -196,8 +196,8 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
           toast({ title: 'Order not found', description: 'Please check the receipt number', variant: 'destructive' });
         }
       }
-    } catch (error: any) {
-      toast({ title: 'Search failed', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Search failed', description: (error as Error).message, variant: 'destructive' });
     } finally {
       setSearching(false);
     }
@@ -270,7 +270,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         restockingFee: 0,
       };
 
-      const createResponse = await apiClient.post<{ success: boolean; data: any }>('/api/returns', returnData);
+      const createResponse = await apiClient.post<{ success: boolean; data: Record<string, unknown> }>('/api/returns', returnData);
       
       if (!createResponse.success) {
         throw new Error('Failed to create return');
@@ -309,8 +309,8 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
 
       onComplete();
       onClose();
-    } catch (error: any) {
-      toast({ title: 'Failed to process return', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to process return', description: (error as Error).message, variant: 'destructive' });
     } finally {
       setProcessing(false);
     }

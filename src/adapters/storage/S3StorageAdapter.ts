@@ -19,7 +19,7 @@ export class S3StorageAdapter implements StoragePort {
     this.config = config;
   }
 
-  async put(key: string, data: Blob | File, metadata?: Record<string, any>): Promise<{ url: string; error?: Error }> {
+  async put(key: string, data: Blob | File, metadata?: Record<string, unknown>): Promise<{ url: string; error?: Error }> {
     console.log('☁️ S3 Storage Adapter (Mock)');
     console.log('Bucket:', this.config.bucket);
     console.log('Key:', key);

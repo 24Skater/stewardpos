@@ -47,7 +47,7 @@ export default function SetupGuard({ children }: SetupGuardProps) {
         console.warn('Setup status check returned unsuccessful response, allowing access');
         setNeedsSetup(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If setup endpoint doesn't exist or fails, assume setup is complete
       // This allows the app to work even if setup endpoint is unavailable
       console.warn('Failed to check setup status, allowing access:', error);
