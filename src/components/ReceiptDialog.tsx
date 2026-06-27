@@ -42,6 +42,7 @@ interface ReceiptDialogProps {
   tax?: number;
   discount?: number;
   paymentMethod?: string;
+  authCode?: string;
   items?: CartItem[];
 }
 
@@ -63,15 +64,16 @@ async function sendSmsMock(phone: string, orderId: string): Promise<void> {
   });
 }
 
-export default function ReceiptDialog({ 
-  open, 
-  onClose, 
-  orderId, 
-  total, 
+export default function ReceiptDialog({
+  open,
+  onClose,
+  orderId,
+  total,
   subtotal = 0,
   tax = 0,
   discount = 0,
   paymentMethod = 'cash',
+  authCode,
   items = []
 }: ReceiptDialogProps) {
   const [email, setEmail] = useState("");
@@ -299,6 +301,7 @@ export default function ReceiptDialog({
             <p>{currentDate}</p>
             <p>Order #{orderId.slice(0, 8).toUpperCase()}</p>
             <p>Payment: {paymentMethod.toUpperCase()}</p>
+            {authCode && <p>Auth: {authCode}</p>}
           </div>
 
           {/* Barcode */}

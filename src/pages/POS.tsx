@@ -1027,7 +1027,6 @@ export default function POS() {
         tax={lastOrderTax}
         discount={lastOrderDiscount}
         paymentMethod={lastOrderPaymentMethod}
-        // @ts-ignore — authCode prop will be added in Task 15
         authCode={lastOrderAuthCode}
         items={lastOrderItems.map(item => ({
           id: item.productId,
