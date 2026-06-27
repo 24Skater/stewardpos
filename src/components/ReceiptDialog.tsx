@@ -46,21 +46,15 @@ interface ReceiptDialogProps {
   items?: CartItem[];
 }
 
-async function sendEmailMock(email: string, orderId: string): Promise<void> {
+async function sendEmailMock(_email: string, _orderId: string): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log(`Mock: Sending email receipt for ${orderId} to ${email}`);
-      resolve();
-    }, 500);
+    setTimeout(resolve, 500);
   });
 }
 
-async function sendSmsMock(phone: string, orderId: string): Promise<void> {
+async function sendSmsMock(_phone: string, _orderId: string): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(() => {
-      console.log(`Mock: Sending SMS receipt for ${orderId} to ${phone}`);
-      resolve();
-    }, 500);
+    setTimeout(resolve, 500);
   });
 }
 

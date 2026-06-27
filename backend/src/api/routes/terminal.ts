@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { ValidationError } from '../../utils/errors';
+import { ValidationError, UnauthorizedError } from '../../utils/errors';
 import db from '../../services/database';
 import { createTerminalAdapter, TerminalConfig } from '../../terminal/TerminalAdapterFactory';
 import logger from '../../utils/logger';
@@ -97,6 +97,10 @@ router.post('/cancel/:chargeId', async (req: AuthRequest, res: Response, next: N
 
 router.get('/readers', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const user = req.user;
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
+      throw new UnauthorizedError('Admin access required');
+    }
     const dbAdapter = db.getAdapter();
     const { terminal } = await getAdapter(dbAdapter);
     const readers = await terminal.listReaders();
@@ -108,6 +112,10 @@ router.get('/readers', async (req: AuthRequest, res: Response, next: NextFunctio
 
 router.post('/test', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const user = req.user;
+    if (!user || !(user as { roles?: Array<{ systemRole?: string }> }).roles?.some((r) => r.systemRole === 'admin')) {
+      throw new UnauthorizedError('Admin access required');
+    }
     const dbAdapter = db.getAdapter();
     const { terminal } = await getAdapter(dbAdapter);
     const result = await terminal.testConnection();

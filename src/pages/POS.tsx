@@ -649,17 +649,11 @@ export default function POS() {
     setTerminalState({ phase: 'charging' });
 
     try {
-      const chargeRes = await fetch('/api/terminal/charge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          amount: amountCents,
-          currency: 'USD',
-          description: 'POS Checkout',
-        }),
+      const chargeData = await apiClient.post<{ success: boolean; error?: string; data: { chargeId: string } }>('/api/terminal/charge', {
+        amount: amountCents,
+        currency: 'USD',
+        description: 'POS Checkout',
       });
-      const chargeData = await chargeRes.json();
 
       if (!chargeData.success) throw new Error(chargeData.error || 'Failed to initiate charge');
 
@@ -668,19 +662,13 @@ export default function POS() {
 
       terminalTimeoutRef.current = setTimeout(async () => {
         stopTerminalPolling();
-        await fetch(`/api/terminal/cancel/${chargeId}`, {
-          method: 'POST',
-          credentials: 'include',
-        });
+        await apiClient.post(`/api/terminal/cancel/${chargeId}`, {});
         setTerminalState({ phase: 'error', errorMessage: 'No response from terminal — charge cancelled' });
       }, 90_000);
 
       terminalPollRef.current = setInterval(async () => {
         try {
-          const statusRes = await fetch(`/api/terminal/status/${chargeId}`, {
-            credentials: 'include',
-          });
-          const statusData = await statusRes.json();
+          const statusData = await apiClient.get<{ success: boolean; data: { status: string; authCode?: string; errorMessage?: string } }>(`/api/terminal/status/${chargeId}`);
           const { status, authCode, errorMessage } = statusData.data;
 
           if (status === 'approved') {
@@ -713,10 +701,7 @@ export default function POS() {
     const { chargeId } = terminalState;
     stopTerminalPolling();
     if (chargeId) {
-      await fetch(`/api/terminal/cancel/${chargeId}`, {
-        method: 'POST',
-        credentials: 'include',
-      }).catch(() => {});
+      await apiClient.post(`/api/terminal/cancel/${chargeId}`, {}).catch(() => {});
     }
     setTerminalState({ phase: 'idle' });
   };
@@ -731,7 +716,7 @@ export default function POS() {
 
       const orderData: CreateOrderRequest & { cardTransactionId?: string; cardAuthCode?: string } = {
         items: cart.map(item => {
-          const orderItem: any = {
+          const orderItem: CreateOrderRequest['items'][number] = {
             productId: item.productId,
             nameSnapshot: item.nameSnapshot || '',
             quantity: item.quantity,

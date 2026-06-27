@@ -3,9 +3,10 @@ import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader } from './T
 
 type StoredStatus = 'pending' | 'approved' | 'cancelled';
 
-export class ManualTerminalAdapter implements TerminalPort {
-  private charges = new Map<string, StoredStatus>();
+// module-level store — persists across requests
+const chargeStore = new Map<string, StoredStatus>();
 
+export class ManualTerminalAdapter implements TerminalPort {
   async createCharge(
     _amount: number,
     _currency: string,
@@ -13,17 +14,17 @@ export class ManualTerminalAdapter implements TerminalPort {
   ): Promise<ChargeResult> {
     await delay(100);
     const chargeId = `manual_${randomUUID()}`;
-    this.charges.set(chargeId, 'pending');
+    chargeStore.set(chargeId, 'pending');
     return { chargeId, status: 'pending' };
   }
 
   async getChargeStatus(chargeId: string): Promise<ChargeResult> {
     await delay(100);
-    const stored = this.charges.get(chargeId);
+    const stored = chargeStore.get(chargeId);
     if (!stored) return { chargeId, status: 'error', errorMessage: 'Charge not found' };
 
     const status = stored === 'pending' ? 'approved' : stored;
-    if (stored === 'pending') this.charges.set(chargeId, 'approved');
+    if (stored === 'pending') chargeStore.set(chargeId, 'approved');
 
     return {
       chargeId,
@@ -33,7 +34,7 @@ export class ManualTerminalAdapter implements TerminalPort {
   }
 
   async cancelCharge(chargeId: string): Promise<void> {
-    this.charges.set(chargeId, 'cancelled');
+    chargeStore.set(chargeId, 'cancelled');
   }
 
   async listReaders(): Promise<TerminalReader[]> {

@@ -47,11 +47,7 @@ export class SquareTerminalAdapter implements TerminalPort {
     });
 
     if (response.errors?.length || !response.checkout) {
-      return {
-        chargeId: '',
-        status: 'error',
-        errorMessage: response.errors?.[0]?.detail ?? 'Failed to create checkout',
-      };
+      throw new Error(response.errors?.[0]?.detail ?? 'Failed to create checkout');
     }
 
     return { chargeId: response.checkout.id!, status: 'pending' };
@@ -61,11 +57,7 @@ export class SquareTerminalAdapter implements TerminalPort {
     const response = await this.client.terminal.checkouts.get({ checkoutId: chargeId });
 
     if (response.errors?.length || !response.checkout) {
-      return {
-        chargeId,
-        status: 'error',
-        errorMessage: response.errors?.[0]?.detail ?? 'Checkout not found',
-      };
+      throw new Error(response.errors?.[0]?.detail ?? 'Checkout not found');
     }
 
     const status = SQUARE_TO_CHARGE_STATUS[response.checkout.status ?? ''] ?? 'error';
