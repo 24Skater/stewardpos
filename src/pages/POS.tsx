@@ -170,14 +170,7 @@ export default function POS() {
   // Cleanup terminal polling on unmount
   useEffect(() => {
     return () => {
-      if (terminalPollRef.current) {
-        clearInterval(terminalPollRef.current);
-        terminalPollRef.current = null;
-      }
-      if (terminalTimeoutRef.current) {
-        clearTimeout(terminalTimeoutRef.current);
-        terminalTimeoutRef.current = null;
-      }
+      stopTerminalPolling();
     };
   }, []);
 
