@@ -24,6 +24,7 @@ import apiKeysRoutes from './api/routes/apikeys';
 import adminRoutes from './api/routes/admin';
 import healthRoutes from './api/routes/health';
 import setupRoutes from './api/routes/setup';
+import terminalRoutes from './api/routes/terminal';
 
 const app: Application = express();
 
@@ -91,6 +92,7 @@ app.use('/api/discounts', discountsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin/api-keys', apiKeysRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/terminal', terminalRoutes);
 
 // 404 handler
 app.use('*', (_req, res) => {
