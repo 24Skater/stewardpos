@@ -73,6 +73,22 @@ const colorMap: Record<string, string> = {
   'gray': 'bg-muted hover:bg-muted/90',
 };
 
+type TerminalPhase =
+  | 'idle'
+  | 'charging'
+  | 'waiting'
+  | 'approved'
+  | 'declined'
+  | 'error'
+  | 'cancelled';
+
+interface TerminalState {
+  phase: TerminalPhase;
+  chargeId?: string;
+  authCode?: string;
+  errorMessage?: string;
+}
+
 export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +138,12 @@ export default function POS() {
   });
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
 
+  // Terminal payment state
+  const [terminalState, setTerminalState] = useState<TerminalState>({ phase: 'idle' });
+  const terminalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const terminalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastOrderAuthCode, setLastOrderAuthCode] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     loadProducts();
     loadCategories();
@@ -143,6 +165,20 @@ export default function POS() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Cleanup terminal polling on unmount
+  useEffect(() => {
+    return () => {
+      if (terminalPollRef.current) {
+        clearInterval(terminalPollRef.current);
+        terminalPollRef.current = null;
+      }
+      if (terminalTimeoutRef.current) {
+        clearTimeout(terminalTimeoutRef.current);
+        terminalTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   const loadProducts = async () => {
@@ -574,6 +610,7 @@ export default function POS() {
         setLastOrderDiscount(discountTotal);
         setLastOrderPaymentMethod(selectedPaymentMethod);
         setLastOrderItems([...cart]);
+        setLastOrderAuthCode(undefined);
         setCart([]);
         setCustomerEmail("");
         setAppliedDiscounts([]);
@@ -591,6 +628,200 @@ export default function POS() {
       toast({
         title: "Error",
         description: error.message || 'Failed to create order',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // ── Terminal payment helpers ──────────────────────────────────────────────
+
+  const stopTerminalPolling = () => {
+    if (terminalPollRef.current) {
+      clearInterval(terminalPollRef.current);
+      terminalPollRef.current = null;
+    }
+    if (terminalTimeoutRef.current) {
+      clearTimeout(terminalTimeoutRef.current);
+      terminalTimeoutRef.current = null;
+    }
+  };
+
+  const handleChargeCard = async () => {
+    const subtotal = calculateSubtotal();
+    const discountTotal = getTotalDiscount();
+    const taxRate = 0;
+    const taxTotal = (subtotal - discountTotal) * taxRate;
+    const total = subtotal - discountTotal + taxTotal;
+    const amountCents = Math.round(total * 100);
+    setTerminalState({ phase: 'charging' });
+
+    try {
+      const chargeRes = await fetch('/api/terminal/charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          amount: amountCents,
+          currency: 'USD',
+          description: 'POS Checkout',
+        }),
+      });
+      const chargeData = await chargeRes.json();
+
+      if (!chargeData.success) throw new Error(chargeData.error || 'Failed to initiate charge');
+
+      const { chargeId } = chargeData.data;
+      setTerminalState({ phase: 'waiting', chargeId });
+
+      terminalTimeoutRef.current = setTimeout(async () => {
+        stopTerminalPolling();
+        await fetch(`/api/terminal/cancel/${chargeId}`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        setTerminalState({ phase: 'error', errorMessage: 'No response from terminal — charge cancelled' });
+      }, 90_000);
+
+      terminalPollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/terminal/status/${chargeId}`, {
+            credentials: 'include',
+          });
+          const statusData = await statusRes.json();
+          const { status, authCode, errorMessage } = statusData.data;
+
+          if (status === 'approved') {
+            stopTerminalPolling();
+            setTerminalState({ phase: 'approved', chargeId, authCode });
+            await completeCardOrder(chargeId, authCode);
+          } else if (status === 'declined') {
+            stopTerminalPolling();
+            setTerminalState({ phase: 'declined', errorMessage: errorMessage || 'Card declined' });
+          } else if (status === 'cancelled') {
+            stopTerminalPolling();
+            setTerminalState({ phase: 'cancelled' });
+          } else if (status === 'error') {
+            stopTerminalPolling();
+            setTerminalState({ phase: 'error', errorMessage: errorMessage || 'Terminal error' });
+          }
+        } catch {
+          // Network hiccup — keep polling
+        }
+      }, 2_000);
+    } catch (error: unknown) {
+      setTerminalState({
+        phase: 'error',
+        errorMessage: error instanceof Error ? error.message : 'Failed to reach terminal',
+      });
+    }
+  };
+
+  const handleCancelTerminal = async () => {
+    const { chargeId } = terminalState;
+    stopTerminalPolling();
+    if (chargeId) {
+      await fetch(`/api/terminal/cancel/${chargeId}`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => {});
+    }
+    setTerminalState({ phase: 'idle' });
+  };
+
+  const completeCardOrder = async (chargeId: string, authCode?: string) => {
+    try {
+      const taxRate = 0;
+      const subtotal = calculateSubtotal();
+      const discountTotal = getTotalDiscount();
+      const taxTotal = (subtotal - discountTotal) * taxRate;
+      const total = subtotal - discountTotal + taxTotal;
+
+      const orderData: CreateOrderRequest & { cardTransactionId?: string; cardAuthCode?: string } = {
+        items: cart.map(item => {
+          const orderItem: any = {
+            productId: item.productId,
+            nameSnapshot: item.nameSnapshot || '',
+            quantity: item.quantity,
+            unitPrice: item.price,
+            lineDiscount: item.lineDiscount || 0,
+            lineTotal: item.price * item.quantity - (item.lineDiscount || 0) * item.quantity,
+          };
+
+          if (item.variantId) orderItem.variantId = item.variantId;
+          if (item.size) orderItem.size = item.size;
+          if (item.color) orderItem.color = item.color;
+          if (item.notes) orderItem.notes = item.notes;
+
+          return orderItem;
+        }),
+        subtotal,
+        discountTotal,
+        taxTotal,
+        total,
+        paymentMethod: 'Card',
+        ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
+        cardTransactionId: chargeId,
+        cardAuthCode: authCode,
+      };
+
+      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+
+      if (response.success) {
+        // Log discount usage for each applied discount
+        for (const discount of appliedDiscounts) {
+          try {
+            await apiClient.post('/api/discounts/usage', {
+              orderId: response.data.id,
+              discountSource: discount.source,
+              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
+              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
+              discountCode: discount.code,
+              discountName: discount.name,
+              discountType: discount.type,
+              discountValue: discount.value,
+              discountAmount: discount.amount,
+              customerEmail: customerEmail || undefined,
+            });
+
+            if (discount.source === 'promo_code' && discount.id) {
+              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
+            }
+          } catch (error) {
+            console.error('Failed to log discount usage:', error);
+          }
+        }
+
+        toast({
+          title: 'Sale completed!',
+          description: `Order ${response.data.id} saved successfully`,
+        });
+
+        setLastOrderId(response.data.id);
+        setLastOrderTotal(total);
+        setLastOrderSubtotal(subtotal);
+        setLastOrderTax(taxTotal);
+        setLastOrderDiscount(discountTotal);
+        setLastOrderPaymentMethod('Card');
+        setLastOrderItems([...cart]);
+        setLastOrderAuthCode(authCode);
+        setCart([]);
+        setCustomerEmail('');
+        setAppliedDiscounts([]);
+        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
+        setTerminalState({ phase: 'idle' });
+        setCheckoutOpen(false);
+        setReceiptDialogOpen(true);
+
+        await loadProducts();
+      } else {
+        throw new Error('Order save failed');
+      }
+    } catch (error: unknown) {
+      toast({
+        title: 'Order save failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       });
     }
@@ -803,9 +1034,11 @@ export default function POS() {
         tax={lastOrderTax}
         discount={lastOrderDiscount}
         paymentMethod={lastOrderPaymentMethod}
+        // @ts-ignore — authCode prop will be added in Task 15
+        authCode={lastOrderAuthCode}
         items={lastOrderItems.map(item => ({
-          id: item.id,
-          name: item.name,
+          id: item.productId,
+          name: item.nameSnapshot ?? '',
           price: item.price,
           quantity: item.quantity,
           size: item.size,
@@ -1056,11 +1289,92 @@ export default function POS() {
             </div>
           </div>
 
+          {/* Terminal Status Panel */}
+          {terminalState.phase !== 'idle' && (
+            <div className="border rounded-lg p-4 space-y-3 mt-4">
+              {terminalState.phase === 'charging' && (
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+                  <span className="text-sm">Connecting to terminal...</span>
+                </div>
+              )}
+
+              {terminalState.phase === 'waiting' && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+                    <span className="font-medium">Waiting for card...</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Present card on the terminal · ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={handleCancelTerminal}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+
+              {terminalState.phase === 'approved' && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <span className="text-lg">✓</span>
+                  <div>
+                    <p className="font-medium">Card Approved</p>
+                    {terminalState.authCode && (
+                      <p className="text-xs text-muted-foreground">Auth: {terminalState.authCode}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {terminalState.phase === 'declined' && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <span className="text-lg">✕</span>
+                    <p className="font-medium">Card Declined</p>
+                  </div>
+                  {terminalState.errorMessage && (
+                    <p className="text-sm text-muted-foreground">{terminalState.errorMessage}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleChargeCard}>Try Again</Button>
+                    <Button variant="outline" size="sm" onClick={() => setTerminalState({ phase: 'idle' })}>
+                      Switch Method
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {(terminalState.phase === 'error' || terminalState.phase === 'cancelled') && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">
+                    {terminalState.errorMessage || 'Terminal operation cancelled'}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleChargeCard}>Retry</Button>
+                    <Button variant="outline" size="sm" onClick={() => setTerminalState({ phase: 'idle' })}>
+                      Switch Method
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setCheckoutOpen(false)} className="border-border">
               Cancel
             </Button>
-            <Button onClick={handleCompleteCheckout} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Button
+              onClick={() => {
+                if (selectedPaymentMethod?.toLowerCase() === 'card' && paymentMethods.card?.enabled) {
+                  handleChargeCard();
+                } else {
+                  handleCompleteCheckout();
+                }
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              disabled={terminalState.phase === 'charging' || terminalState.phase === 'waiting' || terminalState.phase === 'approved'}
+            >
               Complete Sale - ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
             </Button>
           </DialogFooter>
