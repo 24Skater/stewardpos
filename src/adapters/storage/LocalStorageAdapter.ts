@@ -3,7 +3,7 @@ import { StoragePort } from '../../core/ports/StoragePort';
 export class LocalStorageAdapter implements StoragePort {
   private readonly prefix = 'persona-pos-storage';
 
-  async put(key: string, data: Blob | File, metadata?: Record<string, any>): Promise<{ url: string; error?: Error }> {
+  async put(key: string, data: Blob | File, metadata?: Record<string, unknown>): Promise<{ url: string; error?: Error }> {
     try {
       const reader = new FileReader();
       const base64Data = await new Promise<string>((resolve, reject) => {

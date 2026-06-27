@@ -38,3 +38,6 @@ dist-ssr
 .env.qa
 .env.prod
 environments/*/.env.*
+e2e/.auth.json
+test-results/
+playwright-report/

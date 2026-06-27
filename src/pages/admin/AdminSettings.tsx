@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,10 +7,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { apiClient } from '@/lib/api-client';
-import { Save, Store, Shield, Database, RefreshCw, Palette, ArrowRight } from 'lucide-react';
+import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
+
+interface PaymentMethodsConfig {
+  cash?: { enabled: boolean };
+  zelle?: { enabled: boolean; destination?: string };
+  card?: { enabled: boolean; provider?: string };
+}
 
 interface Settings {
   taxRateDefault: number;
@@ -26,8 +31,19 @@ interface Settings {
       oidc?: boolean;
     };
     demoMode?: boolean;
+    paymentMethods?: PaymentMethodsConfig;
   };
 }
+
+const CARD_PROVIDERS = [
+  { value: 'square', label: 'Square' },
+  { value: 'stripe', label: 'Stripe Terminal' },
+  { value: 'clover', label: 'Clover' },
+  { value: 'paypal', label: 'PayPal Here' },
+  { value: 'dejavoo', label: 'Dejavoo' },
+  { value: 'verifone', label: 'Verifone' },
+  { value: 'generic', label: 'Generic / Other' },
+];
 
 const timezones = [
   'UTC',
@@ -47,7 +63,6 @@ const timezones = [
 ];
 
 export default function AdminSettings() {
-  const navigate = useNavigate();
   const [settings, setSettings] = useState<Settings>({
     taxRateDefault: 0.08,
     storeName: 'Persona Store',
@@ -61,6 +76,11 @@ export default function AdminSettings() {
         oidc: false,
       },
       demoMode: false,
+      paymentMethods: {
+        cash: { enabled: true },
+        zelle: { enabled: false, destination: '' },
+        card: { enabled: false, provider: 'square' },
+      },
     },
   });
   const [loading, setLoading] = useState(true);
@@ -89,6 +109,12 @@ export default function AdminSettings() {
               ...response.data.config?.authMethods,
             },
             demoMode: response.data.config?.demoMode || false,
+            paymentMethods: {
+              cash: { enabled: true },
+              zelle: { enabled: false, destination: '' },
+              card: { enabled: false, provider: 'square' },
+              ...response.data.config?.paymentMethods,
+            },
           },
         });
       }
@@ -169,6 +195,7 @@ export default function AdminSettings() {
           <Tabs defaultValue="general" className="space-y-4">
             <TabsList>
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="auth">Authentication</TabsTrigger>
               <TabsTrigger value="database">Database</TabsTrigger>
             </TabsList>
@@ -252,26 +279,173 @@ export default function AdminSettings() {
                 </CardContent>
               </Card>
 
-              {/* Branding Link Card */}
-              <Card className="border-dashed">
-                <CardContent className="pt-6">
+            </TabsContent>
+
+            {/* Payment Methods */}
+            <TabsContent value="payments" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Payment Methods
+                  </CardTitle>
+                  <CardDescription>Enable the payment methods available at the register</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+
+                  {/* Cash */}
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-primary/10 rounded-lg">
-                        <Palette className="w-6 h-6 text-primary" />
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <Banknote className="w-5 h-5 text-muted-foreground" />
                       <div>
-                        <h3 className="font-semibold">Branding & Appearance</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Customize logo, colors, store identity, and receipt appearance
-                        </p>
+                        <Label>Cash</Label>
+                        <p className="text-sm text-muted-foreground">Accept physical cash payments</p>
                       </div>
                     </div>
-                    <Button onClick={() => navigate('/admin/branding')}>
-                      Go to Branding
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
+                    <Switch
+                      data-testid="cash-toggle"
+                      checked={settings.config?.paymentMethods?.cash?.enabled}
+                      onCheckedChange={(checked) =>
+                        setSettings({
+                          ...settings,
+                          config: {
+                            ...settings.config,
+                            paymentMethods: {
+                              ...settings.config?.paymentMethods,
+                              cash: { enabled: checked },
+                            },
+                          },
+                        })
+                      }
+                    />
                   </div>
+
+                  {/* Zelle */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Smartphone className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>Zelle</Label>
+                          <p className="text-sm text-muted-foreground">Accept Zelle digital payments</p>
+                        </div>
+                      </div>
+                      <Switch
+                        data-testid="zelle-toggle"
+                        checked={settings.config?.paymentMethods?.zelle?.enabled}
+                        onCheckedChange={(checked) =>
+                          setSettings({
+                            ...settings,
+                            config: {
+                              ...settings.config,
+                              paymentMethods: {
+                                ...settings.config?.paymentMethods,
+                                zelle: {
+                                  ...settings.config?.paymentMethods?.zelle,
+                                  enabled: checked,
+                                },
+                              },
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                    {settings.config?.paymentMethods?.zelle?.enabled && (
+                      <div className="ml-8 space-y-2">
+                        <Label htmlFor="zelleDestination">Zelle Phone / Email</Label>
+                        <Input
+                          id="zelleDestination"
+                          data-testid="zelle-destination"
+                          placeholder="(555) 123-4567 or payments@store.com"
+                          value={settings.config?.paymentMethods?.zelle?.destination || ''}
+                          onChange={(e) =>
+                            setSettings({
+                              ...settings,
+                              config: {
+                                ...settings.config,
+                                paymentMethods: {
+                                  ...settings.config?.paymentMethods,
+                                  zelle: {
+                                    ...settings.config?.paymentMethods?.zelle,
+                                    destination: e.target.value,
+                                  },
+                                },
+                              },
+                            })
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">Shown to cashier at checkout so they can display it to the customer</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Credit / Debit Card */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>Credit / Debit Card</Label>
+                          <p className="text-sm text-muted-foreground">Accept card payments via a card reader</p>
+                        </div>
+                      </div>
+                      <Switch
+                        data-testid="card-toggle"
+                        checked={settings.config?.paymentMethods?.card?.enabled}
+                        onCheckedChange={(checked) =>
+                          setSettings({
+                            ...settings,
+                            config: {
+                              ...settings.config,
+                              paymentMethods: {
+                                ...settings.config?.paymentMethods,
+                                card: {
+                                  ...settings.config?.paymentMethods?.card,
+                                  enabled: checked,
+                                },
+                              },
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                    {settings.config?.paymentMethods?.card?.enabled && (
+                      <div className="ml-8 space-y-2">
+                        <Label htmlFor="cardProvider">Card Reader Provider</Label>
+                        <Select
+                          value={settings.config?.paymentMethods?.card?.provider || 'square'}
+                          onValueChange={(value) =>
+                            setSettings({
+                              ...settings,
+                              config: {
+                                ...settings.config,
+                                paymentMethods: {
+                                  ...settings.config?.paymentMethods,
+                                  card: {
+                                    ...settings.config?.paymentMethods?.card,
+                                    provider: value,
+                                  },
+                                },
+                              },
+                            })
+                          }
+                        >
+                          <SelectTrigger data-testid="card-provider-select">
+                            <SelectValue placeholder="Select provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CARD_PROVIDERS.map((p) => (
+                              <SelectItem key={p.value} value={p.value}>
+                                {p.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Used for labeling orders only — process payment on the reader, then confirm here</p>
+                      </div>
+                    )}
+                  </div>
+
                 </CardContent>
               </Card>
             </TabsContent>

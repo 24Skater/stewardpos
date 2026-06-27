@@ -48,7 +48,7 @@ export default function ImportInventoryDialog({
     
     const rows = lines.slice(1).map(line => {
       const values = line.split(',').map(v => v.trim());
-      const row: any = {};
+      const row: Record<string, unknown> = {};
       headers.forEach((header, index) => {
         row[header] = values[index] || '';
       });
@@ -58,7 +58,7 @@ export default function ImportInventoryDialog({
     return rows;
   };
 
-  const processImport = async (rows: any[]) => {
+  const processImport = async (rows: Record<string, unknown>[]) => {
     const productMap = new Map();
 
     // Group by Product ID

@@ -8,7 +8,7 @@ import ReceiptDialog from "@/components/ReceiptDialog";
 import { CartItem } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
 import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,22 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
+
+interface PaymentMethodsConfig {
+  cash?: { enabled: boolean };
+  zelle?: { enabled: boolean; destination?: string };
+  card?: { enabled: boolean; provider?: string };
+}
+
+const CARD_PROVIDER_LABELS: Record<string, string> = {
+  square: 'Square',
+  stripe: 'Stripe Terminal',
+  clover: 'Clover',
+  paypal: 'PayPal Here',
+  dejavoo: 'Dejavoo',
+  verifone: 'Verifone',
+  generic: 'Card Reader',
+};
 
 interface DiscountType {
   id: string;
@@ -48,13 +64,13 @@ const iconMap: Record<string, any> = {
 };
 
 const colorMap: Record<string, string> = {
-  'blue': 'bg-blue-500 hover:bg-blue-600',
-  'green': 'bg-green-500 hover:bg-green-600',
-  'purple': 'bg-purple-500 hover:bg-purple-600',
-  'red': 'bg-red-500 hover:bg-red-600',
-  'pink': 'bg-pink-500 hover:bg-pink-600',
-  'orange': 'bg-orange-500 hover:bg-orange-600',
-  'gray': 'bg-gray-500 hover:bg-gray-600',
+  'blue': 'bg-primary hover:bg-primary/90',
+  'green': 'bg-primary hover:bg-primary/90',
+  'purple': 'bg-primary hover:bg-primary/90',
+  'red': 'bg-destructive hover:bg-destructive/90',
+  'pink': 'bg-primary hover:bg-primary/90',
+  'orange': 'bg-accent hover:bg-accent/90',
+  'gray': 'bg-muted hover:bg-muted/90',
 };
 
 export default function POS() {
@@ -95,8 +111,16 @@ export default function POS() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   
   // Store branding
-  const [storeName, setStoreName] = useState("StewardPOS");
+  const [storeName, setStoreName] = useState("Steward · Register");
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
+
+  // Payment methods
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsConfig>({
+    cash: { enabled: true },
+    zelle: { enabled: false },
+    card: { enabled: false, provider: 'square' },
+  });
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
 
   useEffect(() => {
     loadProducts();
@@ -149,7 +173,7 @@ export default function POS() {
 
   const loadStoreName = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: { storeName?: string; logoUrl?: string } }>('/api/admin/settings');
+      const response = await apiClient.get<{ success: boolean; data: { storeName?: string; logoUrl?: string; config?: { paymentMethods?: PaymentMethodsConfig } } }>('/api/admin/settings');
       if (response.success && response.data) {
         if (response.data.storeName) {
           setStoreName(response.data.storeName);
@@ -157,10 +181,21 @@ export default function POS() {
         if (response.data.logoUrl) {
           setStoreLogo(response.data.logoUrl);
         }
+        if (response.data.config?.paymentMethods) {
+          const pm = response.data.config.paymentMethods;
+          setPaymentMethods({
+            cash: { enabled: true, ...pm.cash },
+            zelle: { enabled: false, ...pm.zelle },
+            card: { enabled: false, provider: 'square', ...pm.card },
+          });
+          // Default to first enabled method
+          if (pm.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+          else if (pm.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+          else if (pm.card?.enabled) setSelectedPaymentMethod('Card');
+        }
       }
     } catch (error) {
-      // Use default name if settings fail to load
-      console.warn('Could not load store branding');
+      console.warn('Could not load store settings');
     }
   };
 
@@ -417,10 +452,6 @@ export default function POS() {
       announcement.textContent = `${product.name} added to cart`;
     }
 
-    toast({
-      title: "Added to cart",
-      description: `${product.name} added successfully.`,
-    });
   };
 
   const handleUpdateQuantity = async (productId: string, variantId: string, change: number) => {
@@ -498,7 +529,7 @@ export default function POS() {
         discountTotal,
         taxTotal,
         total,
-        paymentMethod: 'Cash',
+        paymentMethod: selectedPaymentMethod,
         // Customer information is optional - only include if provided and not empty
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
@@ -541,11 +572,15 @@ export default function POS() {
         setLastOrderSubtotal(subtotal);
         setLastOrderTax(taxTotal);
         setLastOrderDiscount(discountTotal);
-        setLastOrderPaymentMethod('Cash');
+        setLastOrderPaymentMethod(selectedPaymentMethod);
         setLastOrderItems([...cart]);
         setCart([]);
         setCustomerEmail("");
         setAppliedDiscounts([]);
+        // Reset to first enabled payment method for next sale
+        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
         setCheckoutOpen(false);
         setReceiptDialogOpen(true);
         
@@ -591,10 +626,10 @@ export default function POS() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setReturnDialogOpen(true)}
-              className="border-orange-500 text-orange-600 hover:bg-orange-50"
+              className="border-destructive text-destructive hover:bg-destructive/10"
               size="sm"
             >
               <RotateCcw className="w-4 h-4 mr-1" />
@@ -913,6 +948,53 @@ export default function POS() {
               </div>
             </TabsContent>
           </Tabs>
+
+          {/* Payment Method Selector */}
+          <div className="border-t pt-4">
+            <Label className="text-sm font-medium mb-3 block">Payment Method</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {paymentMethods.cash?.enabled && (
+                <Button
+                  data-testid="pay-cash"
+                  variant={selectedPaymentMethod === 'Cash' ? 'default' : 'outline'}
+                  className="flex flex-col h-auto py-3 gap-1"
+                  onClick={() => setSelectedPaymentMethod('Cash')}
+                >
+                  <Banknote className="w-5 h-5" />
+                  <span className="text-xs font-medium">Cash</span>
+                </Button>
+              )}
+              {paymentMethods.zelle?.enabled && (
+                <Button
+                  data-testid="pay-zelle"
+                  variant={selectedPaymentMethod === 'Zelle' ? 'default' : 'outline'}
+                  className="flex flex-col h-auto py-3 gap-1"
+                  onClick={() => setSelectedPaymentMethod('Zelle')}
+                >
+                  <Smartphone className="w-5 h-5" />
+                  <span className="text-xs font-medium">Zelle</span>
+                  {paymentMethods.zelle.destination && (
+                    <span className="text-xs opacity-70 truncate max-w-full px-1">{paymentMethods.zelle.destination}</span>
+                  )}
+                </Button>
+              )}
+              {paymentMethods.card?.enabled && (
+                <Button
+                  data-testid="pay-card"
+                  variant={selectedPaymentMethod === 'Card' ? 'default' : 'outline'}
+                  className="flex flex-col h-auto py-3 gap-1"
+                  onClick={() => setSelectedPaymentMethod('Card')}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  <span className="text-xs font-medium">
+                    {paymentMethods.card.provider
+                      ? CARD_PROVIDER_LABELS[paymentMethods.card.provider] ?? 'Card'
+                      : 'Card'}
+                  </span>
+                </Button>
+              )}
+            </div>
+          </div>
 
           {/* Applied Discounts */}
           {appliedDiscounts.length > 0 && (

@@ -11,7 +11,7 @@ export class AzureBlobStorageAdapter implements StoragePort {
     this.config = config;
   }
 
-  async put(key: string, data: Blob | File, metadata?: Record<string, any>): Promise<{ url: string; error?: Error }> {
+  async put(key: string, data: Blob | File, metadata?: Record<string, unknown>): Promise<{ url: string; error?: Error }> {
     console.log('☁️ Azure Blob Storage Adapter (Mock)');
     console.log('Account:', this.config.accountName);
     console.log('Container:', this.config.container);

@@ -31,7 +31,7 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
         }
 
         if (requireAdmin) {
-          const isAdmin = session.user?.roles?.some((role: any) => role.systemRole === 'admin') || false;
+          const isAdmin = session.user?.roles?.some((role: { systemRole?: string }) => role.systemRole === 'admin') || false;
           if (!isAdmin) {
             logger.warn('Admin access required, redirecting to home');
             navigate('/');
@@ -42,9 +42,9 @@ export default function ProtectedRoute({ children, requireAdmin = false }: Prote
 
         setIsAuthorized(true);
         setIsLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         logger.error('Error checking auth in ProtectedRoute:', err);
-        setError(err.message || 'Authentication check failed');
+        setError((err as Error).message || 'Authentication check failed');
         setIsLoading(false);
         // Don't redirect on error - let user see the error
       }
