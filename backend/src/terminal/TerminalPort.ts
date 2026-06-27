@@ -18,10 +18,17 @@ export interface ChargeResult {
   errorMessage?: string;
 }
 
+export type ReaderStatus = 'online' | 'offline' | 'ready' | 'initializing' | 'error';
+
 export interface TerminalReader {
   id: string;
   label: string;
-  status: string;
+  status: ReaderStatus;
+}
+
+export interface ConnectionTestResult {
+  success: boolean;
+  message: string;
 }
 
 export interface TerminalPort {
@@ -29,5 +36,5 @@ export interface TerminalPort {
   getChargeStatus(chargeId: string): Promise<ChargeResult>;
   cancelCharge(chargeId: string): Promise<void>;
   listReaders(): Promise<TerminalReader[]>;
-  testConnection(): Promise<{ success: boolean; message: string }>;
+  testConnection(): Promise<ConnectionTestResult>;
 }
