@@ -93,6 +93,8 @@ export interface Order {
   paymentMethod: string;
   customerEmail?: string;
   customerPhone?: string;
+  cardTransactionId?: string;
+  cardAuthCode?: string;
   items?: OrderItem[];
 }
 
@@ -131,6 +133,8 @@ export interface CreateOrderRequest {
   paymentMethod: string;
   customerEmail?: string;
   customerPhone?: string;
+  cardTransactionId?: string;
+  cardAuthCode?: string;
 }
 
 // Customer Types

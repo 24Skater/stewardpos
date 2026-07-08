@@ -18,6 +18,24 @@ interface PaymentMethodsConfig {
   card?: { enabled: boolean; provider?: string };
 }
 
+interface TerminalCredentials {
+  stripeSecretKey?: string;
+  stripeTerminalLocationId?: string;
+  stripeReaderId?: string;
+  squareAccessToken?: string;
+  squareLocationId?: string;
+  squareDeviceId?: string;
+  cloverApiToken?: string;
+  cloverMerchantId?: string;
+  cloverDeviceId?: string;
+  verifoneApiKey?: string;
+  verifoneTerminalId?: string;
+  verifoneMerchantId?: string;
+  dejavooApiKey?: string;
+  dejavooTerminalId?: string;
+  dejavooMerchantId?: string;
+}
+
 interface Settings {
   taxRateDefault: number;
   storeName: string;
@@ -32,6 +50,7 @@ interface Settings {
     };
     demoMode?: boolean;
     paymentMethods?: PaymentMethodsConfig;
+    terminalCredentials?: TerminalCredentials;
   };
 }
 
@@ -86,7 +105,11 @@ export default function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
-  
+  const [terminalCreds, setTerminalCreds] = useState<TerminalCredentials>({});
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [discoveringReaders, setDiscoveringReaders] = useState(false);
+  const [readers, setReaders] = useState<Array<{ id: string; label: string; status: string }>>([]);
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -117,6 +140,9 @@ export default function AdminSettings() {
             },
           },
         });
+        if (response.data.config?.terminalCredentials) {
+          setTerminalCreds(response.data.config.terminalCredentials);
+        }
       }
     } catch (error: any) {
       console.warn('Could not load settings:', error.message);
@@ -128,18 +154,63 @@ export default function AdminSettings() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await apiClient.put<{ success: boolean; data: Settings }>('/api/admin/settings', settings);
+      const payload = {
+        ...settings,
+        config: {
+          ...settings.config,
+          terminalCredentials: terminalCreds,
+        },
+      };
+      const response = await apiClient.put<{ success: boolean; data: Settings }>('/api/admin/settings', payload);
       if (response.success) {
         toast({ title: 'Settings saved successfully' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error saving settings',
-        description: error.message || 'Failed to save settings',
+        description: error instanceof Error ? error.message : 'Failed to save settings',
         variant: 'destructive',
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const data = await apiClient.post<{ success: boolean; message: string }>('/api/terminal/test', {});
+      toast({
+        title: data.success ? 'Connection successful' : 'Connection failed',
+        description: (data as unknown as { data?: { message?: string } }).data?.message || 'Unknown result',
+        variant: data.success ? 'default' : 'destructive',
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Connection test failed',
+        description: error instanceof Error ? error.message : 'Error',
+        variant: 'destructive',
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleDiscoverReaders = async () => {
+    setDiscoveringReaders(true);
+    try {
+      const data = await apiClient.get<{ success: boolean; data: Array<{ id: string; label: string; status: string }> }>('/api/terminal/readers');
+      const found = (data as unknown as { data?: Array<{ id: string; label: string; status: string }> }).data || [];
+      setReaders(found);
+      toast({ title: `Found ${found.length} reader(s)` });
+    } catch (error: unknown) {
+      toast({
+        title: 'Reader discovery failed',
+        description: error instanceof Error ? error.message : 'Error',
+        variant: 'destructive',
+      });
+    } finally {
+      setDiscoveringReaders(false);
     }
   };
 
@@ -442,6 +513,218 @@ export default function AdminSettings() {
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">Used for labeling orders only — process payment on the reader, then confirm here</p>
+
+                        {/* Terminal Credentials */}
+                        <div className="mt-4 space-y-4 border-t pt-4">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">Terminal Credentials</Label>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDiscoverReaders}
+                                disabled={discoveringReaders}
+                              >
+                                {discoveringReaders ? 'Discovering...' : 'Discover Readers'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleTestConnection}
+                                disabled={testingConnection}
+                              >
+                                {testingConnection ? 'Testing...' : 'Test Connection'}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Stripe fields */}
+                          {settings.config?.paymentMethods?.card?.provider === 'stripe' && (
+                            <div className="space-y-3">
+                              <div>
+                                <Label>Secret Key</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="sk_live_••••••••"
+                                  value={terminalCreds.stripeSecretKey || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeSecretKey: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Terminal Location ID</Label>
+                                <Input
+                                  placeholder="tml_xxxxxxxxxxxx"
+                                  value={terminalCreds.stripeTerminalLocationId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeTerminalLocationId: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Reader ID</Label>
+                                <Input
+                                  placeholder="tmr_xxxxxxxxxxxx"
+                                  value={terminalCreds.stripeReaderId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
+                                />
+                                {readers.length > 0 && (
+                                  <select
+                                    className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                                    value={terminalCreds.stripeReaderId || ''}
+                                    onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
+                                  >
+                                    <option value="">Pick a discovered reader</option>
+                                    {readers.map((r) => (
+                                      <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Square fields */}
+                          {settings.config?.paymentMethods?.card?.provider === 'square' && (
+                            <div className="space-y-3">
+                              <div>
+                                <Label>Access Token</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="EAAAxxxxxxxx"
+                                  value={terminalCreds.squareAccessToken || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, squareAccessToken: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Location ID</Label>
+                                <Input
+                                  placeholder="Lxxxxxxxxx"
+                                  value={terminalCreds.squareLocationId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, squareLocationId: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Device ID</Label>
+                                <Input
+                                  placeholder="Dxxxxxxxxx"
+                                  value={terminalCreds.squareDeviceId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
+                                />
+                                {readers.length > 0 && (
+                                  <select
+                                    className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                                    value={terminalCreds.squareDeviceId || ''}
+                                    onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
+                                  >
+                                    <option value="">Pick a discovered device</option>
+                                    {readers.map((r) => (
+                                      <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Clover fields */}
+                          {settings.config?.paymentMethods?.card?.provider === 'clover' && (
+                            <div className="space-y-3">
+                              <div>
+                                <Label>API Token</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="••••••••••••"
+                                  value={terminalCreds.cloverApiToken || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverApiToken: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Merchant ID</Label>
+                                <Input
+                                  placeholder="xxxxxxxxx"
+                                  value={terminalCreds.cloverMerchantId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverMerchantId: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Device ID</Label>
+                                <Input
+                                  placeholder="xxxxxxxxx"
+                                  value={terminalCreds.cloverDeviceId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverDeviceId: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Verifone fields */}
+                          {settings.config?.paymentMethods?.card?.provider === 'verifone' && (
+                            <div className="space-y-3">
+                              <div>
+                                <Label>API Key</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="••••••••••••"
+                                  value={terminalCreds.verifoneApiKey || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneApiKey: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Merchant ID</Label>
+                                <Input
+                                  placeholder="xxxxxxxxx"
+                                  value={terminalCreds.verifoneMerchantId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneMerchantId: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Terminal ID / IP</Label>
+                                <Input
+                                  placeholder="192.168.1.x or terminal ID"
+                                  value={terminalCreds.verifoneTerminalId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneTerminalId: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Dejavoo fields */}
+                          {settings.config?.paymentMethods?.card?.provider === 'dejavoo' && (
+                            <div className="space-y-3">
+                              <div>
+                                <Label>API Key</Label>
+                                <Input
+                                  type="password"
+                                  placeholder="••••••••••••"
+                                  value={terminalCreds.dejavooApiKey || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooApiKey: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Merchant ID</Label>
+                                <Input
+                                  placeholder="xxxxxxxxx"
+                                  value={terminalCreds.dejavooMerchantId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooMerchantId: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label>Terminal ID</Label>
+                                <Input
+                                  placeholder="xxxxxxxxx"
+                                  value={terminalCreds.dejavooTerminalId || ''}
+                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooTerminalId: e.target.value })}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Generic/Manual — no fields */}
+                          {(settings.config?.paymentMethods?.card?.provider === 'generic' ||
+                            !settings.config?.paymentMethods?.card?.provider) && (
+                            <p className="text-sm text-muted-foreground">
+                              Generic / Manual mode — auto-approves for testing. No credentials required.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -3,9 +3,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
-import BrandThemeProvider from "@/components/BrandThemeProvider";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
@@ -27,7 +27,6 @@ import AdminQuotes from "./pages/admin/AdminQuotes";
 import AdminApiKeys from "./pages/admin/AdminApiKeys";
 import AdminReturns from "./pages/admin/AdminReturns";
 import AdminReceipts from "./pages/admin/AdminReceipts";
-import AdminBranding from "./pages/admin/AdminBranding";
 import AdminDiscounts from "./pages/admin/AdminDiscounts";
 import NotFound from "./pages/NotFound";
 
@@ -36,7 +35,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <BrandThemeProvider>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -65,14 +64,13 @@ const App = () => (
               <Route path="/admin/api-keys" element={<AdminApiKeys />} />
               <Route path="/admin/returns" element={<AdminReturns />} />
               <Route path="/admin/receipts" element={<AdminReceipts />} />
-              <Route path="/admin/branding" element={<AdminBranding />} />
               <Route path="/admin/discounts" element={<AdminDiscounts />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </SetupGuard>
           </BrowserRouter>
         </TooltipProvider>
-      </BrandThemeProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </ErrorBoundary>
 );

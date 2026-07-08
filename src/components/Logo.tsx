@@ -48,26 +48,20 @@ export default function Logo({ variant, className, responsive = true, dark }: Lo
   const showIcon = variant === "icon" || (responsive && mounted && isMobile);
   const showLockup = variant === "lockup" || !showIcon;
 
-  // Determine which logo file to use based on variant and theme
   let logoSrc: string;
   if (showIcon) {
-    // Icon variant - use full color icon
-    logoSrc = "/branding/svg/stewardpos-icon.svg";
+    logoSrc = "/branding/svg/steward-mark.svg";
   } else {
-    // Lockup variant - use light or dark based on theme
-    if (mounted && isDark) {
-      logoSrc = "/branding/svg/stewardpos-logo-lockup-dark.svg";
-    } else {
-      logoSrc = "/branding/svg/stewardpos-logo-lockup.svg";
-    }
+    logoSrc = mounted && isDark
+      ? "/branding/svg/steward-lockup-horizontal-dark.svg"
+      : "/branding/svg/steward-lockup-horizontal.svg";
   }
 
   if (!mounted) {
-    // SSR fallback - show light lockup
     return (
       <img
-        src="/branding/svg/stewardpos-logo-lockup.svg"
-        alt="StewardPOS"
+        src="/branding/svg/steward-lockup-horizontal.svg"
+        alt="Steward · Register"
         className={cn("h-auto", className)}
         style={{ width: showIcon ? "48px" : "200px" }}
       />
@@ -77,7 +71,7 @@ export default function Logo({ variant, className, responsive = true, dark }: Lo
   return (
     <img
       src={logoSrc}
-      alt="StewardPOS"
+      alt="Steward · Register"
       className={cn("h-auto", className)}
       style={{
         width: showIcon ? "48px" : responsive ? "200px" : "auto",
@@ -87,12 +81,11 @@ export default function Logo({ variant, className, responsive = true, dark }: Lo
   );
 }
 
-// Export a simpler version for explicit use cases
 export function LogoIcon({ className }: { className?: string }) {
   return (
     <img
-      src="/branding/svg/stewardpos-icon.svg"
-      alt="StewardPOS"
+      src="/branding/svg/steward-mark.svg"
+      alt="Steward · Register"
       className={cn("h-auto w-12", className)}
     />
   );
@@ -100,12 +93,12 @@ export function LogoIcon({ className }: { className?: string }) {
 
 export function LogoLockup({ className, dark = false }: { className?: string; dark?: boolean }) {
   const logoSrc = dark
-    ? "/branding/svg/stewardpos-logo-lockup-dark.svg"
-    : "/branding/svg/stewardpos-logo-lockup.svg";
+    ? "/branding/svg/steward-lockup-horizontal-dark.svg"
+    : "/branding/svg/steward-lockup-horizontal.svg";
   return (
     <img
       src={logoSrc}
-      alt="StewardPOS"
+      alt="Steward · Register"
       className={cn("h-auto", className)}
       style={{ width: "200px", maxWidth: "100%" }}
     />

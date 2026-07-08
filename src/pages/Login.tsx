@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthLayout, Button, Input, Label } from '@steward-apps/ui';
 import { apiClient } from '@/lib/api-client';
 import { authStore } from '@/lib/auth-store';
 import type { LoginRequest, LoginResponse } from '@/lib/api-types';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn } from 'lucide-react';
+import Logo from '@/components/Logo';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,22 +27,22 @@ export default function Login() {
 
       if (response.success && response.data.token) {
         authStore.setToken(response.data.token, '7d');
-        toast({ 
+        toast({
           title: 'Success',
           description: 'Logged in successfully',
         });
         navigate('/admin');
       } else {
-        toast({ 
-          title: 'Login failed', 
+        toast({
+          title: 'Login failed',
           description: 'Invalid email or password',
           variant: 'destructive'
         });
       }
-    } catch (error: any) {
-      toast({ 
-        title: 'Error', 
-        description: error.message || 'Login failed',
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Login failed',
         variant: 'destructive'
       });
     } finally {
@@ -53,50 +51,47 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-secondary/10 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl">Persona POS</CardTitle>
-          <CardDescription>Sign in to access the admin portal</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@demo.local"
-                required
-              />
-            </div>
+    <AuthLayout>
+      <div className="flex flex-col items-center mb-8">
+        <Logo variant="lockup" className="mb-6" />
+        <h1 className="text-2xl font-bold text-foreground font-headline">Admin Portal</h1>
+        <p className="text-sm text-muted-foreground mt-1">Sign in to access your dashboard</p>
+      </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-              />
-            </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="admin@demo.local"
+            required
+          />
+        </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              <LogIn className="w-4 h-4 mr-2" />
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
+        <div className="space-y-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+        </div>
 
-            <div className="text-sm text-center text-muted-foreground mt-4">
-              <p>Demo credentials:</p>
-              <p className="font-mono text-xs mt-1">admin@demo.local / DemoPass!1</p>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+        <Button type="submit" className="w-full" disabled={loading}>
+          <LogIn className="w-4 h-4 mr-2" />
+          {loading ? 'Signing in...' : 'Sign In'}
+        </Button>
+
+        <p className="text-xs text-center text-muted-foreground mt-4">
+          Demo: <span className="font-mono">admin@demo.local / DemoPass!1</span>
+        </p>
+      </form>
+    </AuthLayout>
   );
 }

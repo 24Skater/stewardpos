@@ -1,14 +1,17 @@
 # Multi-stage build for production
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
+
+# Install pnpm (v9 matches pnpm-lock.yaml lockfileVersion 9.0)
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies (use npm install if package-lock.json doesn't exist)
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Install dependencies
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -18,7 +21,7 @@ COPY . .
 # Use empty string for relative paths (works with nginx proxy)
 ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-RUN npm run build
+RUN ./node_modules/.bin/vite build
 
 # Production stage
 FROM nginx:alpine

@@ -41,3 +41,7 @@ environments/*/.env.*
 e2e/.auth.json
 test-results/
 playwright-report/
+
+# Tool artifacts
+graphify-out/
+*.v3-backup

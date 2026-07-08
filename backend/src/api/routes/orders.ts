@@ -59,6 +59,8 @@ const createOrderSchema = z.object({
     (val) => (val === '' || val === null || val === undefined ? undefined : val),
     z.string().optional()
   ),
+  cardTransactionId: z.string().optional(),
+  cardAuthCode: z.string().optional(),
 });
 
 /**
@@ -134,6 +136,15 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     const orderData = createOrderSchema.parse(req.body);
     const adapter = db.getAdapter();
     const order = await adapter.createOrder(orderData);
+
+    // If this was a card payment, link the terminal transaction to the order
+    if (orderData.cardTransactionId) {
+      await adapter.updateTerminalTransactionByChargeId(orderData.cardTransactionId, {
+        orderId: order.id as string,
+        status: 'approved',
+        authCode: orderData.cardAuthCode,
+      });
+    }
 
     logger.info(`Created order: ${order.id} - Total: $${order.total}`);
 

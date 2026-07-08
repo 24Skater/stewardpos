@@ -308,7 +308,7 @@ export default function AdminReceipts() {
       exportToExcel(exportData, `${filename}.xlsx`, 'Receipts');
     } else {
       // For PDF, use existing orders PDF export
-      exportOrdersToPDF(receipts as any, { storeName: 'StewardPOS', storeAddress: '', storePhone: '' } as any, `${filename}.pdf`);
+      exportOrdersToPDF(receipts as any, { storeName: 'Steward · Register', storeAddress: '', storePhone: '' } as any, `${filename}.pdf`);
     }
 
     toast({ title: 'Export complete', description: `Downloaded ${format.toUpperCase()} file` });

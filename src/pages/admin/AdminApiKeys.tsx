@@ -330,7 +330,7 @@ export default function AdminApiKeys() {
                     API Reference
                   </CardTitle>
                   <CardDescription>
-                    Documentation for integrating with the StewardPOS API
+                    Documentation for integrating with the Steward · Register API
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">

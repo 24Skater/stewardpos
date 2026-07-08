@@ -142,7 +142,7 @@ export function exportToExcel(sheets: { name: string; data: any[] }[], filename:
 function createPDFHeader(doc: jsPDF, title: string, subtitle?: string, settings?: Settings) {
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text(settings?.storeName || 'StewardPOS', 14, 20);
+  doc.text(settings?.storeName || 'Steward · Register', 14, 20);
   
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
