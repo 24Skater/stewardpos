@@ -1,15 +1,16 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Package, 
-  BarChart3, 
-  Download, 
-  Users, 
-  Briefcase, 
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useTheme } from 'next-themes';
+import {
+  LayoutDashboard,
+  Package,
+  BarChart3,
+  Download,
+  Users,
+  Briefcase,
   FileCheck,
-  Settings, 
-  Shield, 
+  Settings,
+  Shield,
   FileText,
   LogOut,
   ArrowLeft,
@@ -18,11 +19,20 @@ import {
   RotateCcw,
   Receipt,
   Tag,
-  Palette
+  Sun,
+  Moon,
 } from 'lucide-react';
-import { Button } from './ui/button';
+import {
+  Button,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarSection,
+  SidebarLink,
+  SidebarFooter,
+  SidebarSeparator,
+} from '@steward-apps/ui';
 import { logout, getCurrentSession, type AuthSession } from '@/lib/auth';
-import { cn } from '@/lib/utils';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -32,7 +42,6 @@ const navItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
   { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
-  { path: '/admin/branding', label: 'Branding', icon: Palette },
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
   { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
@@ -50,6 +59,7 @@ const navItems = [
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -87,49 +97,56 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-card border-r border-border flex flex-col">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-bold text-foreground font-headline">StewardPOS Admin</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {session?.user?.name ?? 'User'}
-          </p>
-        </div>
+      <Sidebar>
+        <SidebarHeader>
+          <div>
+            <h1 className="text-base font-bold text-sidebar-foreground font-headline">Steward · Register</h1>
+            <p className="text-xs text-sidebar-foreground/60 mt-0.5">
+              {session?.user?.name ?? 'User'}
+            </p>
+          </div>
+        </SidebarHeader>
 
-        <div className="p-4 border-b border-border">
-          <Button
-            variant="outline"
-            className="w-full justify-start"
-            onClick={() => navigate('/')}
-          >
-            <ArrowLeft className="w-4 h-4 mr-3" />
-            Back to POS
-          </Button>
-        </div>
+        <SidebarContent>
+          <SidebarSection>
+            <SidebarLink
+              href="/"
+              icon={<ArrowLeft className="w-4 h-4" />}
+              onClick={(e) => { e.preventDefault(); navigate('/'); }}
+            >
+              Back to POS
+            </SidebarLink>
+          </SidebarSection>
 
-        <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            
-            return (
-              <Link key={item.path} to={item.path}>
-                <Button
-                  variant={isActive ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'w-full justify-start',
-                    isActive && 'bg-secondary text-secondary-foreground'
-                  )}
+          <SidebarSeparator />
+
+          <SidebarSection>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <SidebarLink
+                  key={item.path}
+                  href={item.path}
+                  active={location.pathname === item.path}
+                  icon={<Icon className="w-4 h-4" />}
+                  onClick={(e) => { e.preventDefault(); navigate(item.path); }}
                 >
-                  <Icon className="w-4 h-4 mr-3" />
                   {item.label}
-                </Button>
-              </Link>
-            );
-          })}
-        </nav>
+                </SidebarLink>
+              );
+            })}
+          </SidebarSection>
+        </SidebarContent>
 
-        <div className="p-4 border-t border-border">
+        <SidebarFooter>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-hover"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 mr-3" /> : <Moon className="w-4 h-4 mr-3" />}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </Button>
           <Button
             variant="ghost"
             className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -138,10 +155,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <LogOut className="w-4 h-4 mr-3" />
             Logout
           </Button>
-        </div>
-      </aside>
+        </SidebarFooter>
+      </Sidebar>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-auto">
         {children}
       </main>
