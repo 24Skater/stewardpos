@@ -9,6 +9,24 @@ export interface SQLiteConfig {
   filename: string;
 }
 
+export interface TerminalTransactionCreate {
+  amount: number;
+  currency: string;
+  provider: string;
+  chargeId: string;
+  status: string;
+  readerId?: string;
+  startedAt: number;
+}
+
+export interface TerminalTransactionUpdate {
+  status?: string;
+  authCode?: string;
+  errorMessage?: string;
+  orderId?: string;
+  durationMs?: number;
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -346,8 +364,8 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
@@ -357,7 +375,9 @@ export class SQLiteAdapter {
           order.total,
           order.paymentMethod,
           order.customerEmail,
-          order.customerPhone
+          order.customerPhone,
+          order.cardTransactionId ?? null,
+          order.cardAuthCode ?? null
         );
 
       const createdOrder = this.db
@@ -3238,6 +3258,57 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error getting discount stats:', error);
       throw new DatabaseError('Failed to get discount stats');
+    }
+  }
+
+  // ===== Terminal Transaction Operations =====
+  async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
+    try {
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO terminal_transactions
+             (id, created_at, amount, currency, provider, charge_id, status, reader_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          data.startedAt,
+          data.amount,
+          data.currency,
+          data.provider,
+          data.chargeId,
+          data.status,
+          data.readerId ?? null
+        );
+      return { id };
+    } catch (error) {
+      logger.error('Error creating terminal transaction:', error);
+      throw new DatabaseError('Failed to create terminal transaction');
+    }
+  }
+
+  async updateTerminalTransactionByChargeId(
+    chargeId: string,
+    updates: TerminalTransactionUpdate
+  ): Promise<void> {
+    try {
+      const fields: string[] = [];
+      const values: unknown[] = [];
+
+      if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
+      if (updates.authCode !== undefined) { fields.push('auth_code = ?'); values.push(updates.authCode); }
+      if (updates.errorMessage !== undefined) { fields.push('error_message = ?'); values.push(updates.errorMessage); }
+      if (updates.orderId !== undefined) { fields.push('order_id = ?'); values.push(updates.orderId); }
+      if (updates.durationMs !== undefined) { fields.push('duration_ms = ?'); values.push(updates.durationMs); }
+
+      if (fields.length === 0) return;
+
+      values.push(chargeId);
+      this.db.prepare(`UPDATE terminal_transactions SET ${fields.join(', ')} WHERE charge_id = ?`).run(...values);
+    } catch (error) {
+      logger.error('Error updating terminal transaction:', error);
+      throw new DatabaseError('Failed to update terminal transaction');
     }
   }
 }

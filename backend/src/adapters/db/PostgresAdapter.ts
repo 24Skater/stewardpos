@@ -11,6 +11,24 @@ export interface PostgresConfig {
   ssl?: boolean;
 }
 
+export interface TerminalTransactionCreate {
+  amount: number;
+  currency: string;
+  provider: string;
+  chargeId: string;
+  status: string;
+  readerId?: string;
+  startedAt: number;
+}
+
+export interface TerminalTransactionUpdate {
+  status?: string;
+  authCode?: string;
+  errorMessage?: string;
+  orderId?: string;
+  durationMs?: number;
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -347,8 +365,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
         [
           order.subtotal,
@@ -358,6 +376,8 @@ export class PostgresAdapter {
           order.paymentMethod,
           order.customerEmail,
           order.customerPhone,
+          order.cardTransactionId ?? null,
+          order.cardAuthCode ?? null,
         ]
       );
 
@@ -3234,6 +3254,59 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting discount stats:', error);
       throw new DatabaseError('Failed to get discount stats');
+    }
+  }
+
+  // ===== Terminal Transaction Operations =====
+  async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO terminal_transactions
+           (created_at, amount, currency, provider, charge_id, status, reader_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          data.startedAt,
+          data.amount,
+          data.currency,
+          data.provider,
+          data.chargeId,
+          data.status,
+          data.readerId ?? null,
+        ]
+      );
+      return { id: result.rows[0].id };
+    } catch (error) {
+      logger.error('Error creating terminal transaction:', error);
+      throw new DatabaseError('Failed to create terminal transaction');
+    }
+  }
+
+  async updateTerminalTransactionByChargeId(
+    chargeId: string,
+    updates: TerminalTransactionUpdate
+  ): Promise<void> {
+    try {
+      const fields: string[] = [];
+      const values: unknown[] = [];
+      let idx = 1;
+
+      if (updates.status !== undefined) { fields.push(`status = $${idx++}`); values.push(updates.status); }
+      if (updates.authCode !== undefined) { fields.push(`auth_code = $${idx++}`); values.push(updates.authCode); }
+      if (updates.errorMessage !== undefined) { fields.push(`error_message = $${idx++}`); values.push(updates.errorMessage); }
+      if (updates.orderId !== undefined) { fields.push(`order_id = $${idx++}`); values.push(updates.orderId); }
+      if (updates.durationMs !== undefined) { fields.push(`duration_ms = $${idx++}`); values.push(updates.durationMs); }
+
+      if (fields.length === 0) return;
+
+      values.push(chargeId);
+      await this.pool.query(
+        `UPDATE terminal_transactions SET ${fields.join(', ')} WHERE charge_id = $${idx}`,
+        values
+      );
+    } catch (error) {
+      logger.error('Error updating terminal transaction:', error);
+      throw new DatabaseError('Failed to update terminal transaction');
     }
   }
 }
