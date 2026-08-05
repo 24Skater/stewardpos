@@ -20,8 +20,8 @@ Estimated distance to a defensible v1: **Phases 0–3 of the master plan, plus t
 
 | Ref | Change | Verification |
 |---|---|---|
-| S2 | `router.use(authenticate)` added to `orders.ts:11` | backend typecheck: 0 errors in `orders.ts`, total unchanged at 341 |
-| S1 | `rejectIfAlreadySetUp` guard added; applied to `POST /api/setup/{complete,test-database}`. Admin upsert changed from `DO UPDATE SET password_hash` to `DO NOTHING` + `409` on both Postgres and SQLite paths | new `src/api/routes/__tests__/setup.guard.test.ts` — **4/4 pass** |
+| S2 | `router.use(authenticate)` added to `orders.ts:11` | **live: 401** (was 200 + 20 order records) |
+| S1 | `rejectIfAlreadySetUp` guard added; applied to `POST /api/setup/{complete,test-database}`. Admin upsert changed from `DO UPDATE SET password_hash` to `DO NOTHING` + `409` on both Postgres and SQLite paths | unit 4/4 pass; **live: 409** (was 400 from Zod, i.e. unguarded) |
 | S4 | `.env` untracked (`git rm --cached`); all four secrets regenerated into the local file | `git ls-files .env` → 0; `git check-ignore` → `.gitignore:34` |
 | D5 | `backend/package.json` name/description/author → StewardPOS | — |
 
@@ -31,10 +31,39 @@ and belong to Phase 0 (see §4).
 **Still outstanding from P0: S3 (server-side repricing).** It is not a small fix and is scheduled
 with the rest of the money path in Phase 3.
 
-> ⚠️ **Rotation caveat:** if a Postgres volume or MinIO bucket was already created with the old
-> credentials, the new values will be rejected until you either update the role password
-> (`ALTER USER stewardpos_user WITH PASSWORD '…'`) or recreate the volume. The old secrets remain in
-> git history — treat them as permanently burned regardless.
+### Live verification (2026‑08‑05, against the running Docker stack)
+
+Both fixes were confirmed end to end by running the patched backend against the **same Postgres
+instance** as the deployed container and issuing identical unauthenticated requests:
+
+| Probe (no token, fully provisioned instance) | Deployed (unpatched) | Patched |
+|---|---|---|
+| `GET /api/orders` | **200 — 20 order records with customer PII** | **401** |
+| `POST /api/setup/complete` | **400 from Zod** — request reached schema validation, so no guard | **409 "Setup has already been completed"** |
+| `GET /api/setup/status` (must keep working) | 200 | 200 |
+| `POST /api/auth/login` (must keep working) | 401 | 401 |
+
+`GET /api/setup/status` reported `hasAdminUser: true, needsSetup: false` throughout — this was a
+live, provisioned instance, not a first-run system.
+
+Postgres role password was rotated to match the new `.env`
+(`ALTER USER stewardpos_user WITH PASSWORD …`) and the backend container recreated; the stack is
+healthy on the new credentials.
+
+> ⚠️ **The old secrets remain in git history — treat them as permanently burned.** `MINIO_ROOT_USER`
+> was also changed (`minioadmin` → `stewardpos_minio`); the MinIO container has **not** been
+> recreated, so it is still running on the old root identity until it is restarted.
+
+### 🚨 The fix cannot currently be deployed
+
+`docker compose build backend` **fails** — the Dockerfile runs `npm run build` (`tsc`), which dies on
+the 341 type errors below. The container serving port 3002 is therefore a **stale image**, and a
+re-probe after recreating it confirms it still returns **200 with 20 order records to anonymous
+callers**.
+
+This reclassifies the backend type errors from hygiene to a **release blocker**: there is no path to
+shipping *any* backend change — including these security fixes — until `tsc` passes. Phase 0 is now
+on the critical path, ahead of everything else.
 
 ---
 
