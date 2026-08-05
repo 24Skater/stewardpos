@@ -8,6 +8,7 @@ import logger from '../../utils/logger';
 const router = Router();
 
 // All order routes require authentication (orders contain sensitive data)
+router.use(authenticate);
 
 /**
  * Order API Routes
