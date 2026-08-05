@@ -2,7 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -160,8 +160,8 @@ router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction
     });
   } catch (error: unknown) {
     // Handle foreign key constraint violations with a user-friendly message
-    if (error.code === '23503' || error.message?.includes('foreign key constraint')) {
-      const constraint = error.constraint || '';
+    if (errorProps(error).code === '23503' || getErrorMessage(error)?.includes('foreign key constraint')) {
+      const constraint = String(errorProps(error).constraint || '');
       let relatedTable = 'records';
       
       if (constraint.includes('quotes')) {

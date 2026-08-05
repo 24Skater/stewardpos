@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError } from '../../utils/errors';
+import { DbRow, asRows } from './types';
 
 export interface SQLiteConfig {
   filename: string;
@@ -125,17 +126,17 @@ export class SQLiteAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<unknown[]> {
+  async getAllProducts(): Promise<DbRow[]> {
     try {
       const products = this.db
         .prepare('SELECT * FROM products ORDER BY name ASC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       // Get variants for each product
       const productsWithVariants = products.map((product) => {
         const variants = this.db
           .prepare('SELECT * FROM product_variants WHERE product_id = ?')
-          .all(product.id) as unknown[];
+          .all(product.id) as DbRow[];
 
         return {
           id: product.id,
@@ -180,7 +181,7 @@ export class SQLiteAdapter {
 
       const variants = this.db
         .prepare('SELECT * FROM product_variants WHERE product_id = ?')
-        .all(id) as unknown[];
+        .all(id) as DbRow[];
 
       return {
         id: product.id,
@@ -239,7 +240,7 @@ export class SQLiteAdapter {
 
       // Insert variants if provided
       const variants = [];
-      if (product.variants && product.variants.length > 0) {
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
         for (const variant of product.variants) {
           const variantResult = this.db
             .prepare(
@@ -299,7 +300,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const now = Date.now();
       const result = this.db
@@ -386,7 +387,7 @@ export class SQLiteAdapter {
 
       // Insert order items and update stock
       const items = [];
-      if (order.items && order.items.length > 0) {
+      if (Array.isArray(order.items) && order.items.length > 0) {
         for (const item of order.items) {
           const itemResult = this.db
             .prepare(
@@ -449,11 +450,11 @@ export class SQLiteAdapter {
     }
   }
 
-  async getAllOrders(): Promise<unknown[]> {
+  async getAllOrders(): Promise<DbRow[]> {
     try {
       const orders = this.db
         .prepare('SELECT * FROM orders ORDER BY created_at DESC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       // Get all order items
       const itemsMap = new Map<string, unknown[]>();
@@ -463,7 +464,7 @@ export class SQLiteAdapter {
         const placeholders = orderIds.map(() => '?').join(',');
         const items = this.db
           .prepare(`SELECT * FROM order_items WHERE order_id IN (${placeholders})`)
-          .all(...orderIds) as unknown[];
+          .all(...orderIds) as DbRow[];
         
         // Group items by order_id
         items.forEach((item) => {
@@ -518,7 +519,7 @@ export class SQLiteAdapter {
 
       const items = this.db
         .prepare('SELECT * FROM order_items WHERE order_id = ?')
-        .all(id) as unknown[];
+        .all(id) as DbRow[];
 
       return {
         id: order.id,
@@ -552,11 +553,11 @@ export class SQLiteAdapter {
   }
 
   // Customer Operations
-  async getAllCustomers(): Promise<unknown[]> {
+  async getAllCustomers(): Promise<DbRow[]> {
     try {
       const customers = this.db
         .prepare('SELECT * FROM customers ORDER BY name ASC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return customers.map((c) => ({
         id: c.id,
@@ -767,7 +768,7 @@ export class SQLiteAdapter {
       // Archive associated quotes
       const quotes = this.db
         .prepare('SELECT * FROM quotes WHERE customer_id = ?')
-        .all(id) as unknown[];
+        .all(id) as DbRow[];
 
       for (const quote of quotes) {
         this.db.prepare(
@@ -785,7 +786,7 @@ export class SQLiteAdapter {
       // Archive associated orders
       const orders = this.db
         .prepare('SELECT * FROM orders WHERE customer_id = ?')
-        .all(id) as unknown[];
+        .all(id) as DbRow[];
 
       for (const order of orders) {
         this.db.prepare(
@@ -898,11 +899,11 @@ export class SQLiteAdapter {
   }
 
   // ===== Service Operations =====
-  async getAllServices(): Promise<unknown[]> {
+  async getAllServices(): Promise<DbRow[]> {
     try {
       const services = this.db
         .prepare('SELECT * FROM services ORDER BY name ASC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return services.map((s) => ({
         id: s.id,
@@ -1056,17 +1057,17 @@ export class SQLiteAdapter {
   }
 
   // ===== User Operations =====
-  async getAllUsers(): Promise<unknown[]> {
+  async getAllUsers(): Promise<DbRow[]> {
     try {
       const users = this.db
         .prepare('SELECT * FROM users ORDER BY name ASC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return users.map((u) => {
         // Get roles for user
         const roleIds = this.db
           .prepare('SELECT role_id FROM user_roles WHERE user_id = ?')
-          .all(u.id) as unknown[];
+          .all(u.id) as DbRow[];
         
         const roles = [];
         for (const { role_id } of roleIds) {
@@ -1115,8 +1116,8 @@ export class SQLiteAdapter {
         .get(result.lastInsertRowid) as any;
 
       // Assign roles if provided
-      if (user.roleIds && user.roleIds.length > 0) {
-        for (const roleId of user.roleIds) {
+      if (Array.isArray(user.roleIds) && user.roleIds.length > 0) {
+        for (const roleId of asRows(user.roleIds)) {
           this.db
             .prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
             .run(newUser.id, roleId);
@@ -1183,7 +1184,7 @@ export class SQLiteAdapter {
         this.db
           .prepare('DELETE FROM user_roles WHERE user_id = ?')
           .run(id);
-        for (const roleId of user.roleIds) {
+        for (const roleId of asRows(user.roleIds)) {
           this.db
             .prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')
             .run(id, roleId);
@@ -1225,11 +1226,11 @@ export class SQLiteAdapter {
   }
 
   // ===== Role Operations =====
-  async getAllRoles(): Promise<unknown[]> {
+  async getAllRoles(): Promise<DbRow[]> {
     try {
       const roles = this.db
         .prepare('SELECT * FROM roles ORDER BY name ASC')
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return roles.map((r) => ({
         id: r.id,
@@ -1538,7 +1539,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<unknown[]> {
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<DbRow[]> {
     try {
       let query = `
         SELECT al.*, u.name as user_name, u.email as user_email
@@ -1564,7 +1565,7 @@ export class SQLiteAdapter {
         params.push(options.offset);
       }
 
-      const logs = this.db.prepare(query).all(...params) as unknown[];
+      const logs = this.db.prepare(query).all(...params) as DbRow[];
 
       return logs.map((l) => ({
         id: l.id,
@@ -1585,7 +1586,7 @@ export class SQLiteAdapter {
   }
 
   // ===== Quote Operations =====
-  async getAllQuotes(): Promise<unknown[]> {
+  async getAllQuotes(): Promise<DbRow[]> {
     try {
       const quotes = this.db
         .prepare(
@@ -1594,7 +1595,7 @@ export class SQLiteAdapter {
            LEFT JOIN customers c ON q.customer_id = c.id
            ORDER BY q.created_at DESC`
         )
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return quotes.map((q) => {
         const items = this.db
@@ -1604,7 +1605,7 @@ export class SQLiteAdapter {
              LEFT JOIN services s ON qi.service_id = s.id
              WHERE qi.quote_id = ?`
           )
-          .all(q.id) as unknown[];
+          .all(q.id) as DbRow[];
 
         return {
           id: q.id,
@@ -1658,7 +1659,7 @@ export class SQLiteAdapter {
            LEFT JOIN services s ON qi.service_id = s.id
            WHERE qi.quote_id = ?`
         )
-        .all(id) as unknown[];
+        .all(id) as DbRow[];
 
       return {
         id: q.id,
@@ -1689,7 +1690,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async getQuotesByCustomer(customerId: string): Promise<unknown[]> {
+  async getQuotesByCustomer(customerId: string): Promise<DbRow[]> {
     try {
       const quotes = this.db
         .prepare(
@@ -1699,7 +1700,7 @@ export class SQLiteAdapter {
            WHERE q.customer_id = ?
            ORDER BY q.created_at DESC`
         )
-        .all(customerId) as unknown[];
+        .all(customerId) as DbRow[];
 
       return quotes.map((q) => {
         const items = this.db
@@ -1709,7 +1710,7 @@ export class SQLiteAdapter {
              LEFT JOIN services s ON qi.service_id = s.id
              WHERE qi.quote_id = ?`
           )
-          .all(q.id) as unknown[];
+          .all(q.id) as DbRow[];
 
         return {
           id: q.id,
@@ -1765,8 +1766,8 @@ export class SQLiteAdapter {
         .get(quoteResult.lastInsertRowid) as any;
 
       const items = [];
-      if (quote.items && quote.items.length > 0) {
-        for (const item of quote.items) {
+      if (Array.isArray(quote.items) && quote.items.length > 0) {
+        for (const item of asRows(quote.items)) {
           const itemResult = this.db
             .prepare(
               `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
@@ -1854,7 +1855,7 @@ export class SQLiteAdapter {
 
       if (quote.items) {
         this.db.prepare('DELETE FROM quote_items WHERE quote_id = ?').run(id);
-        for (const item of quote.items) {
+        for (const item of asRows(quote.items)) {
           this.db
             .prepare(
               `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
@@ -1905,16 +1906,16 @@ export class SQLiteAdapter {
   }
 
   // ===== Order Operations Extended =====
-  async getOrdersByCustomerEmail(email: string): Promise<unknown[]> {
+  async getOrdersByCustomerEmail(email: string): Promise<DbRow[]> {
     try {
       const orders = this.db
         .prepare('SELECT * FROM orders WHERE customer_email = ? ORDER BY created_at DESC')
-        .all(email) as unknown[];
+        .all(email) as DbRow[];
 
       return orders.map((order) => {
         const items = this.db
           .prepare('SELECT * FROM order_items WHERE order_id = ?')
-          .all(order.id) as unknown[];
+          .all(order.id) as DbRow[];
 
         return {
           id: order.id,
@@ -1949,7 +1950,7 @@ export class SQLiteAdapter {
   }
 
   // ===== API Key Operations =====
-  async getAllApiKeys(): Promise<unknown[]> {
+  async getAllApiKeys(): Promise<DbRow[]> {
     try {
       const keys = this.db
         .prepare(
@@ -1958,7 +1959,7 @@ export class SQLiteAdapter {
            LEFT JOIN users u ON ak.created_by = u.id
            ORDER BY ak.created_at DESC`
         )
-        .all() as unknown[];
+        .all() as DbRow[];
 
       return keys.map((k) => ({
         id: k.id,
@@ -2153,7 +2154,7 @@ export class SQLiteAdapter {
 
   // ===== Returns & Refunds Operations =====
 
-  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<unknown[]> {
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<DbRow[]> {
     try {
       let query = `
         SELECT r.*, 
@@ -2187,7 +2188,7 @@ export class SQLiteAdapter {
 
       query += ' ORDER BY r.created_at DESC';
 
-      const returns = this.db.prepare(query).all(...params) as unknown[];
+      const returns = this.db.prepare(query).all(...params) as DbRow[];
 
       return returns.map(r => this.mapReturnRow(r));
     } catch (error) {
@@ -2219,7 +2220,7 @@ export class SQLiteAdapter {
       // Get return items
       const items = this.db.prepare(
         'SELECT * FROM return_items WHERE return_id = ?'
-      ).all(id) as unknown[];
+      ).all(id) as DbRow[];
 
       const returnData = this.mapReturnRow(row);
       returnData.items = items.map(item => ({
@@ -2248,7 +2249,7 @@ export class SQLiteAdapter {
     }
   }
 
-  async getReturnsByOrder(orderId: string): Promise<unknown[]> {
+  async getReturnsByOrder(orderId: string): Promise<DbRow[]> {
     try {
       const returns = this.db.prepare(
         `SELECT r.*, u.name as created_by_name
@@ -2264,7 +2265,7 @@ export class SQLiteAdapter {
       for (const ret of result) {
         const items = this.db.prepare(
           'SELECT * FROM return_items WHERE return_id = ?'
-        ).all(ret.id) as unknown[];
+        ).all(ret.id) as DbRow[];
         ret.items = items.map(item => ({
           id: item.id,
           productId: item.product_id,

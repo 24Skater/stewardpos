@@ -34,7 +34,13 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       throw new AuthenticationError('Invalid credentials');
     }
 
-    // Verify password
+    // Verify password. A non-string hash means a corrupt or half-written user row —
+    // fail closed rather than handing it to bcrypt.
+    if (typeof user.passwordHash !== 'string') {
+      logger.error(`User ${String(user.id)} has no usable password hash`);
+      throw new AuthenticationError('Invalid credentials');
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
     if (!isValidPassword) {
       throw new AuthenticationError('Invalid credentials');
@@ -46,7 +52,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     // Update last login
-    await adapter.updateUserLastLogin(user.id);
+    await adapter.updateUserLastLogin(String(user.id));
 
     // Generate JWT token
     // @ts-expect-error - expiresIn type compatibility

@@ -5,8 +5,22 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import logger from '../../utils/logger';
+import { getErrorMessage, errorProps } from '../../utils/errors';
 
 const execAsync = promisify(exec);
+/** A dependency discovered by parsing a package.json in this repo. */
+interface ComponentInfo {
+  name: string;
+  currentVersion: string;
+  type: 'frontend' | 'backend';
+  category: string;
+}
+
+/** A dependency that has a newer version available on the registry. */
+interface ComponentUpdate extends ComponentInfo {
+  latestVersion: string;
+}
+
 const router = Router();
 
 // All component management routes require admin authentication
@@ -42,7 +56,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
       fs.readFile(backendPackagePath, 'utf-8').catch(() => null),
     ]);
 
-    const components: unknown[] = [];
+    const components: ComponentInfo[] = [];
 
     // Parse frontend dependencies
     if (rootPackage) {
@@ -121,7 +135,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
       fs.readFile(backendPackagePath, 'utf-8').catch(() => null),
     ]);
 
-    const components: unknown[] = [];
+    const components: ComponentInfo[] = [];
 
     // Parse frontend dependencies
     if (rootPackage) {
@@ -160,7 +174,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
         logger.error('Error parsing backend package.json:', error);
       }
     }
-    const updates: unknown[] = [];
+    const updates: ComponentUpdate[] = [];
 
     // Check each package for updates (limited to avoid timeout)
     for (const component of components.slice(0, 50)) { // Limit to 50 to avoid timeout
@@ -255,8 +269,8 @@ router.post('/update', async (req: AuthRequest, res: Response, next: NextFunctio
     logger.error('Error updating packages:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to update packages',
-      details: error.stdout || error.stderr,
+      error: getErrorMessage(error) || 'Failed to update packages',
+      details: errorProps(error).stdout || errorProps(error).stderr,
     });
   }
 });
@@ -316,8 +330,8 @@ router.post('/update-all', async (req: AuthRequest, res: Response, next: NextFun
     logger.error('Error updating all packages:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to update all packages',
-      details: error.stdout || error.stderr,
+      error: getErrorMessage(error) || 'Failed to update all packages',
+      details: errorProps(error).stdout || errorProps(error).stderr,
     });
   }
 });

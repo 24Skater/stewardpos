@@ -63,3 +63,34 @@ export class DatabaseError extends AppError {
     super(message, 500);
   }
 }
+
+/**
+ * Extract a human-readable message from a caught value.
+ *
+ * `catch` bindings are `unknown` under strict TypeScript, and anything can be thrown,
+ * not just `Error`. Use this instead of reaching for `error.message` directly.
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  return 'An unexpected error occurred';
+}
+
+/**
+ * View a caught value as a loose record.
+ *
+ * Lets callers read driver- or process-specific fields that are not on `Error` —
+ * Postgres `code`/`constraint`, child-process `stdout`/`stderr` — without asserting
+ * a shape the runtime never guarantees. Unknown fields read as `undefined`.
+ */
+export function errorProps(error: unknown): Record<string, unknown> {
+  return typeof error === 'object' && error !== null
+    ? (error as Record<string, unknown>)
+    : {};
+}
