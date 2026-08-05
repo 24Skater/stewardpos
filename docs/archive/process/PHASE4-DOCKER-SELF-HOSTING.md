@@ -1,3 +1,9 @@
+> **ARCHIVED — historical, may be inaccurate.**
+> Kept for provenance only. Do not rely on it for current behaviour or status.
+> Authoritative sources: [`docs/masterplan/`](../../masterplan/README.md) for the plan,
+> [`docs/masterplan/ASSESSMENT-2026-08-04.md`](../../masterplan/ASSESSMENT-2026-08-04.md)
+> for verified current state, and [`docs/guides/`](../../guides/) for how to run things.
+
 # PHASE 4 — DOCKER & SELF-HOSTING
 
 **Generated:** 2025-01-27  

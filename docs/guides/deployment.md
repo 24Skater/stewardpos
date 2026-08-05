@@ -260,6 +260,6 @@ docker-compose -f docker-compose.yml -f docker-compose.{env}.yml up -d
 ## Additional Resources
 
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Environment Variables Best Practices](./PHASE5-BEST-PRACTICES.md)
-- [Security Guidelines](./SECURITY.md)
+- [Environment Variables Best Practices](../archive/process/PHASE5-BEST-PRACTICES.md)
+- [Security Guidelines](../../SECURITY.md)
 
