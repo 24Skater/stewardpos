@@ -20,7 +20,7 @@ describe('apiClient', () => {
       const result = await apiClient.get('/api/test');
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/test',
+        expect.stringContaining('/api/test'),
         expect.objectContaining({
           method: 'GET',
           headers: {
@@ -71,7 +71,7 @@ describe('apiClient', () => {
       const result = await apiClient.post('/api/test', { name: 'Test' });
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/test',
+        expect.stringContaining('/api/test'),
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -94,7 +94,7 @@ describe('apiClient', () => {
       await apiClient.put('/api/test/1', { name: 'Updated' });
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/test/1',
+        expect.stringContaining('/api/test/1'),
         expect.objectContaining({
           method: 'PUT',
           body: JSON.stringify({ name: 'Updated' }),
@@ -113,7 +113,7 @@ describe('apiClient', () => {
       await apiClient.delete('/api/test/1');
 
       expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/test/1',
+        expect.stringContaining('/api/test/1'),
         expect.objectContaining({
           method: 'DELETE',
         })

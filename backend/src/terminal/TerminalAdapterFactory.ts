@@ -1,5 +1,10 @@
 import type { TerminalPort } from './TerminalPort';
 import { ManualTerminalAdapter } from './ManualTerminalAdapter';
+import { StripeTerminalAdapter } from './StripeTerminalAdapter';
+import { SquareTerminalAdapter } from './SquareTerminalAdapter';
+import { CloverTerminalAdapter } from './CloverTerminalAdapter';
+import { VerifoneTerminalAdapter } from './VerifoneTerminalAdapter';
+import { DejavooTerminalAdapter } from './DejavooTerminalAdapter';
 
 export interface TerminalConfig {
   provider: string;
@@ -28,8 +33,6 @@ export interface TerminalConfig {
 export function createTerminalAdapter(config: TerminalConfig): TerminalPort {
   switch (config.provider) {
     case 'stripe': {
-      // eslint-disable-next-line global-require
-      const { StripeTerminalAdapter } = require('./StripeTerminalAdapter');
       return new StripeTerminalAdapter({
         secretKey: process.env.STRIPE_SECRET_KEY || config.stripeSecretKey || '',
         locationId: config.stripeTerminalLocationId || '',
@@ -37,8 +40,6 @@ export function createTerminalAdapter(config: TerminalConfig): TerminalPort {
       });
     }
     case 'square': {
-      // eslint-disable-next-line global-require
-      const { SquareTerminalAdapter } = require('./SquareTerminalAdapter');
       return new SquareTerminalAdapter({
         accessToken: process.env.SQUARE_ACCESS_TOKEN || config.squareAccessToken || '',
         locationId: config.squareLocationId || '',
@@ -46,8 +47,6 @@ export function createTerminalAdapter(config: TerminalConfig): TerminalPort {
       });
     }
     case 'clover': {
-      // eslint-disable-next-line global-require
-      const { CloverTerminalAdapter } = require('./CloverTerminalAdapter');
       return new CloverTerminalAdapter({
         apiToken: process.env.CLOVER_API_TOKEN || config.cloverApiToken || '',
         merchantId: config.cloverMerchantId || '',
@@ -55,8 +54,6 @@ export function createTerminalAdapter(config: TerminalConfig): TerminalPort {
       });
     }
     case 'verifone': {
-      // eslint-disable-next-line global-require
-      const { VerifoneTerminalAdapter } = require('./VerifoneTerminalAdapter');
       return new VerifoneTerminalAdapter({
         apiKey: process.env.VERIFONE_API_KEY || config.verifoneApiKey || '',
         merchantId: config.verifoneMerchantId || '',
@@ -64,8 +61,6 @@ export function createTerminalAdapter(config: TerminalConfig): TerminalPort {
       });
     }
     case 'dejavoo': {
-      // eslint-disable-next-line global-require
-      const { DejavooTerminalAdapter } = require('./DejavooTerminalAdapter');
       return new DejavooTerminalAdapter({
         apiKey: process.env.DEJAVOO_API_KEY || config.dejavooApiKey || '',
         merchantId: config.dejavooMerchantId || '',
