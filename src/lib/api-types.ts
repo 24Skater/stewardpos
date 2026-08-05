@@ -1,3 +1,4 @@
+import type { ApiRole } from './permissions';
 // Auth Types
 export interface LoginRequest {
   email: string;
@@ -13,12 +14,7 @@ export interface LoginResponse {
       email: string;
       name: string;
       roleIds: string[];
-      roles: Array<{
-        id: string;
-        name: string;
-        systemRole?: string;
-        permissions: any;
-      }>;
+      roles: ApiRole[];
     };
   };
 }
@@ -32,7 +28,7 @@ export interface SessionResponse {
       name: string;
       roleIds: string[];
       status: string;
-      roles: any[];
+      roles: ApiRole[];
     };
   };
 }

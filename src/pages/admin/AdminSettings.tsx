@@ -11,6 +11,7 @@ import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartph
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface PaymentMethodsConfig {
   cash?: { enabled: boolean };
@@ -144,8 +145,8 @@ export default function AdminSettings() {
           setTerminalCreds(response.data.config.terminalCredentials);
         }
       }
-    } catch (error: any) {
-      console.warn('Could not load settings:', error.message);
+    } catch (error: unknown) {
+      console.warn('Could not load settings:', getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -168,7 +169,7 @@ export default function AdminSettings() {
     } catch (error: unknown) {
       toast({
         title: 'Error saving settings',
-        description: error instanceof Error ? error.message : 'Failed to save settings',
+        description: error instanceof Error ? getErrorMessage(error) : 'Failed to save settings',
         variant: 'destructive',
       });
     } finally {
@@ -188,7 +189,7 @@ export default function AdminSettings() {
     } catch (error: unknown) {
       toast({
         title: 'Connection test failed',
-        description: error instanceof Error ? error.message : 'Error',
+        description: error instanceof Error ? getErrorMessage(error) : 'Error',
         variant: 'destructive',
       });
     } finally {
@@ -206,7 +207,7 @@ export default function AdminSettings() {
     } catch (error: unknown) {
       toast({
         title: 'Reader discovery failed',
-        description: error instanceof Error ? error.message : 'Error',
+        description: error instanceof Error ? getErrorMessage(error) : 'Error',
         variant: 'destructive',
       });
     } finally {
@@ -225,10 +226,10 @@ export default function AdminSettings() {
       if (response.success) {
         toast({ title: 'Database reset successfully', description: response.message });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error resetting database',
-        description: error.message || 'Failed to reset database',
+        description: getErrorMessage(error, 'Failed to reset database'),
         variant: 'destructive',
       });
     } finally {

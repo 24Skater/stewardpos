@@ -12,6 +12,7 @@ import { Search, Eye, Send, CheckCircle, XCircle, Clock, FileText, DollarSign, T
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface QuoteItem {
   id: string;
@@ -76,10 +77,10 @@ export default function AdminQuotes() {
       if (response.success) {
         setQuotes(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load quotes',
+        description: getErrorMessage(error, 'Failed to load quotes'),
         variant: 'destructive',
       });
     } finally {
@@ -103,10 +104,10 @@ export default function AdminQuotes() {
           setSelectedQuote(response.data);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update status',
+        description: getErrorMessage(error, 'Failed to update status'),
         variant: 'destructive',
       });
     }
@@ -122,10 +123,10 @@ export default function AdminQuotes() {
         setViewDialogOpen(false);
         await loadQuotes();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete quote',
+        description: getErrorMessage(error, 'Failed to delete quote'),
         variant: 'destructive',
       });
     }

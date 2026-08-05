@@ -13,6 +13,7 @@ import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasAnyRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Permission {
   read: boolean;
@@ -86,10 +87,10 @@ export default function AdminRoles() {
       if (response.success) {
         setRoles(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load roles',
+        description: getErrorMessage(error, 'Failed to load roles'),
         variant: 'destructive',
       });
     } finally {
@@ -158,10 +159,10 @@ export default function AdminRoles() {
       setEditingRole(null);
       setIsNewRole(false);
       await loadRoles();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save role',
+        description: getErrorMessage(error, 'Failed to save role'),
         variant: 'destructive',
       });
     }
@@ -186,10 +187,10 @@ export default function AdminRoles() {
         toast({ title: 'Role deleted successfully' });
         await loadRoles();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete role',
+        description: getErrorMessage(error, 'Failed to delete role'),
         variant: 'destructive',
       });
     }

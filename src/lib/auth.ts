@@ -49,7 +49,7 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 
       // Merge permissions from roles
       const permissions = mergePermissions(
-        (user.roles || []).map((r: any) => r.permissions || {})
+        (user.roles || []).map((r) => r.permissions || ({} as RolePermissions))
       );
 
       currentSession = {

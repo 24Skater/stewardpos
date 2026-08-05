@@ -2,8 +2,38 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
+/**
+ * One row of an exported report: column label -> cell value.
+ *
+ * Report rows are built dynamically and keyed by human-readable column names
+ * ("Total Revenue"), so the key set is not known statically. Values are constrained
+ * to primitives because that is what a CSV or spreadsheet cell can hold; numeric
+ * work on a cell needs an explicit Number() at the call site.
+ */
+export type ExportRow = Record<string, string | number | boolean | null | undefined>;
+
+/**
+ * Read a report cell as a number.
+ *
+ * Report rows are assembled from mixed sources, so a numeric column can arrive as a
+ * string. Coercing explicitly avoids the silent bug where `sum + cell` concatenates
+ * instead of adding.
+ */
+function cellNum(value: ExportRow[string]): number {
+  const n = typeof value === 'number' ? value : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Read a report cell as a string. */
+function cellStr(value: ExportRow[string]): string {
+  return value == null ? '' : String(value);
+}
+
+/** jsPDF instance after jspdf-autotable has run, which attaches lastAutoTable. */
+type AutoTableDoc = jsPDF & { lastAutoTable: { finalY: number } };
+
 // Types
-interface Order {
+export interface Order {
   id: string;
   createdAt: number;
   subtotal: number;
@@ -16,7 +46,7 @@ interface Order {
   items?: OrderItem[];
 }
 
-interface OrderItem {
+export interface OrderItem {
   id: string;
   orderId: string;
   productId: string;
@@ -39,7 +69,7 @@ interface Quote {
   items?: QuoteItem[];
 }
 
-interface QuoteItem {
+export interface QuoteItem {
   id: string;
   serviceId?: string;
   serviceName?: string;
@@ -101,7 +131,7 @@ interface Settings {
 
 // ========== UTILITY FUNCTIONS ==========
 
-export function exportToCSV(data: any[], filename: string) {
+export function exportToCSV(data: ExportRow[], filename: string) {
   if (data.length === 0) return;
 
   const headers = Object.keys(data[0]);
@@ -126,7 +156,7 @@ export function exportToCSV(data: any[], filename: string) {
   link.click();
 }
 
-export function exportToExcel(sheets: { name: string; data: any[] }[], filename: string) {
+export function exportToExcel(sheets: { name: string; data: ExportRow[] }[], filename: string) {
   const workbook = XLSX.utils.book_new();
   
   sheets.forEach(sheet => {
@@ -477,13 +507,13 @@ export function exportOrdersToPDF(
   doc.save(`orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesMoMToPDF(data: any[], settings?: Settings) {
+export function exportSalesMoMToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Sales Month-over-Month Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
-  const totalRevenue = data.reduce((sum, row) => sum + row['Total Revenue'], 0);
-  const totalOrders = data.reduce((sum, row) => sum + row['Order Count'], 0);
+  const totalRevenue = data.reduce((sum, row) => sum + cellNum(row['Total Revenue']), 0);
+  const totalOrders = data.reduce((sum, row) => sum + cellNum(row['Order Count']), 0);
   
   doc.setFontSize(12);
   doc.text(`Total Revenue: $${totalRevenue.toFixed(2)}`, 14, startY);
@@ -494,10 +524,10 @@ export function exportSalesMoMToPDF(data: any[], settings?: Settings) {
     head: [['Month', 'Revenue', 'Orders', 'Items', 'Avg Order']],
     body: data.map(row => [
       row.Month,
-      `$${row['Total Revenue'].toFixed(2)}`,
+      `$${cellNum(row['Total Revenue']).toFixed(2)}`,
       row['Order Count'],
       row['Items Sold'],
-      `$${row['Avg Order Value'].toFixed(2)}`,
+      `$${cellNum(row['Avg Order Value']).toFixed(2)}`,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [99, 102, 241] },
@@ -506,7 +536,7 @@ export function exportSalesMoMToPDF(data: any[], settings?: Settings) {
   doc.save(`sales-mom-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesWoWToPDF(data: any[], settings?: Settings) {
+export function exportSalesWoWToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Sales Week-over-Week Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -516,10 +546,10 @@ export function exportSalesWoWToPDF(data: any[], settings?: Settings) {
     head: [['Week', 'Revenue', 'Orders', 'Items', 'Avg Order']],
     body: data.map(row => [
       row.Week,
-      `$${row['Total Revenue'].toFixed(2)}`,
+      `$${cellNum(row['Total Revenue']).toFixed(2)}`,
       row['Order Count'],
       row['Items Sold'],
-      `$${row['Avg Order Value'].toFixed(2)}`,
+      `$${cellNum(row['Avg Order Value']).toFixed(2)}`,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [99, 102, 241] },
@@ -528,7 +558,7 @@ export function exportSalesWoWToPDF(data: any[], settings?: Settings) {
   doc.save(`sales-wow-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesByCustomerToPDF(data: any[], settings?: Settings) {
+export function exportSalesByCustomerToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Sales by Customer Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -537,11 +567,11 @@ export function exportSalesByCustomerToPDF(data: any[], settings?: Settings) {
     startY,
     head: [['Customer', 'Email', 'Revenue', 'Orders', 'Avg Order']],
     body: data.slice(0, 50).map(row => [
-      row['Customer Name'].substring(0, 20),
-      row.Email.substring(0, 25),
-      `$${row['Total Revenue'].toFixed(2)}`,
+      cellStr(row['Customer Name']).substring(0, 20),
+      cellStr(row.Email).substring(0, 25),
+      `$${cellNum(row['Total Revenue']).toFixed(2)}`,
       row['Order Count'],
-      `$${row['Avg Order Value'].toFixed(2)}`,
+      `$${cellNum(row['Avg Order Value']).toFixed(2)}`,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [99, 102, 241] },
@@ -550,7 +580,7 @@ export function exportSalesByCustomerToPDF(data: any[], settings?: Settings) {
   doc.save(`sales-by-customer-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesByItemToPDF(data: any[], settings?: Settings) {
+export function exportSalesByItemToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Sales by Item Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -559,10 +589,10 @@ export function exportSalesByItemToPDF(data: any[], settings?: Settings) {
     startY,
     head: [['Product', 'Qty Sold', 'Revenue', 'Avg Price']],
     body: data.slice(0, 50).map(row => [
-      row.Product.substring(0, 30),
+      cellStr(row.Product).substring(0, 30),
       row['Quantity Sold'],
-      `$${row['Total Revenue'].toFixed(2)}`,
-      `$${row['Avg Price'].toFixed(2)}`,
+      `$${cellNum(row['Total Revenue']).toFixed(2)}`,
+      `$${cellNum(row['Avg Price']).toFixed(2)}`,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [99, 102, 241] },
@@ -571,7 +601,7 @@ export function exportSalesByItemToPDF(data: any[], settings?: Settings) {
   doc.save(`sales-by-item-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportTrendingToPDF(productTrends: any[], serviceTrends: any[], settings?: Settings) {
+export function exportTrendingToPDF(productTrends: ExportRow[], serviceTrends: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Trending Products & Services Report', 
     `Last 30 Days | Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -584,17 +614,17 @@ export function exportTrendingToPDF(productTrends: any[], serviceTrends: any[], 
     startY: startY + 6,
     head: [['Product', 'Recent', 'Previous', 'Change', 'Trend']],
     body: productTrends.slice(0, 15).map(row => [
-      row.Product.substring(0, 25),
+      cellStr(row.Product).substring(0, 25),
       row['Recent Sales'],
       row['Previous Period'],
-      `${row['Change %'].toFixed(1)}%`,
+      `${cellNum(row['Change %']).toFixed(1)}%`,
       row.Trend,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [99, 102, 241] },
   });
   
-  const afterProductTable = (doc as any).lastAutoTable.finalY + 15;
+  const afterProductTable = (doc as AutoTableDoc).lastAutoTable.finalY + 15;
   
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
@@ -611,7 +641,7 @@ export function exportTrendingToPDF(productTrends: any[], serviceTrends: any[], 
   doc.save(`trending-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportCustomerListToPDF(data: any[], settings?: Settings) {
+export function exportCustomerListToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF('landscape');
   const startY = createPDFHeader(doc, 'Customer List', 
     `Total: ${data.length} customers | Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -635,7 +665,7 @@ export function exportCustomerListToPDF(data: any[], settings?: Settings) {
   doc.save(`customers-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportServicesToPDF(data: any[], settings?: Settings) {
+export function exportServicesToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Services Report', 
     `Total: ${data.length} services | Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -646,7 +676,7 @@ export function exportServicesToPDF(data: any[], settings?: Settings) {
     body: data.map(row => [
       row.Name,
       row.Category,
-      `$${row['Base Price'].toFixed(2)}`,
+      `$${cellNum(row['Base Price']).toFixed(2)}`,
       row['Unit Type'],
       row.Active,
     ]),
@@ -674,7 +704,7 @@ interface Return {
   items?: ReturnItem[];
 }
 
-interface ReturnItem {
+export interface ReturnItem {
   id: string;
   productId: string;
   nameSnapshot: string;
@@ -815,7 +845,7 @@ export function exportReturnsToPDF(returns: Return[], settings?: Settings) {
   doc.save(`returns-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportReturnsByReasonToPDF(data: any[], settings?: Settings) {
+export function exportReturnsByReasonToPDF(data: ExportRow[], settings?: Settings) {
   const doc = new jsPDF();
   const startY = createPDFHeader(doc, 'Returns by Reason Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
@@ -826,8 +856,8 @@ export function exportReturnsByReasonToPDF(data: any[], settings?: Settings) {
     body: data.map(row => [
       row.Reason,
       row['Return Count'],
-      `$${row['Total Value'].toFixed(2)}`,
-      `${row.Percentage.toFixed(1)}%`,
+      `$${cellNum(row['Total Value']).toFixed(2)}`,
+      `${cellNum(row.Percentage).toFixed(1)}%`,
     ]),
     theme: 'striped',
     headStyles: { fillColor: [239, 68, 68] },

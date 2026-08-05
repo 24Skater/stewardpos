@@ -66,6 +66,19 @@ const refundMethods = [
   { value: 'store_credit', label: 'Store Credit', icon: Wallet },
 ];
 
+/** A line item on a previous return against this order. */
+interface ExistingReturnItem {
+  productId: string;
+  variantId?: string;
+  returnQuantity: number;
+}
+
+/** A return already recorded against the order being looked up. */
+interface ExistingReturn {
+  id: string;
+  items?: ExistingReturnItem[];
+}
+
 export default function QuickReturnDialog({ open, onClose, onComplete }: QuickReturnDialogProps) {
   const { toast } = useToast();
   
@@ -73,7 +86,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [order, setOrder] = useState<Order | null>(null);
-  const [existingReturns, setExistingReturns] = useState<any[]>([]);
+  const [existingReturns, setExistingReturns] = useState<ExistingReturn[]>([]);
   
   // Recent orders state
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -136,7 +149,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         setOrder(orderResponse.data);
         
         // Check for existing returns on this order
-        const returnsResponse = await apiClient.get<{ success: boolean; data: Record<string, unknown>[] }>(`/api/returns/order/${orderId}`);
+        const returnsResponse = await apiClient.get<{ success: boolean; data: ExistingReturn[] }>(`/api/returns/order/${orderId}`);
         if (returnsResponse.success) {
           setExistingReturns(returnsResponse.data);
         }

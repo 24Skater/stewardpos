@@ -9,6 +9,7 @@ import { CartItem } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
 import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
 import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
+import { getErrorMessage } from '@/lib/errors';
 
 interface PaymentMethodsConfig {
   cash?: { enabled: boolean };
@@ -54,7 +56,17 @@ interface AppliedDiscount {
   amount: number;
 }
 
-const iconMap: Record<string, any> = {
+/** A promo code accepted by /api/discounts/promos/validate. */
+interface PromoValidation {
+  id: string;
+  code: string;
+  name: string;
+  discountType: AppliedDiscount['type'];
+  discountValue: number;
+  discountAmount: number;
+}
+
+const iconMap: Record<string, LucideIcon> = {
   'user': UserCheck,
   'shield': Shield,
   'graduation-cap': GraduationCap,
@@ -184,10 +196,10 @@ export default function POS() {
         const uniqueCategories = new Set(response.data.map(p => p.category).filter(Boolean));
         setCategories(["All", ...Array.from(uniqueCategories)]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load products',
+        description: getErrorMessage(error, 'Failed to load products'),
         variant: 'destructive',
       });
     } finally {
@@ -291,7 +303,7 @@ export default function POS() {
     setPromoLoading(true);
     try {
       const subtotal = calculateSubtotal();
-      const response = await apiClient.post<{ success: boolean; valid: boolean; message?: string; promo?: any }>(
+      const response = await apiClient.post<{ success: boolean; valid: boolean; message?: string; promo?: PromoValidation }>(
         '/api/discounts/promos/validate',
         {
           code: promoCodeInput.trim().toUpperCase(),
@@ -325,8 +337,8 @@ export default function POS() {
       } else {
         toast({ title: response.message || 'Invalid promo code', variant: 'destructive' });
       }
-    } catch (error: any) {
-      toast({ title: 'Failed to validate promo code', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to validate promo code', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setPromoLoading(false);
     }
@@ -537,7 +549,7 @@ export default function POS() {
       
       const orderData: CreateOrderRequest = {
         items: cart.map(item => {
-          const orderItem: any = {
+          const orderItem: CreateOrderRequest['items'][number] = {
             productId: item.productId,
             nameSnapshot: item.nameSnapshot || '',
             quantity: item.quantity,
@@ -617,10 +629,10 @@ export default function POS() {
         // Reload products to update stock
         await loadProducts();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || 'Failed to create order',
+        description: getErrorMessage(error, 'Failed to create order'),
         variant: 'destructive',
       });
     }
@@ -692,7 +704,7 @@ export default function POS() {
     } catch (error: unknown) {
       setTerminalState({
         phase: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Failed to reach terminal',
+        errorMessage: error instanceof Error ? getErrorMessage(error) : 'Failed to reach terminal',
       });
     }
   };
@@ -799,7 +811,7 @@ export default function POS() {
     } catch (error: unknown) {
       toast({
         title: 'Order save failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        description: error instanceof Error ? getErrorMessage(error) : 'Unknown error',
         variant: 'destructive',
       });
     }
