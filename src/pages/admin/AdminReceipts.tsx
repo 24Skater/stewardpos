@@ -20,16 +20,22 @@ import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays, subMonths } from 'date-fns';
 import { exportToCSV, exportToExcel, exportOrdersToPDF } from '@/lib/export-utils';
+import type { OrderItem as ExportOrderItem } from '@/lib/export-utils';
+import { getErrorMessage } from '@/lib/errors';
 
-interface OrderItem {
-  id: string;
-  productId: string;
-  nameSnapshot: string;
+/** Receipt line item. Extends the shared export shape with POS variant details. */
+interface OrderItem extends ExportOrderItem {
   size?: string;
   color?: string;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
+}
+
+/** A return recorded against a receipt. */
+interface ReceiptReturn {
+  id: string;
+  returnNumber: string;
+  createdAt: number;
+  status: string;
+  total: number;
 }
 
 interface ReceiptOrder {
@@ -48,7 +54,7 @@ interface ReceiptOrder {
   totalReturned?: number;
   netTotal?: number;
   emailHistory?: EmailLog[];
-  returns?: any[];
+  returns?: ReceiptReturn[];
 }
 
 interface EmailLog {
@@ -147,8 +153,8 @@ export default function AdminReceipts() {
         setReceipts(response.data);
         setHasMore(response.pagination?.hasMore ?? false);
       }
-    } catch (error: any) {
-      toast({ title: 'Error loading receipts', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error loading receipts', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -180,8 +186,8 @@ export default function AdminReceipts() {
         setResendEmail(response.data.customerEmail || '');
         setDetailsOpen(true);
       }
-    } catch (error: any) {
-      toast({ title: 'Error loading receipt', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error loading receipt', description: getErrorMessage(error), variant: 'destructive' });
     }
   };
 
@@ -197,8 +203,8 @@ export default function AdminReceipts() {
       toast({ title: 'Receipt sent', description: `Sent to ${resendEmail}` });
       setResendOpen(false);
       loadReceiptDetails(selectedReceipt.id);
-    } catch (error: any) {
-      toast({ title: 'Failed to send receipt', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to send receipt', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setSending(false);
     }
@@ -224,8 +230,8 @@ export default function AdminReceipts() {
         setReturnNotes('');
         setReturnOpen(true);
       }
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: getErrorMessage(error), variant: 'destructive' });
     }
   };
 
@@ -275,8 +281,8 @@ export default function AdminReceipts() {
       toast({ title: 'Return created', description: 'The return has been submitted for review.' });
       setReturnOpen(false);
       loadReceiptDetails(selectedReceipt.id);
-    } catch (error: any) {
-      toast({ title: 'Failed to create return', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to create return', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setCreatingReturn(false);
     }
@@ -290,7 +296,7 @@ export default function AdminReceipts() {
 
     const exportData = receipts.map(r => ({
       'Receipt ID': r.id.slice(0, 8).toUpperCase(),
-      'Date': format === 'csv' ? new Date(r.createdAt).toISOString() : format === 'excel' ? new Date(r.createdAt) : new Date(r.createdAt).toLocaleDateString(),
+      'Date': format === 'pdf' ? new Date(r.createdAt).toLocaleDateString() : new Date(r.createdAt).toISOString(),
       'Customer Email': r.customerEmail || 'N/A',
       'Payment Method': r.paymentMethod,
       'Subtotal': r.subtotal,
@@ -305,10 +311,17 @@ export default function AdminReceipts() {
     if (format === 'csv') {
       exportToCSV(exportData, `${filename}.csv`);
     } else if (format === 'excel') {
-      exportToExcel(exportData, `${filename}.xlsx`, 'Receipts');
+      exportToExcel([{ name: 'Receipts', data: exportData }], `${filename}.xlsx`);
     } else {
       // For PDF, use existing orders PDF export
-      exportOrdersToPDF(receipts as any, { storeName: 'Steward · Register', storeAddress: '', storePhone: '' } as any, `${filename}.pdf`);
+      const receiptItems = receipts.flatMap((r) => r.items ?? []);
+      const timestamps = receipts.map((r) => r.createdAt);
+      exportOrdersToPDF(
+        receipts,
+        receiptItems,
+        { storeName: 'Steward · Register', storePhone: '' },
+        { start: Math.min(...timestamps), end: Math.max(...timestamps) }
+      );
     }
 
     toast({ title: 'Export complete', description: `Downloaded ${format.toUpperCase()} file` });

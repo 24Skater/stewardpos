@@ -4,6 +4,18 @@ import { apiClient, ApiClientError } from '../api-client';
 // Mock fetch
 global.fetch = vi.fn();
 
+/**
+ * Minimal `Response` stub. `fetch` is typed to resolve to a full Response, but these
+ * tests only exercise `ok`, `status` and `json`, so the rest is filled in structurally.
+ */
+function mockResponse(body: unknown, init: { ok?: boolean; status?: number } = {}): Response {
+  return {
+    ok: init.ok ?? true,
+    status: init.status ?? 200,
+    json: async () => body,
+  } as Response;
+}
+
 describe('apiClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -12,10 +24,7 @@ describe('apiClient', () => {
 
   describe('get', () => {
     it('should make GET request without token', async () => {
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: '1' } }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true, data: { id: '1' } }));
 
       const result = await apiClient.get('/api/test');
 
@@ -33,10 +42,7 @@ describe('apiClient', () => {
 
     it('should include token in headers when available', async () => {
       localStorage.setItem('auth_token', 'test-token');
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true }));
 
       await apiClient.get('/api/test');
 
@@ -51,11 +57,7 @@ describe('apiClient', () => {
     });
 
     it('should throw ApiClientError on error response', async () => {
-      (fetch as any).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: async () => ({ error: 'Not found' }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ error: 'Not found' }, { ok: false, status: 404 }));
 
       await expect(apiClient.get('/api/test')).rejects.toThrow(ApiClientError);
     });
@@ -63,10 +65,7 @@ describe('apiClient', () => {
 
   describe('post', () => {
     it('should make POST request with data', async () => {
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true, data: { id: '1' } }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true, data: { id: '1' } }));
 
       const result = await apiClient.post('/api/test', { name: 'Test' });
 
@@ -86,10 +85,7 @@ describe('apiClient', () => {
 
   describe('put', () => {
     it('should make PUT request with data', async () => {
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true }));
 
       await apiClient.put('/api/test/1', { name: 'Updated' });
 
@@ -105,10 +101,7 @@ describe('apiClient', () => {
 
   describe('delete', () => {
     it('should make DELETE request', async () => {
-      (fetch as any).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ success: true }),
-      });
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true }));
 
       await apiClient.delete('/api/test/1');
 

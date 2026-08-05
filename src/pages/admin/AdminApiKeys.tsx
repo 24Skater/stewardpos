@@ -15,6 +15,7 @@ import { Key, Plus, Trash2, Copy, Eye, EyeOff, Code, BookOpen, Shield, Clock, Al
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface ApiKey {
   id: string;
@@ -33,14 +34,27 @@ interface ApiKey {
   key?: string; // Only present on creation
 }
 
+/** One documented endpoint. */
+interface ApiRoute {
+  method: string;
+  path: string;
+  scope: string;
+}
+
+/** Endpoints grouped by area in the generated API docs. */
+interface ApiEndpointGroup {
+  group: string;
+  routes: ApiRoute[];
+}
+
 interface ApiDocs {
   version: string;
   baseUrl: string;
-  authentication: any;
+  authentication: Record<string, unknown>;
   scopes: Record<string, string>;
-  rateLimiting: any;
-  endpoints: any[];
-  examples: any;
+  rateLimiting: Record<string, unknown>;
+  endpoints: ApiEndpointGroup[];
+  examples: Record<string, unknown>;
   errors: Record<string, string>;
 }
 
@@ -80,10 +94,10 @@ export default function AdminApiKeys() {
       if (response.success) {
         setApiKeys(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load API keys',
+        description: getErrorMessage(error, 'Failed to load API keys'),
         variant: 'destructive',
       });
     } finally {
@@ -124,10 +138,10 @@ export default function AdminApiKeys() {
         await loadApiKeys();
         toast({ title: 'API key created' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create API key',
+        description: getErrorMessage(error, 'Failed to create API key'),
         variant: 'destructive',
       });
     }
@@ -144,10 +158,10 @@ export default function AdminApiKeys() {
         toast({ title: 'API key revoked' });
         await loadApiKeys();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to revoke API key',
+        description: getErrorMessage(error, 'Failed to revoke API key'),
         variant: 'destructive',
       });
     }
@@ -162,10 +176,10 @@ export default function AdminApiKeys() {
         toast({ title: `API key ${key.isActive ? 'disabled' : 'enabled'}` });
         await loadApiKeys();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     }
@@ -194,7 +208,7 @@ export default function AdminApiKeys() {
   };
 
   return (
-    <ProtectedRoute requiredRole="admin">
+    <ProtectedRoute requireAdmin>
       <AdminLayout>
         <div className="p-8">
           <div className="flex justify-between items-center mb-6">
@@ -372,7 +386,7 @@ export default function AdminApiKeys() {
                               <AccordionTrigger>{group.group}</AccordionTrigger>
                               <AccordionContent>
                                 <div className="space-y-2">
-                                  {group.routes.map((route: any, idx: number) => (
+                                  {group.routes.map((route, idx) => (
                                     <div key={idx} className="flex items-center gap-3 p-2 bg-muted/50 rounded">
                                       <Badge variant={
                                         route.method === 'GET' ? 'default' :

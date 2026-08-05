@@ -49,7 +49,7 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
-  async post<T>(path: string, data: any): Promise<T> {
+  async post<T>(path: string, data?: unknown): Promise<T> {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
@@ -62,7 +62,7 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
-  async put<T>(path: string, data: any): Promise<T> {
+  async put<T>(path: string, data?: unknown): Promise<T> {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'PUT',

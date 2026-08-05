@@ -63,13 +63,13 @@ export default function ImportInventoryDialog({
 
     // Group by Product ID
     for (const row of rows) {
-      const productId = row['Product ID'];
+      const productId = String(row['Product ID'] ?? '');
       if (!productMap.has(productId)) {
         productMap.set(productId, {
           id: productId,
-          name: row['Product Name'],
-          category: row['Category'],
-          basePrice: parseFloat(row['Base Price']) || 0,
+          name: String(row['Product Name'] ?? ''),
+          category: String(row['Category'] ?? ''),
+          basePrice: parseFloat(String(row['Base Price'] ?? '')) || 0,
           variants: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -78,15 +78,15 @@ export default function ImportInventoryDialog({
 
       const product = productMap.get(productId);
       product.variants.push({
-        id: row['Variant ID'],
+        id: String(row['Variant ID'] ?? ''),
         size: row['Size'] || undefined,
         color: row['Color'] || undefined,
-        priceDelta: parseFloat(row['Price Delta']) || 0,
-        priceOverride: row['Price Override'] ? parseFloat(row['Price Override']) : undefined,
+        priceDelta: parseFloat(String(row['Price Delta'] ?? '')) || 0,
+        priceOverride: row['Price Override'] ? parseFloat(String(row['Price Override'] ?? '')) : undefined,
         sku: row['SKU'] || undefined,
         barcode: row['Barcode'] || undefined,
-        stock: parseInt(row['Stock']) || 0,
-        enabled: row['Enabled'].toLowerCase() === 'yes',
+        stock: parseInt(String(row['Stock'] ?? '')) || 0,
+        enabled: String(row['Enabled'] ?? '').toLowerCase() === 'yes',
       });
     }
 

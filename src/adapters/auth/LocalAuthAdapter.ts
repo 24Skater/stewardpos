@@ -1,7 +1,7 @@
 import { AuthPort, AuthSession, SignInCredentials } from '../../core/ports/AuthPort';
 import { User } from '../../core/models';
 import * as auth from '../../lib/auth';
-import { getUserByEmail, updateUser } from '../../lib/db-operations';
+import { getUser as getUserRecord, getUserByEmail, updateUser } from '../../lib/db-operations';
 import bcrypt from 'bcryptjs';
 
 export class LocalAuthAdapter implements AuthPort {
@@ -34,7 +34,9 @@ export class LocalAuthAdapter implements AuthPort {
       }
 
       const session: AuthSession = {
-        user: authSession.user,
+        // The port models User as the full local record. The session returned by
+        // auth.login() deliberately omits passwordHash, so use the record loaded above.
+        user,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
       };
 
@@ -49,28 +51,36 @@ export class LocalAuthAdapter implements AuthPort {
   }
 
   async getSession(): Promise<AuthSession | null> {
-    const authSession = auth.getCurrentSession();
+    const authSession = await auth.getCurrentSession();
     if (!authSession) {
       return null;
     }
 
+    const user = await getUserRecord(authSession.user.id);
+    if (!user) {
+      return null;
+    }
+
     return {
-      user: authSession.user,
+      user,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     };
   }
 
   async getUser(userId: string): Promise<User | null> {
-    const authSession = auth.getCurrentSession();
+    const authSession = await auth.getCurrentSession();
     if (authSession && authSession.user.id === userId) {
-      return authSession.user;
+      return (await getUserRecord(userId)) ?? null;
     }
     return null;
   }
 
   async getCurrentUser(): Promise<User | null> {
-    const authSession = auth.getCurrentSession();
-    return authSession?.user || null;
+    const authSession = await auth.getCurrentSession();
+    if (!authSession) {
+      return null;
+    }
+    return (await getUserRecord(authSession.user.id)) ?? null;
   }
 
   getProviderName(): string {

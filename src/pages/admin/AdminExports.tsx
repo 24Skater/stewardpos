@@ -50,6 +50,9 @@ import {
   exportReturnsByReasonToPDF,
 } from '@/lib/export-utils';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
+import type { Product } from '@/lib/api-types';
+import type { OrderItem, QuoteItem, ReturnItem, ExportRow } from '@/lib/export-utils';
 
 interface Order {
   id: string;
@@ -61,7 +64,7 @@ interface Order {
   paymentMethod: string;
   customerEmail?: string;
   customerPhone?: string;
-  items?: any[];
+  items?: OrderItem[];
 }
 
 interface Quote {
@@ -74,7 +77,7 @@ interface Quote {
   taxTotal: number;
   total: number;
   createdAt: number;
-  items?: any[];
+  items?: QuoteItem[];
 }
 
 interface Customer {
@@ -113,7 +116,7 @@ interface Return {
   refundStatus: string;
   reasonCode?: string;
   createdAt: number;
-  items?: any[];
+  items?: ReturnItem[];
 }
 
 export default function AdminExports() {
@@ -127,7 +130,7 @@ export default function AdminExports() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
   
   const { toast } = useToast();
@@ -143,7 +146,7 @@ export default function AdminExports() {
         apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
         apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
         apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: any[] }>('/api/products'),
+        apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
         apiClient.get<{ success: boolean; data: Return[] }>('/api/returns'),
       ]);
 
@@ -153,10 +156,10 @@ export default function AdminExports() {
       if (servicesRes.success) setServices(servicesRes.data);
       if (productsRes.success) setProducts(productsRes.data);
       if (returnsRes.success) setReturns(returnsRes.data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error loading data',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     }
@@ -288,7 +291,7 @@ export default function AdminExports() {
         }
         
         case 'customer-history-all': {
-          const allHistories: any[] = [];
+          const allHistories: ExportRow[] = [];
           customers.forEach(customer => {
             const customerOrders = orders.filter(o => o.customerEmail === customer.email);
             const customerQuotes = quotes.filter(q => q.customerId === customer.id);
@@ -329,7 +332,7 @@ export default function AdminExports() {
         case 'inventory': {
           if (format === 'excel') {
             const data = products.flatMap(p => 
-              p.variants.map((v: any) => ({
+              p.variants.map((v) => ({
                 'Product': p.name,
                 'Category': p.category,
                 'Base Price': p.basePrice,
@@ -400,10 +403,10 @@ export default function AdminExports() {
       }
       
       toast({ title: 'Export completed successfully' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Export failed',
-        description: error.message,
+        description: getErrorMessage(error),
         variant: 'destructive',
       });
     } finally {
