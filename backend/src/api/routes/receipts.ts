@@ -267,9 +267,9 @@ router.post('/:id/start-return', async (req: AuthRequest, res: Response, next: N
 
     // Build returnable items
     const returnableItems = (order.items || []).map((item: Record<string, unknown>) => {
-      const key = item.id || item.productId;
+      const key = String(item.id || item.productId);
       const alreadyReturned = returnedItems[key] || 0;
-      const returnableQty = item.quantity - alreadyReturned;
+      const returnableQty = Number(item.quantity ?? 0) - alreadyReturned;
       
       return {
         originalOrderItemId: item.id,

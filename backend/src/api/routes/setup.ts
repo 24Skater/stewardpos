@@ -6,7 +6,7 @@ import logger from '../../utils/logger';
 import { Migrator } from '../../services/migrator';
 import { Seeder } from '../../services/seeder';
 import config from '../../config';
-import { ValidationError, DatabaseError } from '../../utils/errors';
+import { ValidationError, DatabaseError, getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 
@@ -163,7 +163,7 @@ router.post('/test-database', rejectIfAlreadySetUp, async (req: Request, res: Re
     } catch (error: unknown) {
       res.status(400).json({
         success: false,
-        error: `Database connection failed: ${error.message}`,
+        error: `Database connection failed: ${getErrorMessage(error)}`,
       });
     }
   } catch (error) {
@@ -250,7 +250,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
     } catch (error: unknown) {
       return res.status(400).json({
         success: false,
-        error: `Database connection failed: ${error.message}`,
+        error: `Database connection failed: ${getErrorMessage(error)}`,
       });
     }
 
@@ -274,7 +274,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
       logger.error('Migration failed:', error);
       return res.status(500).json({
         success: false,
-        error: `Migration failed: ${error.message}`,
+        error: `Migration failed: ${getErrorMessage(error)}`,
       });
     }
 
@@ -415,7 +415,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
       logger.error('Failed to create admin user:', error);
       return res.status(500).json({
         success: false,
-        error: `Failed to create admin user: ${error.message}`,
+        error: `Failed to create admin user: ${getErrorMessage(error)}`,
       });
     }
 

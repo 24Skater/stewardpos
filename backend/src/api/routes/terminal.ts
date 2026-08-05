@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { ValidationError, UnauthorizedError } from '../../utils/errors';
+import { ValidationError, UnauthorizedError, getErrorMessage } from '../../utils/errors';
 import db from '../../services/database';
 import { createTerminalAdapter, TerminalConfig } from '../../terminal/TerminalAdapterFactory';
 import logger from '../../utils/logger';
@@ -33,7 +33,7 @@ async function getAdapter(dbAdapter: ReturnType<typeof db.getAdapter>) {
 router.post('/charge', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const parsed = chargeSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError(parsed.error.message);
+    if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
 
     const { amount, currency, readerId, description } = parsed.data;
     const dbAdapter = db.getAdapter();
