@@ -90,10 +90,8 @@ export default function AdminApiKeys() {
   const loadApiKeys = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: ApiKey[] }>('/api/admin/api-keys');
-      if (response.success) {
-        setApiKeys(response.data);
-      }
+      const response = await apiClient.get<ApiKey[]>('/api/admin/api-keys');
+      setApiKeys(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -107,10 +105,8 @@ export default function AdminApiKeys() {
 
   const loadApiDocs = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: ApiDocs }>('/api/admin/api-keys/docs/reference');
-      if (response.success) {
-        setApiDocs(response.data);
-      }
+      const response = await apiClient.get<ApiDocs>('/api/admin/api-keys/docs/reference');
+      setApiDocs(response);
     } catch (error) {
       console.warn('Could not load API docs');
     }
@@ -123,21 +119,19 @@ export default function AdminApiKeys() {
     }
 
     try {
-      const response = await apiClient.post<{ success: boolean; data: ApiKey; message: string }>('/api/admin/api-keys', {
+      const response = await apiClient.post<ApiKey>('/api/admin/api-keys', {
         name: formName,
         description: formDescription,
         scopes: formScopes,
         rateLimit: formRateLimit,
       });
 
-      if (response.success) {
-        setNewKey(response.data);
-        setCreateDialogOpen(false);
-        setNewKeyDialogOpen(true);
-        resetForm();
-        await loadApiKeys();
-        toast({ title: 'API key created' });
-      }
+      setNewKey(response);
+      setCreateDialogOpen(false);
+      setNewKeyDialogOpen(true);
+      resetForm();
+      await loadApiKeys();
+      toast({ title: 'API key created' });
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -153,11 +147,9 @@ export default function AdminApiKeys() {
     }
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/admin/api-keys/${id}`);
-      if (response.success) {
-        toast({ title: 'API key revoked' });
-        await loadApiKeys();
-      }
+      const response = await apiClient.delete<void>(`/api/admin/api-keys/${id}`);
+      toast({ title: 'API key revoked' });
+      await loadApiKeys();
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -169,13 +161,11 @@ export default function AdminApiKeys() {
 
   const handleToggleActive = async (key: ApiKey) => {
     try {
-      const response = await apiClient.put<{ success: boolean }>(`/api/admin/api-keys/${key.id}`, {
+      const response = await apiClient.put<void>(`/api/admin/api-keys/${key.id}`, {
         isActive: !key.isActive,
       });
-      if (response.success) {
-        toast({ title: `API key ${key.isActive ? 'disabled' : 'enabled'}` });
-        await loadApiKeys();
-      }
+      toast({ title: `API key ${key.isActive ? 'disabled' : 'enabled'}` });
+      await loadApiKeys();
     } catch (error: unknown) {
       toast({
         title: 'Error',

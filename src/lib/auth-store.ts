@@ -42,8 +42,8 @@ export const authStore = {
   async refreshToken(): Promise<boolean> {
     try {
       const response = await apiClient.post<LoginResponse>('/api/auth/refresh');
-      if (response.success && response.data.token) {
-        this.setToken(response.data.token, '7d');
+      if (response.token) {
+        this.setToken(response.token, '7d');
         return true;
       }
     } catch (error) {

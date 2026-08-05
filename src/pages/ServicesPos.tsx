@@ -59,16 +59,12 @@ export default function ServicesPos() {
     try {
       setLoading(true);
       const [servicesResponse, customersResponse] = await Promise.all([
-        apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
+        apiClient.get<Service[]>('/api/services'),
+        apiClient.get<Customer[]>('/api/customers'),
       ]);
 
-      if (servicesResponse.success) {
-        setServices(servicesResponse.data.filter(s => s.isActive));
-      }
-      if (customersResponse.success) {
-        setCustomers(customersResponse.data);
-      }
+      setServices(servicesResponse.filter(s => s.isActive));
+      setCustomers(customersResponse);
     } catch (error: unknown) {
       toast({
         title: 'Error loading data',
@@ -117,19 +113,17 @@ export default function ServicesPos() {
     const formData = new FormData(e.currentTarget);
 
     try {
-      const response = await apiClient.post<{ success: boolean; data: Customer }>('/api/customers', {
+      const response = await apiClient.post<Customer>('/api/customers', {
         name: formData.get('name') as string,
         email: formData.get('email') as string,
         phone: formData.get('phone') as string,
         org: formData.get('org') as string,
       });
 
-      if (response.success) {
-        setCustomers([...customers, response.data]);
-        setSelectedCustomer(response.data);
-        setNewCustomerOpen(false);
-        toast({ title: 'Customer created' });
-      }
+      setCustomers([...customers, response]);
+      setSelectedCustomer(response);
+      setNewCustomerOpen(false);
+      toast({ title: 'Customer created' });
     } catch (error: unknown) {
       toast({
         title: 'Error creating customer',
@@ -167,16 +161,14 @@ export default function ServicesPos() {
         notes: '',
       };
 
-      const response = await apiClient.post<{ success: boolean; data: { id: string } }>('/api/quotes', quoteData);
+      const response = await apiClient.post<{ id: string }>('/api/quotes', quoteData);
       
-      if (response.success) {
-        toast({ 
-          title: 'Quote created successfully',
-          description: `Total: $${total.toFixed(2)}`,
-        });
-        setCart([]);
-        setSelectedCustomer(null);
-      }
+      toast({ 
+        title: 'Quote created successfully',
+        description: `Total: $${total.toFixed(2)}`,
+      });
+      setCart([]);
+      setSelectedCustomer(null);
     } catch (error: unknown) {
       toast({ 
         title: 'Error creating quote',

@@ -56,21 +56,21 @@ export default function Dashboard() {
   const loadStats = async () => {
     try {
       const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse] = await Promise.all([
-        apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
-        apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
-        apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
-        apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
-        apiClient.get<{ success: boolean; data: { totalDiscounts: number; totalDiscountAmount: number } }>('/api/discounts/stats'),
+        apiClient.get<Order[]>('/api/orders'),
+        apiClient.get<Product[]>('/api/products'),
+        apiClient.get<Quote[]>('/api/quotes'),
+        apiClient.get<Service[]>('/api/services'),
+        apiClient.get<Customer[]>('/api/customers'),
+        apiClient.get<{ totalDiscounts: number; totalDiscountAmount: number }>('/api/discounts/stats'),
       ]);
 
-      const discountStats = discountStatsResponse.success ? discountStatsResponse.data : { totalDiscounts: 0, totalDiscountAmount: 0 };
+      const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };
 
-      const orders = ordersResponse.success ? ordersResponse.data : [];
-      const products = productsResponse.success ? productsResponse.data : [];
-      const quotes = quotesResponse.success ? quotesResponse.data : [];
-      const services = servicesResponse.success ? servicesResponse.data : [];
-      const customers = customersResponse.success ? customersResponse.data : [];
+      const orders = ordersResponse ? ordersResponse : [];
+      const products = productsResponse ? productsResponse : [];
+      const quotes = quotesResponse ? quotesResponse : [];
+      const services = servicesResponse ? servicesResponse : [];
+      const customers = customersResponse ? customersResponse : [];
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);

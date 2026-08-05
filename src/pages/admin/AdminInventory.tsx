@@ -44,10 +44,8 @@ export default function AdminInventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-      }
+      const response = await apiClient.get<Product[]>('/api/products');
+      setProducts(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -77,14 +75,12 @@ export default function AdminInventory() {
     }
 
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string }>('/api/admin/reset-database');
-      if (response.success) {
-        toast({ 
-          title: 'Database Reset', 
-          description: response.message || 'Database reset successfully. Fresh inventory loaded.',
-        });
-        await loadProducts();
-      }
+      const response = await apiClient.post<void>('/api/admin/reset-database');
+      toast({ 
+        title: 'Database Reset', 
+        description: 'Database reset successfully. Fresh inventory loaded.',
+      });
+      await loadProducts();
     } catch (error: unknown) {
       toast({ 
         title: 'Error', 
@@ -170,19 +166,17 @@ export default function AdminInventory() {
           image: uploadedImage || editingProduct.image,
           variants: editingProduct.variants || [],
         };
-        const response = await apiClient.post<{ success: boolean; data: Product }>(
+        const response = await apiClient.post<Product>(
           '/api/products',
           createData
         );
         
-        if (response.success) {
-          setEditDialogOpen(false);
-          setEditingProduct(null);
-          setIsNewProduct(false);
-          setUploadedImage(null);
-          await loadProducts();
-          toast({ title: 'Product added successfully' });
-        }
+        setEditDialogOpen(false);
+        setEditingProduct(null);
+        setIsNewProduct(false);
+        setUploadedImage(null);
+        await loadProducts();
+        toast({ title: 'Product added successfully' });
       } else {
         // Update existing product
         const updateData: UpdateProductRequest = {
@@ -193,19 +187,17 @@ export default function AdminInventory() {
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
         };
-        const response = await apiClient.put<{ success: boolean; data: Product }>(
+        const response = await apiClient.put<Product>(
           `/api/products/${editingProduct.id}`,
           updateData
         );
         
-        if (response.success) {
-          setEditDialogOpen(false);
-          setEditingProduct(null);
-          setIsNewProduct(false);
-          setUploadedImage(null);
-          await loadProducts();
-          toast({ title: 'Product updated' });
-        }
+        setEditDialogOpen(false);
+        setEditingProduct(null);
+        setIsNewProduct(false);
+        setUploadedImage(null);
+        await loadProducts();
+        toast({ title: 'Product updated' });
       }
     } catch (error: unknown) {
       toast({
@@ -219,11 +211,9 @@ export default function AdminInventory() {
   const handleDelete = async (productId: string) => {
     if (confirm('Delete this product? This cannot be undone.')) {
       try {
-        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${productId}`);
-        if (response.success) {
-          await loadProducts();
-          toast({ title: 'Product deleted' });
-        }
+        const response = await apiClient.delete<void>(`/api/products/${productId}`);
+        await loadProducts();
+        toast({ title: 'Product deleted' });
       } catch (error: unknown) {
         toast({
           title: 'Error',

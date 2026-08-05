@@ -29,10 +29,8 @@ export default function Inventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-      }
+      const response = await apiClient.get<Product[]>('/api/products');
+      setProducts(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -95,10 +93,8 @@ export default function Inventory() {
             enabled: v.enabled,
           })),
         };
-        const response = await apiClient.post<{ success: boolean; data: Product }>('/api/products', createData);
-        if (response.success) {
-          toast({ title: "Product added successfully" });
-        }
+        const response = await apiClient.post<Product>('/api/products', createData);
+        toast({ title: "Product added successfully" });
       } else {
         const updateData: UpdateProductRequest = {
           name: currentProduct.name,
@@ -108,10 +104,8 @@ export default function Inventory() {
           barcode: currentProduct.barcode,
           image: currentProduct.image,
         };
-        const response = await apiClient.put<{ success: boolean; data: Product }>(`/api/products/${currentProduct.id}`, updateData);
-        if (response.success) {
-          toast({ title: "Product updated successfully" });
-        }
+        const response = await apiClient.put<Product>(`/api/products/${currentProduct.id}`, updateData);
+        toast({ title: "Product updated successfully" });
       }
 
       await loadProducts();
@@ -129,11 +123,9 @@ export default function Inventory() {
   const handleDeleteProduct = async (id: string) => {
     if (confirm("Delete this product?")) {
       try {
-        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${id}`);
-        if (response.success) {
-          toast({ title: "Product deleted" });
-          await loadProducts();
-        }
+        const response = await apiClient.delete<void>(`/api/products/${id}`);
+        toast({ title: "Product deleted" });
+        await loadProducts();
       } catch (error: unknown) {
         toast({
           title: "Error",

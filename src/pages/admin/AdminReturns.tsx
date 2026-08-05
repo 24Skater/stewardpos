@@ -106,12 +106,10 @@ export default function AdminReturns() {
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
       }
-      const response = await apiClient.get<{ success: boolean; data: Return[] }>(
+      const response = await apiClient.get<Return[]>(
         `/api/returns?${params.toString()}`
       );
-      if (response.success) {
-        setReturns(response.data);
-      }
+      setReturns(response);
     } catch (error: unknown) {
       toast({ title: 'Error loading returns', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
@@ -121,10 +119,8 @@ export default function AdminReturns() {
 
   const loadStats = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: ReturnStats }>('/api/returns/stats');
-      if (response.success) {
-        setStats(response.data);
-      }
+      const response = await apiClient.get<ReturnStats>('/api/returns/stats');
+      setStats(response);
     } catch (error) {
       console.error('Error loading stats:', error);
     }
@@ -132,11 +128,9 @@ export default function AdminReturns() {
 
   const loadReturnDetails = async (returnId: string) => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: Return }>(`/api/returns/${returnId}`);
-      if (response.success) {
-        setSelectedReturn(response.data);
-        setDetailsOpen(true);
-      }
+      const response = await apiClient.get<Return>(`/api/returns/${returnId}`);
+      setSelectedReturn(response);
+      setDetailsOpen(true);
     } catch (error: unknown) {
       toast({ title: 'Error loading return details', description: getErrorMessage(error), variant: 'destructive' });
     }

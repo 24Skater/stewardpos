@@ -85,10 +85,8 @@ export default function ReceiptDialog({
 
   const loadSettings = async () => {
     try {
-      const res = await apiClient.get<{ success: boolean; data: ReceiptSettings }>('/api/admin/settings');
-      if (res.success) {
-        setSettings(res.data);
-      }
+      const res = await apiClient.get<ReceiptSettings>('/api/admin/settings');
+      setSettings(res);
     } catch (error) {
       // Use default empty settings
       console.error('Failed to load receipt settings:', error);

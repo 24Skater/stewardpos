@@ -25,20 +25,18 @@ export default function Reports() {
       const now = Date.now();
       const startDate = now - dateRange * 86400000;
 
-      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
-      if (response.success) {
-        const filteredOrders = response.data.filter(o => o.createdAt >= startDate);
-        setOrders(filteredOrders);
+      const response = await apiClient.get<Order[]>('/api/orders');
+      const filteredOrders = response.filter(o => o.createdAt >= startDate);
+      setOrders(filteredOrders);
 
-        // Extract order items from orders (if included in response)
-        const allItems: OrderItem[] = [];
-        filteredOrders.forEach(order => {
-          if (order.items) {
-            allItems.push(...order.items);
-          }
-        });
-        setOrderItems(allItems);
-      }
+      // Extract order items from orders (if included in response)
+      const allItems: OrderItem[] = [];
+      filteredOrders.forEach(order => {
+        if (order.items) {
+          allItems.push(...order.items);
+        }
+      });
+      setOrderItems(allItems);
     } catch (error: unknown) {
       // Error logged via toast notification
       // Set empty arrays on error

@@ -34,9 +34,9 @@ export default function SetupGuard({ children }: SetupGuardProps) {
 
   const checkSetupStatus = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: SetupStatus }>('/api/setup/status');
-      if (response && response.success && response.data) {
-        if (response.data.needsSetup) {
+      const response = await apiClient.get<SetupStatus>('/api/setup/status');
+      if (response && response && response) {
+        if (response.needsSetup) {
           setNeedsSetup(true);
           navigate('/setup');
         } else {

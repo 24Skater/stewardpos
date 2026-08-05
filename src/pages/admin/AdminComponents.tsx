@@ -55,9 +55,9 @@ export default function AdminComponents() {
   const loadComponents = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Component[] }>('/api/admin/components');
-      if (response && response.success && response.data) {
-        setComponents(response.data);
+      const response = await apiClient.get<Component[]>('/api/admin/components');
+      if (response && response && response) {
+        setComponents(response);
       } else {
         console.error('Unexpected API response:', response);
         toast({
@@ -81,20 +81,18 @@ export default function AdminComponents() {
   const checkForUpdates = async () => {
     try {
       setIsCheckingUpdates(true);
-      const response = await apiClient.get<{ success: boolean; data: ComponentUpdate[] }>('/api/admin/components/updates');
-      if (response.success) {
-        setUpdates(response.data);
-        if (response.data.length > 0) {
-          toast({
-            title: 'Updates Available',
-            description: `Found ${response.data.length} package(s) with available updates`,
-          });
-        } else {
-          toast({
-            title: 'All Up to Date',
-            description: 'All packages are up to date',
-          });
-        }
+      const response = await apiClient.get<ComponentUpdate[]>('/api/admin/components/updates');
+      setUpdates(response);
+      if (response.length > 0) {
+        toast({
+          title: 'Updates Available',
+          description: `Found ${response.length} package(s) with available updates`,
+        });
+      } else {
+        toast({
+          title: 'All Up to Date',
+          description: 'All packages are up to date',
+        });
       }
     } catch (error: unknown) {
       toast({
@@ -123,21 +121,19 @@ export default function AdminComponents() {
   const confirmUpdate = async () => {
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update', {
+      const response = await apiClient.post<unknown>('/api/admin/components/update', {
         packages: selectedPackages,
         type: updateType,
       });
 
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: response.message || 'Packages updated successfully',
-        });
-        setUpdateDialogOpen(false);
-        setSelectedPackages([]);
-        await loadComponents();
-        await checkForUpdates();
-      }
+      toast({
+        title: 'Success',
+        description: 'Packages updated successfully',
+      });
+      setUpdateDialogOpen(false);
+      setSelectedPackages([]);
+      await loadComponents();
+      await checkForUpdates();
     } catch (error: unknown) {
       toast({
         title: 'Update Failed',
@@ -156,18 +152,16 @@ export default function AdminComponents() {
 
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update-all', {
+      const response = await apiClient.post<unknown>('/api/admin/components/update-all', {
         type,
       });
 
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: response.message || 'All packages updated successfully',
-        });
-        await loadComponents();
-        await checkForUpdates();
-      }
+      toast({
+        title: 'Success',
+        description: 'All packages updated successfully',
+      });
+      await loadComponents();
+      await checkForUpdates();
     } catch (error: unknown) {
       toast({
         title: 'Update Failed',

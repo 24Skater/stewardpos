@@ -143,16 +143,13 @@ export default function AdminReceipts() {
         params.append('paymentMethod', paymentFilter);
       }
 
-      const response = await apiClient.get<{ 
-        success: boolean; 
-        data: ReceiptOrder[]; 
-        pagination: { total: number; hasMore: boolean } 
-      }>(`/api/receipts?${params.toString()}`);
-      
-      if (response.success) {
-        setReceipts(response.data);
-        setHasMore(response.pagination?.hasMore ?? false);
-      }
+      // getList keeps the envelope's pagination block alongside the payload.
+      const { data, meta } = await apiClient.getList<ReceiptOrder[]>(
+        `/api/receipts?${params.toString()}`
+      );
+
+      setReceipts(data);
+      setHasMore(meta?.hasMore ?? false);
     } catch (error: unknown) {
       toast({ title: 'Error loading receipts', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
@@ -162,10 +159,8 @@ export default function AdminReceipts() {
 
   const loadSettings = async () => {
     try {
-      const res = await apiClient.get<{ success: boolean; data: ReceiptSettings }>('/api/admin/settings');
-      if (res.success) {
-        setSettings(res.data);
-      }
+      const res = await apiClient.get<ReceiptSettings>('/api/admin/settings');
+      setSettings(res);
     } catch (error) {
       console.error('Failed to load receipt settings:', error);
     }
@@ -178,14 +173,12 @@ export default function AdminReceipts() {
 
   const loadReceiptDetails = async (orderId: string) => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: ReceiptOrder }>(
+      const response = await apiClient.get<ReceiptOrder>(
         `/api/receipts/${orderId}`
       );
-      if (response.success) {
-        setSelectedReceipt(response.data);
-        setResendEmail(response.data.customerEmail || '');
-        setDetailsOpen(true);
-      }
+      setSelectedReceipt(response);
+      setResendEmail(response.customerEmail || '');
+      setDetailsOpen(true);
     } catch (error: unknown) {
       toast({ title: 'Error loading receipt', description: getErrorMessage(error), variant: 'destructive' });
     }
@@ -214,22 +207,17 @@ export default function AdminReceipts() {
     if (!selectedReceipt) return;
     
     try {
-      const response = await apiClient.post<{ 
-        success: boolean; 
-        data: { returnableItems: ReturnableItem[]; hasReturnableItems: boolean } 
-      }>(`/api/receipts/${selectedReceipt.id}/start-return`, {});
+      const response = await apiClient.post<{ returnableItems: ReturnableItem[]; hasReturnableItems: boolean }>(`/api/receipts/${selectedReceipt.id}/start-return`, {});
       
-      if (response.success) {
-        if (!response.data.hasReturnableItems) {
-          toast({ title: 'No items to return', description: 'All items have already been returned.', variant: 'destructive' });
-          return;
-        }
-        setReturnableItems(response.data.returnableItems);
-        setSelectedReturnItems({});
-        setReturnReason('not_needed');
-        setReturnNotes('');
-        setReturnOpen(true);
+      if (!response.hasReturnableItems) {
+        toast({ title: 'No items to return', description: 'All items have already been returned.', variant: 'destructive' });
+        return;
       }
+      setReturnableItems(response.returnableItems);
+      setSelectedReturnItems({});
+      setReturnReason('not_needed');
+      setReturnNotes('');
+      setReturnOpen(true);
     } catch (error: unknown) {
       toast({ title: 'Error', description: getErrorMessage(error), variant: 'destructive' });
     }

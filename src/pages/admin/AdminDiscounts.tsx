@@ -248,40 +248,40 @@ export default function AdminDiscounts() {
   const { data: discountTypes = [], isLoading: loadingTypes } = useQuery({
     queryKey: ['discount-types'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: DiscountType[] }>('/api/discounts/types');
-      return res.data;
+      const res = await apiClient.get<DiscountType[]>('/api/discounts/types');
+      return res;
     },
   });
 
   const { data: promoCodes = [], isLoading: loadingPromos } = useQuery({
     queryKey: ['promo-codes'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: PromoCode[] }>('/api/discounts/promos');
-      return res.data;
+      const res = await apiClient.get<PromoCode[]>('/api/discounts/promos');
+      return res;
     },
   });
 
   const { data: employeeDiscounts = [], isLoading: loadingEmployee } = useQuery({
     queryKey: ['employee-discounts'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: EmployeeDiscount[] }>('/api/discounts/employee');
-      return res.data;
+      const res = await apiClient.get<EmployeeDiscount[]>('/api/discounts/employee');
+      return res;
     },
   });
 
   const { data: discountStats } = useQuery({
     queryKey: ['discount-stats'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: DiscountStats }>('/api/discounts/stats');
-      return res.data;
+      const res = await apiClient.get<DiscountStats>('/api/discounts/stats');
+      return res;
     },
   });
 
   const { data: users = [] } = useQuery({
     queryKey: ['users-for-employee-discount'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: AdminUser[] }>('/api/admin/users');
-      return res.data;
+      const res = await apiClient.get<AdminUser[]>('/api/admin/users');
+      return res;
     },
   });
 

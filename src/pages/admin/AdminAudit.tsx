@@ -38,10 +38,8 @@ export default function AdminAudit() {
   const loadLogs = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: AuditLog[] }>('/api/admin/audit?limit=100');
-      if (response.success) {
-        setLogs(response.data);
-      }
+      const response = await apiClient.get<AuditLog[]>('/api/admin/audit?limit=100');
+      setLogs(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
