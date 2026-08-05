@@ -80,7 +80,7 @@ Comprehensive reports, sales tracking, and business insights
 - [🎨 Branding & Customization](#-branding--customization)
 - [🔐 Security](#-security)
 - [🤝 Contributing](#-contributing)
-- [📊 Roadmap](#-roadmap)
+- [📊 Status & Roadmap](#-status--roadmap)
 - [💒 About This Project](#-about-this-project)
 - [📄 License](#-license)
 
@@ -114,13 +114,13 @@ cd stewardpos
 # Start all services
 docker-compose up -d
 
-# 🎉 That's it! Open http://localhost:8080
+# 🎉 That's it! Open http://localhost:8081
 ```
 
 <details>
 <summary><b>📋 First Time Setup</b></summary>
 
-1. Open `http://localhost:8080`
+1. Open `http://localhost:8081`
 2. Complete the setup wizard:
    - Create admin account
    - Configure database
@@ -131,7 +131,7 @@ docker-compose up -d
 **Default Demo Credentials:**
 ```
 Email: admin@demo.local
-Password: admin123
+Password: DemoPass!1
 ```
 
 </details>
@@ -374,14 +374,14 @@ StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 <td width="50%">
 
 ### 🚀 Getting Started
-- [Setup Wizard Guide](ENVIRONMENT-SETUP.md)
-- [Demo Quick Start](README-DEMO.md)
-- [Deployment Guide](DEPLOYMENT.md)
+- [Setup Wizard Guide](docs/reference/environment.md)
+- [Demo Quick Start](docs/guides/demo.md)
+- [Deployment Guide](docs/guides/deployment.md)
 
 ### 👨‍💻 Development
 - [Backend README](backend/README.md)
-- [Component Management](COMPONENT-MANAGEMENT.md)
-- [Code Review](CODE-REVIEW-SUMMARY.md)
+- [Component Management](docs/guides/component-management.md)
+- [Code Review](docs/masterplan/ASSESSMENT-2026-08-04.md)
 
 </td>
 <td width="50%">
@@ -425,7 +425,7 @@ StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 docker-compose up -d
 ```
 
-[📖 Guide](DEPLOYMENT.md)
+[📖 Guide](docs/guides/deployment.md)
 
 </td>
 <td align="center" width="25%">
@@ -436,7 +436,7 @@ Ubuntu • Debian • CentOS
 systemd service
 nginx proxy
 
-[📖 Guide](DEPLOYMENT.md#linux)
+[📖 Guide](docs/guides/deployment.md#linux)
 
 </td>
 <td align="center" width="25%">
@@ -447,7 +447,7 @@ Server 2019+ • Win10/11
 PowerShell script
 IIS support
 
-[📖 Guide](DEPLOYMENT.md#windows)
+[📖 Guide](docs/guides/deployment.md#windows)
 
 </td>
 <td align="center" width="25%">
@@ -459,7 +459,7 @@ DigitalOcean • more
 Container ready
 Auto-scaling
 
-[📖 Guide](DEPLOYMENT.md#cloud)
+[📖 Guide](docs/guides/deployment.md#cloud)
 
 </td>
 </tr>
@@ -602,60 +602,22 @@ git push origin feature/amazing-feature
 
 <br/>
 
-## 📊 Roadmap
+## 📊 Status & Roadmap
 
-<table>
-<tr>
-<td>
+> **StewardPOS is pre-1.0 and not yet ready for production use.**
+> An earlier version of this section listed features as "Completed" that a verified
+> audit found broken or missing — including authentication coverage. It has been
+> replaced with pointers to sources that are checked against the running code.
 
-### ✅ Completed
-- Full REST API
-- PostgreSQL & SQLite
-- JWT authentication
-- Role-based access
-- Docker support
-- Setup wizard
-- Reports & analytics
-- **Discounts & promotions**
-- **Returns & refunds**
-- **Custom branding**
-- **Receipt customization**
-- **PDF/Excel exports**
-- **API key management**
-- **Service quotes workflow**
+| Document | What it tells you |
+|---|---|
+| **[Readiness assessment](docs/masterplan/ASSESSMENT-2026-08-04.md)** | What actually works today, with file/line evidence and a POS feature matrix |
+| **[Master plan](docs/masterplan/README.md)** | Phases 0-9 to v1.0, and the locked product decisions |
+| **[Documentation index](docs/README.md)** | Guides, reference, and the archive |
 
-</td>
-<td>
-
-### 🔄 In Progress
-- Google OAuth integration
-- OIDC/SSO providers
-- Mobile responsive
-- Performance tuning
-- Loyalty programs
-
-</td>
-<td>
-
-### 📋 Planned
-- Mobile app (iOS/Android)
-- Offline-first PWA
-- Multi-location support
-- Plugin marketplace
-- QuickBooks integration
-- Hardware integrations
-- Inventory alerts
-- Customer loyalty points
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
+**Known gaps at the register** (see the assessment for the full list): sales tax is not
+implemented, there is no cash-tender or split-tender model, and orders carry no cashier
+attribution. Do not take live payments with this yet.
 
 ## 💒 About This Project
 
