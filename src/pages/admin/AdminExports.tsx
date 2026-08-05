@@ -142,20 +142,20 @@ export default function AdminExports() {
   const loadAllData = async () => {
     try {
       const [ordersRes, quotesRes, customersRes, servicesRes, productsRes, returnsRes] = await Promise.all([
-        apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
-        apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
-        apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
-        apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
-        apiClient.get<{ success: boolean; data: Return[] }>('/api/returns'),
+        apiClient.get<Order[]>('/api/orders'),
+        apiClient.get<Quote[]>('/api/quotes'),
+        apiClient.get<Customer[]>('/api/customers'),
+        apiClient.get<Service[]>('/api/services'),
+        apiClient.get<Product[]>('/api/products'),
+        apiClient.get<Return[]>('/api/returns'),
       ]);
 
-      if (ordersRes.success) setOrders(ordersRes.data);
-      if (quotesRes.success) setQuotes(quotesRes.data);
-      if (customersRes.success) setCustomers(customersRes.data);
-      if (servicesRes.success) setServices(servicesRes.data);
-      if (productsRes.success) setProducts(productsRes.data);
-      if (returnsRes.success) setReturns(returnsRes.data);
+      if (ordersRes) setOrders(ordersRes);
+      if (quotesRes) setQuotes(quotesRes);
+      if (customersRes) setCustomers(customersRes);
+      if (servicesRes) setServices(servicesRes);
+      if (productsRes) setProducts(productsRes);
+      if (returnsRes) setReturns(returnsRes);
     } catch (error: unknown) {
       toast({
         title: 'Error loading data',

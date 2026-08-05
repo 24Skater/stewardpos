@@ -25,8 +25,8 @@ export default function Login() {
         password,
       } as LoginRequest);
 
-      if (response.success && response.data.token) {
-        authStore.setToken(response.data.token, '7d');
+      if (response.token) {
+        authStore.setToken(response.token, '7d');
         toast({
           title: 'Success',
           description: 'Logged in successfully',

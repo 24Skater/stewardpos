@@ -83,10 +83,8 @@ export default function AdminRoles() {
   const loadRoles = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Role[] }>('/api/admin/roles');
-      if (response.success) {
-        setRoles(response.data);
-      }
+      const response = await apiClient.get<Role[]>('/api/admin/roles');
+      setRoles(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -136,23 +134,19 @@ export default function AdminRoles() {
 
     try {
       if (isNewRole) {
-        const response = await apiClient.post<{ success: boolean; data: Role }>('/api/admin/roles', {
+        const response = await apiClient.post<Role>('/api/admin/roles', {
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
         });
-        if (response.success) {
-          toast({ title: 'Role created successfully' });
-        }
+        toast({ title: 'Role created successfully' });
       } else {
-        const response = await apiClient.put<{ success: boolean; data: Role }>(`/api/admin/roles/${editingRole.id}`, {
+        const response = await apiClient.put<Role>(`/api/admin/roles/${editingRole.id}`, {
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
         });
-        if (response.success) {
-          toast({ title: 'Role updated successfully' });
-        }
+        toast({ title: 'Role updated successfully' });
       }
 
       setEditDialogOpen(false);
@@ -182,11 +176,9 @@ export default function AdminRoles() {
     if (!confirm('Are you sure you want to delete this role?')) return;
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/admin/roles/${id}`);
-      if (response.success) {
-        toast({ title: 'Role deleted successfully' });
-        await loadRoles();
-      }
+      const response = await apiClient.delete<void>(`/api/admin/roles/${id}`);
+      toast({ title: 'Role deleted successfully' });
+      await loadRoles();
     } catch (error: unknown) {
       toast({
         title: 'Error',

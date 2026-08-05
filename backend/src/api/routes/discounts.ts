@@ -422,16 +422,20 @@ router.post('/promos/validate', async (req: AuthRequest, res: Response, next: Ne
       discountAmount = Math.min(promo.discountValue, data.cartTotal);
     }
 
+    // Payload goes under `data` like every other route, so the client can unwrap the
+    // envelope uniformly. Invalid codes keep returning success:false with a message.
     res.json({
       success: true,
-      valid: true,
-      promo: {
-        id: promo.id,
-        code: promo.code,
-        name: promo.name,
-        discountType: promo.discountType,
-        discountValue: promo.discountValue,
-        discountAmount,
+      data: {
+        valid: true,
+        promo: {
+          id: promo.id,
+          code: promo.code,
+          name: promo.name,
+          discountType: promo.discountType,
+          discountValue: promo.discountValue,
+          discountAmount,
+        },
       },
     });
   } catch (error) {

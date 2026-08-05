@@ -189,13 +189,11 @@ export default function POS() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-        // Extract unique categories from products
-        const uniqueCategories = new Set(response.data.map(p => p.category).filter(Boolean));
-        setCategories(["All", ...Array.from(uniqueCategories)]);
-      }
+      const response = await apiClient.get<Product[]>('/api/products');
+      setProducts(response);
+      // Extract unique categories from products
+      const uniqueCategories = new Set(response.map(p => p.category).filter(Boolean));
+      setCategories(["All", ...Array.from(uniqueCategories)]);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -214,16 +212,16 @@ export default function POS() {
 
   const loadStoreName = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: { storeName?: string; logoUrl?: string; config?: { paymentMethods?: PaymentMethodsConfig } } }>('/api/admin/settings');
-      if (response.success && response.data) {
-        if (response.data.storeName) {
-          setStoreName(response.data.storeName);
+      const response = await apiClient.get<{ storeName?: string; logoUrl?: string; config?: { paymentMethods?: PaymentMethodsConfig } }>('/api/admin/settings');
+      if (response && response) {
+        if (response.storeName) {
+          setStoreName(response.storeName);
         }
-        if (response.data.logoUrl) {
-          setStoreLogo(response.data.logoUrl);
+        if (response.logoUrl) {
+          setStoreLogo(response.logoUrl);
         }
-        if (response.data.config?.paymentMethods) {
-          const pm = response.data.config.paymentMethods;
+        if (response.config?.paymentMethods) {
+          const pm = response.config.paymentMethods;
           setPaymentMethods({
             cash: { enabled: true, ...pm.cash },
             zelle: { enabled: false, ...pm.zelle },
@@ -242,10 +240,8 @@ export default function POS() {
 
   const loadQuickDiscounts = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: DiscountType[] }>('/api/discounts/types/pos');
-      if (response.success) {
-        setQuickDiscounts(response.data);
-      }
+      const response = await apiClient.get<DiscountType[]>('/api/discounts/types/pos');
+      setQuickDiscounts(response);
     } catch (error) {
       // Non-critical, silently fail
       console.warn('Failed to load quick discounts:', error);
@@ -303,7 +299,7 @@ export default function POS() {
     setPromoLoading(true);
     try {
       const subtotal = calculateSubtotal();
-      const response = await apiClient.post<{ success: boolean; valid: boolean; message?: string; promo?: PromoValidation }>(
+      const { promo } = await apiClient.post<{ valid: boolean; promo: PromoValidation }>(
         '/api/discounts/promos/validate',
         {
           code: promoCodeInput.trim().toUpperCase(),
@@ -312,33 +308,33 @@ export default function POS() {
         }
       );
 
-      if (response.success && response.valid && response.promo) {
+      // A rejected code comes back as success:false, which the client raises; the
+      // catch below surfaces the server's reason.
+      {
         // Check if already applied
-        if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === response.promo.id)) {
+        if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === promo.id)) {
           toast({ title: 'Promo code already applied', variant: 'destructive' });
           return;
         }
 
         setAppliedDiscounts([...appliedDiscounts, {
           source: 'promo_code',
-          id: response.promo.id,
-          code: response.promo.code,
-          name: response.promo.name,
-          type: response.promo.discountType,
-          value: response.promo.discountValue,
-          amount: response.promo.discountAmount,
+          id: promo.id,
+          code: promo.code,
+          name: promo.name,
+          type: promo.discountType,
+          value: promo.discountValue,
+          amount: promo.discountAmount,
         }]);
 
         setPromoCodeInput("");
-        toast({ 
-          title: 'Promo code applied!', 
-          description: `${response.promo.name} - $${response.promo.discountAmount.toFixed(2)} off` 
+        toast({
+          title: 'Promo code applied!',
+          description: `${promo.name} - $${promo.discountAmount.toFixed(2)} off`
         });
-      } else {
-        toast({ title: response.message || 'Invalid promo code', variant: 'destructive' });
       }
     } catch (error: unknown) {
-      toast({ title: 'Failed to validate promo code', description: getErrorMessage(error), variant: 'destructive' });
+      toast({ title: 'Promo code not applied', description: getErrorMessage(error, 'Invalid promo code'), variant: 'destructive' });
     } finally {
       setPromoLoading(false);
     }
@@ -575,60 +571,58 @@ export default function POS() {
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
 
-      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+      const response = await apiClient.post<Order>('/api/orders', orderData);
       
-      if (response.success) {
-        // Log discount usage for each applied discount
-        for (const discount of appliedDiscounts) {
-          try {
-            await apiClient.post('/api/discounts/usage', {
-              orderId: response.data.id,
-              discountSource: discount.source,
-              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-              discountCode: discount.code,
-              discountName: discount.name,
-              discountType: discount.type,
-              discountValue: discount.value,
-              discountAmount: discount.amount,
-              customerEmail: customerEmail || undefined,
-            });
+      // Log discount usage for each applied discount
+      for (const discount of appliedDiscounts) {
+        try {
+          await apiClient.post('/api/discounts/usage', {
+            orderId: response.id,
+            discountSource: discount.source,
+            discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
+            promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
+            discountCode: discount.code,
+            discountName: discount.name,
+            discountType: discount.type,
+            discountValue: discount.value,
+            discountAmount: discount.amount,
+            customerEmail: customerEmail || undefined,
+          });
 
-            // Increment promo code usage if applicable
-            if (discount.source === 'promo_code' && discount.id) {
-              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
-            }
-          } catch (error) {
-            console.error('Failed to log discount usage:', error);
+          // Increment promo code usage if applicable
+          if (discount.source === 'promo_code' && discount.id) {
+            await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
           }
+        } catch (error) {
+          console.error('Failed to log discount usage:', error);
         }
-
-        toast({
-          title: "Sale completed!",
-          description: `Order ${response.data.id} saved successfully`,
-        });
-
-        setLastOrderId(response.data.id);
-        setLastOrderTotal(total);
-        setLastOrderSubtotal(subtotal);
-        setLastOrderTax(taxTotal);
-        setLastOrderDiscount(discountTotal);
-        setLastOrderPaymentMethod(selectedPaymentMethod);
-        setLastOrderItems([...cart]);
-        setLastOrderAuthCode(undefined);
-        setCart([]);
-        setCustomerEmail("");
-        setAppliedDiscounts([]);
-        // Reset to first enabled payment method for next sale
-        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
-        setCheckoutOpen(false);
-        setReceiptDialogOpen(true);
-        
-        // Reload products to update stock
-        await loadProducts();
       }
+
+      toast({
+        title: "Sale completed!",
+        description: `Order ${response.id} saved successfully`,
+      });
+
+      setLastOrderId(response.id);
+      setLastOrderTotal(total);
+      setLastOrderSubtotal(subtotal);
+      setLastOrderTax(taxTotal);
+      setLastOrderDiscount(discountTotal);
+      setLastOrderPaymentMethod(selectedPaymentMethod);
+      setLastOrderItems([...cart]);
+      setLastOrderAuthCode(undefined);
+      setCart([]);
+      setCustomerEmail("");
+      setAppliedDiscounts([]);
+      // Reset to first enabled payment method for next sale
+      if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+      else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+      else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
+      setCheckoutOpen(false);
+      setReceiptDialogOpen(true);
+      
+      // Reload products to update stock
+      await loadProducts();
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -661,15 +655,13 @@ export default function POS() {
     setTerminalState({ phase: 'charging' });
 
     try {
-      const chargeData = await apiClient.post<{ success: boolean; error?: string; data: { chargeId: string } }>('/api/terminal/charge', {
+      const chargeData = await apiClient.post<{ chargeId: string }>('/api/terminal/charge', {
         amount: amountCents,
         currency: 'USD',
         description: 'POS Checkout',
       });
 
-      if (!chargeData.success) throw new Error(chargeData.error || 'Failed to initiate charge');
-
-      const { chargeId } = chargeData.data;
+      const { chargeId } = chargeData;
       setTerminalState({ phase: 'waiting', chargeId });
 
       terminalTimeoutRef.current = setTimeout(async () => {
@@ -680,8 +672,8 @@ export default function POS() {
 
       terminalPollRef.current = setInterval(async () => {
         try {
-          const statusData = await apiClient.get<{ success: boolean; data: { status: string; authCode?: string; errorMessage?: string } }>(`/api/terminal/status/${chargeId}`);
-          const { status, authCode, errorMessage } = statusData.data;
+          const statusData = await apiClient.get<{ status: string; authCode?: string; errorMessage?: string }>(`/api/terminal/status/${chargeId}`);
+          const { status, authCode, errorMessage } = statusData;
 
           if (status === 'approved') {
             stopTerminalPolling();
@@ -754,60 +746,56 @@ export default function POS() {
         cardAuthCode: authCode,
       };
 
-      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+      const response = await apiClient.post<Order>('/api/orders', orderData);
 
-      if (response.success) {
-        // Log discount usage for each applied discount
-        for (const discount of appliedDiscounts) {
-          try {
-            await apiClient.post('/api/discounts/usage', {
-              orderId: response.data.id,
-              discountSource: discount.source,
-              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-              discountCode: discount.code,
-              discountName: discount.name,
-              discountType: discount.type,
-              discountValue: discount.value,
-              discountAmount: discount.amount,
-              customerEmail: customerEmail || undefined,
-            });
+      // Log discount usage for each applied discount
+      for (const discount of appliedDiscounts) {
+        try {
+          await apiClient.post('/api/discounts/usage', {
+            orderId: response.id,
+            discountSource: discount.source,
+            discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
+            promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
+            discountCode: discount.code,
+            discountName: discount.name,
+            discountType: discount.type,
+            discountValue: discount.value,
+            discountAmount: discount.amount,
+            customerEmail: customerEmail || undefined,
+          });
 
-            if (discount.source === 'promo_code' && discount.id) {
-              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
-            }
-          } catch (error) {
-            console.error('Failed to log discount usage:', error);
+          if (discount.source === 'promo_code' && discount.id) {
+            await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
           }
+        } catch (error) {
+          console.error('Failed to log discount usage:', error);
         }
-
-        toast({
-          title: 'Sale completed!',
-          description: `Order ${response.data.id} saved successfully`,
-        });
-
-        setLastOrderId(response.data.id);
-        setLastOrderTotal(total);
-        setLastOrderSubtotal(subtotal);
-        setLastOrderTax(taxTotal);
-        setLastOrderDiscount(discountTotal);
-        setLastOrderPaymentMethod('Card');
-        setLastOrderItems([...cart]);
-        setLastOrderAuthCode(authCode);
-        setCart([]);
-        setCustomerEmail('');
-        setAppliedDiscounts([]);
-        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
-        setTerminalState({ phase: 'idle' });
-        setCheckoutOpen(false);
-        setReceiptDialogOpen(true);
-
-        await loadProducts();
-      } else {
-        throw new Error('Order save failed');
       }
+
+      toast({
+        title: 'Sale completed!',
+        description: `Order ${response.id} saved successfully`,
+      });
+
+      setLastOrderId(response.id);
+      setLastOrderTotal(total);
+      setLastOrderSubtotal(subtotal);
+      setLastOrderTax(taxTotal);
+      setLastOrderDiscount(discountTotal);
+      setLastOrderPaymentMethod('Card');
+      setLastOrderItems([...cart]);
+      setLastOrderAuthCode(authCode);
+      setCart([]);
+      setCustomerEmail('');
+      setAppliedDiscounts([]);
+      if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+      else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+      else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
+      setTerminalState({ phase: 'idle' });
+      setCheckoutOpen(false);
+      setReceiptDialogOpen(true);
+
+      await loadProducts();
     } catch (error: unknown) {
       toast({
         title: 'Order save failed',

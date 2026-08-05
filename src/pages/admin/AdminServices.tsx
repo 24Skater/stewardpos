@@ -53,10 +53,8 @@ export default function AdminServices() {
   const loadServices = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Service[] }>('/api/services');
-      if (response.success) {
-        setServices(response.data);
-      }
+      const response = await apiClient.get<Service[]>('/api/services');
+      setServices(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -110,7 +108,7 @@ export default function AdminServices() {
 
     try {
       if (isNewService) {
-        const response = await apiClient.post<{ success: boolean; data: Service }>('/api/services', {
+        const response = await apiClient.post<Service>('/api/services', {
           name: editingService.name,
           category: editingService.category,
           description: editingService.description,
@@ -118,11 +116,9 @@ export default function AdminServices() {
           unitType: editingService.unitType,
           isActive: editingService.isActive,
         });
-        if (response.success) {
-          toast({ title: 'Service created successfully' });
-        }
+        toast({ title: 'Service created successfully' });
       } else {
-        const response = await apiClient.put<{ success: boolean; data: Service }>(`/api/services/${editingService.id}`, {
+        const response = await apiClient.put<Service>(`/api/services/${editingService.id}`, {
           name: editingService.name,
           category: editingService.category,
           description: editingService.description,
@@ -130,9 +126,7 @@ export default function AdminServices() {
           unitType: editingService.unitType,
           isActive: editingService.isActive,
         });
-        if (response.success) {
-          toast({ title: 'Service updated successfully' });
-        }
+        toast({ title: 'Service updated successfully' });
       }
 
       setEditDialogOpen(false);
@@ -152,11 +146,9 @@ export default function AdminServices() {
     if (!confirm('Are you sure you want to delete this service?')) return;
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/services/${id}`);
-      if (response.success) {
-        toast({ title: 'Service deleted successfully' });
-        await loadServices();
-      }
+      const response = await apiClient.delete<void>(`/api/services/${id}`);
+      toast({ title: 'Service deleted successfully' });
+      await loadServices();
     } catch (error: unknown) {
       toast({
         title: 'Error',

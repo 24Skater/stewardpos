@@ -36,8 +36,8 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 
   try {
     const response = await apiClient.get<SessionResponse>('/api/auth/session');
-    if (response.success && response.data?.user) {
-      const user = response.data.user;
+    if (response?.user) {
+      const user = response.user;
       
       // Ensure user has required properties
       if (!user.id || !user.email || !user.name) {

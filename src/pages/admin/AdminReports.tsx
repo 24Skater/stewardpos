@@ -67,12 +67,12 @@ export default function AdminReports() {
   const loadReports = async () => {
     try {
       const [ordersResponse, quotesResponse] = await Promise.all([
-        apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
-        apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
+        apiClient.get<Order[]>('/api/orders'),
+        apiClient.get<Quote[]>('/api/quotes'),
       ]);
 
-      const orders = ordersResponse.success ? ordersResponse.data : [];
-      const quotes = quotesResponse.success ? quotesResponse.data : [];
+      const orders = ordersResponse ? ordersResponse : [];
+      const quotes = quotesResponse ? quotesResponse : [];
       const startDate = getStartDate();
 
       // Filter by period

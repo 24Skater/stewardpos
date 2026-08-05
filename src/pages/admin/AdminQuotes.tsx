@@ -73,10 +73,8 @@ export default function AdminQuotes() {
   const loadQuotes = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes');
-      if (response.success) {
-        setQuotes(response.data);
-      }
+      const response = await apiClient.get<Quote[]>('/api/quotes');
+      setQuotes(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -90,19 +88,17 @@ export default function AdminQuotes() {
 
   const handleStatusChange = async (quoteId: string, newStatus: string) => {
     try {
-      const response = await apiClient.put<{ success: boolean; data: Quote }>(
+      const response = await apiClient.put<Quote>(
         `/api/quotes/${quoteId}/status`,
         { status: newStatus }
       );
       
-      if (response.success) {
-        toast({ title: `Quote status updated to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG].label}` });
-        await loadQuotes();
-        
-        // Update selected quote if viewing
-        if (selectedQuote?.id === quoteId) {
-          setSelectedQuote(response.data);
-        }
+      toast({ title: `Quote status updated to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG].label}` });
+      await loadQuotes();
+      
+      // Update selected quote if viewing
+      if (selectedQuote?.id === quoteId) {
+        setSelectedQuote(response);
       }
     } catch (error: unknown) {
       toast({
@@ -117,12 +113,10 @@ export default function AdminQuotes() {
     if (!confirm('Are you sure you want to delete this quote?')) return;
     
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/quotes/${quoteId}`);
-      if (response.success) {
-        toast({ title: 'Quote deleted successfully' });
-        setViewDialogOpen(false);
-        await loadQuotes();
-      }
+      const response = await apiClient.delete<void>(`/api/quotes/${quoteId}`);
+      toast({ title: 'Quote deleted successfully' });
+      setViewDialogOpen(false);
+      await loadQuotes();
     } catch (error: unknown) {
       toast({
         title: 'Error',

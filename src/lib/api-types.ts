@@ -5,31 +5,32 @@ export interface LoginRequest {
   password: string;
 }
 
+/**
+ * Payload of POST /api/auth/login.
+ *
+ * These describe what the client hands back after unwrapping - the `{success, data}`
+ * envelope is consumed inside api-client and never reaches a caller.
+ */
 export interface LoginResponse {
-  success: boolean;
-  data: {
-    token: string;
-    user: {
-      id: string;
-      email: string;
-      name: string;
-      roleIds: string[];
-      roles: ApiRole[];
-    };
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleIds: string[];
+    roles: ApiRole[];
   };
 }
 
+/** Payload of GET /api/auth/session. */
 export interface SessionResponse {
-  success: boolean;
-  data: {
-    user: {
-      id: string;
-      email: string;
-      name: string;
-      roleIds: string[];
-      status: string;
-      roles: ApiRole[];
-    };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleIds: string[];
+    status: string;
+    roles: ApiRole[];
   };
 }
 

@@ -120,29 +120,29 @@ export default function AdminSettings() {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Settings }>('/api/admin/settings');
-      if (response.success && response.data) {
+      const response = await apiClient.get<Settings>('/api/admin/settings');
+      if (response && response) {
         setSettings({
           ...settings,
-          ...response.data,
+          ...response,
           config: {
             authMethods: {
               local: true,
               google: false,
               oidc: false,
-              ...response.data.config?.authMethods,
+              ...response.config?.authMethods,
             },
-            demoMode: response.data.config?.demoMode || false,
+            demoMode: response.config?.demoMode || false,
             paymentMethods: {
               cash: { enabled: true },
               zelle: { enabled: false, destination: '' },
               card: { enabled: false, provider: 'square' },
-              ...response.data.config?.paymentMethods,
+              ...response.config?.paymentMethods,
             },
           },
         });
-        if (response.data.config?.terminalCredentials) {
-          setTerminalCreds(response.data.config.terminalCredentials);
+        if (response.config?.terminalCredentials) {
+          setTerminalCreds(response.config.terminalCredentials);
         }
       }
     } catch (error: unknown) {
@@ -162,10 +162,8 @@ export default function AdminSettings() {
           terminalCredentials: terminalCreds,
         },
       };
-      const response = await apiClient.put<{ success: boolean; data: Settings }>('/api/admin/settings', payload);
-      if (response.success) {
-        toast({ title: 'Settings saved successfully' });
-      }
+      const response = await apiClient.put<Settings>('/api/admin/settings', payload);
+      toast({ title: 'Settings saved successfully' });
     } catch (error: unknown) {
       toast({
         title: 'Error saving settings',
@@ -180,11 +178,10 @@ export default function AdminSettings() {
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      const data = await apiClient.post<{ success: boolean; message: string }>('/api/terminal/test', {});
+      await apiClient.post<void>('/api/terminal/test', {});
       toast({
-        title: data.success ? 'Connection successful' : 'Connection failed',
-        description: (data as unknown as { data?: { message?: string } }).data?.message || 'Unknown result',
-        variant: data.success ? 'default' : 'destructive',
+        title: 'Connection successful',
+        description: 'The terminal responded to the test request.',
       });
     } catch (error: unknown) {
       toast({
@@ -200,7 +197,7 @@ export default function AdminSettings() {
   const handleDiscoverReaders = async () => {
     setDiscoveringReaders(true);
     try {
-      const data = await apiClient.get<{ success: boolean; data: Array<{ id: string; label: string; status: string }> }>('/api/terminal/readers');
+      const data = await apiClient.get<Array<{ id: string; label: string; status: string }>>('/api/terminal/readers');
       const found = (data as unknown as { data?: Array<{ id: string; label: string; status: string }> }).data || [];
       setReaders(found);
       toast({ title: `Found ${found.length} reader(s)` });
@@ -222,10 +219,8 @@ export default function AdminSettings() {
 
     try {
       setResetting(true);
-      const response = await apiClient.post<{ success: boolean; message: string }>('/api/admin/reset-database', {});
-      if (response.success) {
-        toast({ title: 'Database reset successfully', description: response.message });
-      }
+      const response = await apiClient.post<void>('/api/admin/reset-database', {});
+      toast({ title: 'Database reset successfully' });
     } catch (error: unknown) {
       toast({
         title: 'Error resetting database',

@@ -82,13 +82,11 @@ export default function Setup() {
 
   const checkSetupStatus = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: SetupStatus }>('/api/setup/status');
-      if (response.success) {
-        setSetupStatus(response.data);
-        if (!response.data.needsSetup) {
-          // Setup already complete, redirect to login
-          navigate('/login');
-        }
+      const response = await apiClient.get<SetupStatus>('/api/setup/status');
+      setSetupStatus(response);
+      if (!response.needsSetup) {
+        // Setup already complete, redirect to login
+        navigate('/login');
       }
     } catch (error: unknown) {
       // If setup endpoint doesn't exist or fails, assume setup is needed
@@ -99,25 +97,16 @@ export default function Setup() {
   const testDatabaseConnection = async () => {
     setTestingDb(true);
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string; error?: string }>(
+      const response = await apiClient.post<void>(
         '/api/setup/test-database',
         database
       );
       
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: 'Database connection successful!',
-        });
-        return true;
-      } else {
-        toast({
-          title: 'Connection Failed',
-          description: response.error || 'Failed to connect to database',
-          variant: 'destructive',
-        });
-        return false;
-      }
+      toast({
+        title: 'Success',
+        description: 'Database connection successful!',
+      });
+      return true;
     } catch (error: unknown) {
       toast({
         title: 'Connection Failed',
@@ -178,7 +167,7 @@ export default function Setup() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string; data?: unknown }>(
+      const response = await apiClient.post<unknown>(
         '/api/setup/complete',
         {
           adminUser: {
@@ -194,16 +183,14 @@ export default function Setup() {
         }
       );
 
-      if (response.success) {
-        toast({
-          title: 'Setup Complete!',
-          description: 'Your POS system is now configured. Redirecting to login...',
-        });
-        
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      }
+      toast({
+        title: 'Setup Complete!',
+        description: 'Your POS system is now configured. Redirecting to login...',
+      });
+      
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
     } catch (error: unknown) {
       toast({
         title: 'Setup Failed',
