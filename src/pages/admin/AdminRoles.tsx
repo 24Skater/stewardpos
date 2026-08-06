@@ -8,7 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { adminApi } from '@/lib/api';
-import type { AppRole as SystemRoleName } from '@/lib/permissions';
+import {
+  PERMISSION_RESOURCES,
+  type AppRole as SystemRoleName,
+  type RolePermissions,
+} from '@/lib/permissions';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -16,48 +20,35 @@ import { getCurrentSession, hasAnyRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 
-interface Permission {
-  read: boolean;
-  write: boolean;
-  delete: boolean;
-}
-
-interface Permissions {
-  inventory: Permission;
-  reports: Permission;
-  exports: Permission;
-  settings: Permission;
-  users: Permission;
-  services: Permission;
-  customers: Permission;
-}
-
 interface Role {
   id: string;
   name: string;
   systemRole?: SystemRoleName;
-  permissions: Permissions;
+  permissions: RolePermissions;
 }
 
-const defaultPermissions: Permissions = {
-  inventory: { read: false, write: false, delete: false },
-  reports: { read: false, write: false, delete: false },
-  exports: { read: false, write: false, delete: false },
-  settings: { read: false, write: false, delete: false },
-  users: { read: false, write: false, delete: false },
-  services: { read: false, write: false, delete: false },
-  customers: { read: false, write: false, delete: false },
-};
+/**
+ * The matrix rendered by the editor, and the blank slate a new role starts from.
+ *
+ * Both derive from PERMISSION_RESOURCES rather than being listed again here: the
+ * previous hand-written copy silently omitted every resource added after it was
+ * written, so those permissions could not be granted through the UI at all.
+ */
+const permissionModules = PERMISSION_RESOURCES;
 
-const permissionModules = [
-  'inventory',
-  'reports',
-  'exports',
-  'settings',
-  'users',
-  'services',
-  'customers',
-] as const;
+const defaultPermissions = Object.fromEntries(
+  PERMISSION_RESOURCES.map((resource) => [resource, { read: false, write: false, delete: false }])
+) as unknown as RolePermissions;
+
+/** Short explanations for the resources whose scope is not obvious from the name. */
+const MODULE_HINTS: Partial<Record<keyof RolePermissions, string>> = {
+  orders: 'Ringing sales, receipts, and the card terminal',
+  returns: 'Refunds and restocking',
+  discounts: 'Discount types, promo codes, and employee entitlements',
+  exports: 'Downloading data extracts',
+  users: 'Staff accounts and roles',
+  settings: 'Store configuration and audit log',
+};
 
 export default function AdminRoles() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -190,8 +181,8 @@ export default function AdminRoles() {
   };
 
   const updatePermission = (
-    module: keyof Permissions,
-    action: keyof Permission,
+    module: keyof RolePermissions,
+    action: 'read' | 'write' | 'delete',
     value: boolean
   ) => {
     if (!editingRole) return;
@@ -378,7 +369,14 @@ export default function AdminRoles() {
                         <TableBody>
                           {permissionModules.map((module) => (
                             <TableRow key={module}>
-                              <TableCell className="capitalize font-medium">{module}</TableCell>
+                              <TableCell className="font-medium">
+                                <span className="capitalize">{module}</span>
+                                {MODULE_HINTS[module] && (
+                                  <p className="text-xs font-normal text-muted-foreground">
+                                    {MODULE_HINTS[module]}
+                                  </p>
+                                )}
+                              </TableCell>
                               <TableCell className="text-center">
                                 <Checkbox
                                   checked={editingRole.permissions[module]?.read || false}

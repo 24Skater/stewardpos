@@ -16,7 +16,10 @@ export type PermissionResource =
   | 'settings'
   | 'users'
   | 'services'
-  | 'customers';
+  | 'customers'
+  | 'orders'
+  | 'returns'
+  | 'discounts';
 
 export type PermissionAction = 'read' | 'write' | 'delete';
 

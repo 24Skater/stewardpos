@@ -12,10 +12,19 @@ const getUserByEmail = vi.fn();
 const getAllProducts = vi.fn();
 const getAllServices = vi.fn();
 const deleteProduct = vi.fn();
+const getAllOrders = vi.fn();
+const getAllReturns = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
-    getAdapter: () => ({ getUserByEmail, getAllProducts, getAllServices, deleteProduct }),
+    getAdapter: () => ({
+      getUserByEmail,
+      getAllProducts,
+      getAllServices,
+      deleteProduct,
+      getAllOrders,
+      getAllReturns,
+    }),
   },
 }));
 
@@ -56,6 +65,8 @@ beforeEach(() => {
   getAllProducts.mockResolvedValue([]);
   getAllServices.mockResolvedValue([]);
   deleteProduct.mockResolvedValue(true);
+  getAllOrders.mockResolvedValue([]);
+  getAllReturns.mockResolvedValue([]);
 });
 
 describe('authenticate', () => {
@@ -217,6 +228,57 @@ describe('requirePermission', () => {
       .set('Authorization', `Bearer ${tokenFor()}`);
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe('the register role', () => {
+  /**
+   * The seeded `standard` role, as migration 008 leaves it. The separation that
+   * matters: a cashier rings sales but cannot refund them, so taking money and
+   * giving it back are not the same grant.
+   */
+  const cashier = () =>
+    withPermissions({
+      inventory: { read: true },
+      orders: { read: true, write: true, delete: false },
+      returns: { read: true, write: false, delete: false },
+    });
+
+  it('may read the catalog and the order list', async () => {
+    getUserByEmail.mockResolvedValue(cashier());
+
+    expect(
+      (await request(app).get('/api/products').set('Authorization', `Bearer ${tokenFor()}`)).status
+    ).toBe(200);
+    expect(
+      (await request(app).get('/api/orders').set('Authorization', `Bearer ${tokenFor()}`)).status
+    ).toBe(200);
+  });
+
+  it('may read returns but not create one', async () => {
+    getUserByEmail.mockResolvedValue(cashier());
+
+    expect(
+      (await request(app).get('/api/returns').set('Authorization', `Bearer ${tokenFor()}`)).status
+    ).toBe(200);
+
+    const refund = await request(app)
+      .post('/api/returns')
+      .set('Authorization', `Bearer ${tokenFor()}`)
+      .send({ originalOrderId: 'o1', items: [], subtotal: 0, total: 0 });
+
+    expect(refund.status).toBe(403);
+  });
+
+  it('cannot delete a product', async () => {
+    getUserByEmail.mockResolvedValue(cashier());
+
+    const response = await request(app)
+      .delete('/api/products/p1')
+      .set('Authorization', `Bearer ${tokenFor()}`);
+
+    expect(response.status).toBe(403);
+    expect(deleteProduct).not.toHaveBeenCalled();
   });
 });
 

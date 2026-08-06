@@ -143,7 +143,7 @@ const discountUsageSchema = z.object({
  * GET /api/discounts/types
  * List all discount types
  */
-router.get('/types', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/types', requirePermission('discounts', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const types = await adapter.getAllDiscountTypes();
@@ -157,7 +157,7 @@ router.get('/types', async (_req: AuthRequest, res: Response, next: NextFunction
  * GET /api/discounts/types/pos
  * Get discount types for POS display
  */
-router.get('/types/pos', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/types/pos', requirePermission('discounts', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const types = await adapter.getDiscountTypesForPOS();
@@ -170,7 +170,7 @@ router.get('/types/pos', async (_req: AuthRequest, res: Response, next: NextFunc
 /**
  * GET /api/discounts/types/:id
  */
-router.get('/types/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/types/:id', requirePermission('discounts', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const type = await adapter.getDiscountTypeById(req.params.id);
@@ -186,7 +186,7 @@ router.get('/types/:id', async (req: AuthRequest, res: Response, next: NextFunct
 /**
  * POST /api/discounts/types
  */
-router.post('/types', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/types', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = discountTypeSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -205,7 +205,7 @@ router.post('/types', requirePermission('settings', 'write'), async (req: AuthRe
 /**
  * PUT /api/discounts/types/:id
  */
-router.put('/types/:id', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/types/:id', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = discountTypeSchema.partial().parse(req.body);
     const adapter = db.getAdapter();
@@ -248,7 +248,7 @@ router.delete('/types/:id', authorize(['admin']), async (req: AuthRequest, res: 
 /**
  * GET /api/discounts/promos
  */
-router.get('/promos', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/promos', requirePermission('discounts', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const promos = await adapter.getAllPromoCodes();
@@ -261,7 +261,7 @@ router.get('/promos', async (_req: AuthRequest, res: Response, next: NextFunctio
 /**
  * GET /api/discounts/promos/:id
  */
-router.get('/promos/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/promos/:id', requirePermission('discounts', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const promo = await adapter.getPromoCodeById(req.params.id);
@@ -277,7 +277,7 @@ router.get('/promos/:id', async (req: AuthRequest, res: Response, next: NextFunc
 /**
  * POST /api/discounts/promos
  */
-router.post('/promos', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/promos', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = promoCodeSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -299,7 +299,7 @@ router.post('/promos', requirePermission('settings', 'write'), async (req: AuthR
 /**
  * PUT /api/discounts/promos/:id
  */
-router.put('/promos/:id', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/promos/:id', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = promoCodeSchema.partial().parse(req.body);
     const adapter = db.getAdapter();
@@ -339,7 +339,7 @@ router.delete('/promos/:id', authorize(['admin']), async (req: AuthRequest, res:
  * POST /api/discounts/promos/validate
  * Validate a promo code for the current cart
  */
-router.post('/promos/validate', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/promos/validate', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = validatePromoSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -451,7 +451,7 @@ router.post('/promos/validate', async (req: AuthRequest, res: Response, next: Ne
  * POST /api/discounts/promos/:id/use
  * Increment promo code usage
  */
-router.post('/promos/:id/use', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/promos/:id/use', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     await adapter.incrementPromoCodeUsage(req.params.id);
@@ -468,7 +468,7 @@ router.post('/promos/:id/use', async (req: AuthRequest, res: Response, next: Nex
 /**
  * GET /api/discounts/employee
  */
-router.get('/employee', requirePermission('settings', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/employee', requirePermission('discounts', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const discounts = await adapter.getAllEmployeeDiscounts();
@@ -481,7 +481,7 @@ router.get('/employee', requirePermission('settings', 'read'), async (_req: Auth
 /**
  * GET /api/discounts/employee/:userId
  */
-router.get('/employee/:userId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/employee/:userId', requirePermission('discounts', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const discount = await adapter.getEmployeeDiscountByUser(req.params.userId);
@@ -541,7 +541,7 @@ router.delete('/employee/:userId', authorize(['admin']), async (req: AuthRequest
 /**
  * GET /api/discounts/usage
  */
-router.get('/usage', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/usage', requirePermission('discounts', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { orderId, customerId, startDate, endDate } = req.query;
@@ -560,7 +560,7 @@ router.get('/usage', async (req: AuthRequest, res: Response, next: NextFunction)
 /**
  * POST /api/discounts/usage
  */
-router.post('/usage', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/usage', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = discountUsageSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -582,7 +582,7 @@ router.post('/usage', async (req: AuthRequest, res: Response, next: NextFunction
  * GET /api/discounts/stats
  * Get discount usage statistics
  */
-router.get('/stats', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/stats', requirePermission('discounts', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { startDate, endDate } = req.query;

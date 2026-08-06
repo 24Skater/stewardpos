@@ -63,9 +63,9 @@ const App = () => (
               <Route path="/admin/audit" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminAudit /></RequireAuth>} />
               <Route path="/admin/components" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminComponents /></RequireAuth>} />
               <Route path="/admin/api-keys" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminApiKeys /></RequireAuth>} />
-              <Route path="/admin/returns" element={<RequireAuth permission={{ domain: "customers", action: "read" }}><AdminReturns /></RequireAuth>} />
-              <Route path="/admin/receipts" element={<RequireAuth permission={{ domain: "customers", action: "read" }}><AdminReceipts /></RequireAuth>} />
-              <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminDiscounts /></RequireAuth>} />
+              <Route path="/admin/returns" element={<RequireAuth permission={{ domain: "returns", action: "read" }}><AdminReturns /></RequireAuth>} />
+              <Route path="/admin/receipts" element={<RequireAuth permission={{ domain: "orders", action: "read" }}><AdminReceipts /></RequireAuth>} />
+              <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </SetupGuard>

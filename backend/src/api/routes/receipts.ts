@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -42,7 +43,7 @@ const searchReceiptsSchema = z.object({
  * GET /api/receipts
  * List all receipts (orders) with pagination
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
@@ -89,7 +90,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
  * GET /api/receipts/search
  * Search receipts with filters
  */
-router.get('/search', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/search', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const params = searchReceiptsSchema.parse(req.query);
     const adapter = db.getAdapter();
@@ -123,7 +124,7 @@ router.get('/search', async (req: AuthRequest, res: Response, next: NextFunction
  * GET /api/receipts/:id
  * Get full receipt details by order ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -158,7 +159,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/receipts/:id/resend
  * Resend receipt to email
  */
-router.post('/:id/resend', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/resend', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const data = resendReceiptSchema.parse(req.body);
@@ -219,7 +220,7 @@ router.post('/:id/resend', async (req: AuthRequest, res: Response, next: NextFun
  * GET /api/receipts/:id/history
  * Get receipt email send history
  */
-router.get('/:id/history', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id/history', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -239,7 +240,7 @@ router.get('/:id/history', async (req: AuthRequest, res: Response, next: NextFun
  * POST /api/receipts/:id/start-return
  * Helper endpoint to start a return from a receipt
  */
-router.post('/:id/start-return', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/start-return', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
