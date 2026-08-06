@@ -253,6 +253,17 @@ export default function POS() {
    * Phase 3 moves this arithmetic server-side; until then the client's figures
    * are what the backend records.
    */
+  /** Strip an applied discount down to what the server needs to re-resolve it. */
+  const toDiscountRequests = (applied: AppliedDiscount[]) =>
+    applied.map((discount) => ({
+      source: discount.source,
+      id: discount.id,
+      code: discount.code,
+      type: discount.type,
+      value: discount.value,
+      reason: discount.source === 'manual' ? discount.name : undefined,
+    }));
+
   const calculateTotals = () => {
     const subtotal = calculateSubtotal();
     const discountTotal = getTotalDiscount();
@@ -561,6 +572,8 @@ export default function POS() {
         discountTotal,
         taxTotal,
         total,
+        // The server recomputes the amounts; this says which discounts to honour.
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: selectedPaymentMethod,
         // Customer information is optional - only include if provided and not empty
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
@@ -725,6 +738,7 @@ export default function POS() {
         discountTotal,
         taxTotal,
         total,
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: 'Card',
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
         cardTransactionId: chargeId,
