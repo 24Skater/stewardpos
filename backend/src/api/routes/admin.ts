@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { authorize, requirePermission } from '../middleware/authorize';
 import { Seeder } from '../../services/seeder';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
@@ -37,7 +38,7 @@ const updateUserSchema = z.object({
  * GET /api/admin/users
  * List all users
  */
-router.get('/users', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/users', requirePermission('users', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const users = await adapter.getAllUsers();
@@ -55,7 +56,7 @@ router.get('/users', async (_req: AuthRequest, res: Response, next: NextFunction
  * POST /api/admin/users
  * Create new user
  */
-router.post('/users', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/users', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userData = createUserSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -90,7 +91,7 @@ router.post('/users', async (req: AuthRequest, res: Response, next: NextFunction
  * PUT /api/admin/users/:id
  * Update user
  */
-router.put('/users/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userData = updateUserSchema.parse(req.body);
@@ -129,7 +130,7 @@ router.put('/users/:id', async (req: AuthRequest, res: Response, next: NextFunct
  * DELETE /api/admin/users/:id
  * Delete user
  */
-router.delete('/users/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/users/:id', requirePermission('users', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -172,7 +173,7 @@ const updateRoleSchema = createRoleSchema.partial();
  * GET /api/admin/roles
  * List all roles
  */
-router.get('/roles', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/roles', requirePermission('users', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const roles = await adapter.getAllRoles();
@@ -190,7 +191,7 @@ router.get('/roles', async (_req: AuthRequest, res: Response, next: NextFunction
  * POST /api/admin/roles
  * Create new role
  */
-router.post('/roles', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/roles', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const roleData = createRoleSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -215,7 +216,7 @@ router.post('/roles', async (req: AuthRequest, res: Response, next: NextFunction
  * PUT /api/admin/roles/:id
  * Update role
  */
-router.put('/roles/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/roles/:id', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const roleData = updateRoleSchema.parse(req.body);
@@ -245,7 +246,7 @@ router.put('/roles/:id', async (req: AuthRequest, res: Response, next: NextFunct
  * DELETE /api/admin/roles/:id
  * Delete role
  */
-router.delete('/roles/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/roles/:id', requirePermission('users', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -304,20 +305,51 @@ const updateSettingsSchema = z.object({
  * GET /api/admin/settings
  * Get settings
  */
-router.get('/settings', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+/**
+ * Strip payment-processor secrets out of a settings payload.
+ *
+ * `config.terminalCredentials` holds live API keys - a Stripe secret key, a
+ * Square access token. They are write-only by design: the settings form needs to
+ * know *whether* a provider is configured, never what the key is, and anyone who
+ * can read settings would otherwise walk away with the store's payment
+ * credentials in a plain GET.
+ *
+ * The replacement flag is what the UI renders as "configured".
+ */
+function withoutSecrets(settings: Record<string, unknown>): Record<string, unknown> {
+  const config = settings.config as Record<string, unknown> | undefined;
+  if (!config || !('terminalCredentials' in config)) return settings;
+
+  const credentials = config.terminalCredentials as Record<string, unknown> | null | undefined;
+  const { terminalCredentials: _omitted, ...rest } = config;
+
+  return {
+    ...settings,
+    config: {
+      ...rest,
+      terminalCredentialsConfigured: Boolean(
+        credentials && Object.values(credentials).some((value) => value)
+      ),
+    },
+  };
+}
+
+router.get('/settings', requirePermission('settings', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const settings = await adapter.getSettings();
 
     res.json({
       success: true,
-      data: settings || {
-        taxRateDefault: 0,
-        storeName: 'StewardPOS',
-        storeEmail: '',
-        storePhone: '',
-        timezone: 'UTC',
-      },
+      data: settings
+        ? withoutSecrets(settings as Record<string, unknown>)
+        : {
+            taxRateDefault: 0,
+            storeName: 'StewardPOS',
+            storeEmail: '',
+            storePhone: '',
+            timezone: 'UTC',
+          },
     });
   } catch (error) {
     next(error);
@@ -328,17 +360,55 @@ router.get('/settings', async (_req: AuthRequest, res: Response, next: NextFunct
  * PUT /api/admin/settings
  * Update settings
  */
-router.put('/settings', async (req: AuthRequest, res: Response, next: NextFunction) => {
+/**
+ * Carry existing terminal credentials through an update that omits them.
+ *
+ * Consequence of {@link withoutSecrets}: the settings form never receives the
+ * stored keys, so it cannot send them back. `config` is replaced wholesale on
+ * write, which without this would mean every save of an unrelated setting - the
+ * store's phone number - silently wiped the payment credentials and took card
+ * payments offline.
+ *
+ * Sending a non-empty `terminalCredentials` still overwrites, which is how a key
+ * gets rotated. Omitting it, or sending an empty object, means "leave as is".
+ */
+async function preserveSecrets(
+  incoming: Record<string, unknown>,
+  adapter: ReturnType<typeof db.getAdapter>
+): Promise<Record<string, unknown>> {
+  const config = incoming.config as Record<string, unknown> | undefined;
+  if (!config) return incoming;
+
+  const submitted = config.terminalCredentials as Record<string, unknown> | undefined;
+  const hasNewCredentials = Boolean(submitted && Object.values(submitted).some((value) => value));
+  if (hasNewCredentials) return incoming;
+
+  const existing = (await adapter.getSettings()) as Record<string, unknown> | null;
+  const storedConfig = existing?.config as Record<string, unknown> | undefined;
+  const stored = storedConfig?.terminalCredentials;
+
+  if (!stored) {
+    // Nothing to carry over; drop the empty placeholder rather than storing it.
+    const { terminalCredentials: _unset, ...rest } = config;
+    return { ...incoming, config: rest };
+  }
+
+  return { ...incoming, config: { ...config, terminalCredentials: stored } };
+}
+
+router.put('/settings', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const settingsData = updateSettingsSchema.parse(req.body);
     const adapter = db.getAdapter();
-    const settings = await adapter.updateSettings(settingsData);
+    const settings = await adapter.updateSettings(
+      await preserveSecrets(settingsData as Record<string, unknown>, adapter)
+    );
 
     logger.info('Settings updated');
 
     res.json({
       success: true,
-      data: settings,
+      data: withoutSecrets(settings as Record<string, unknown>),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -355,7 +425,7 @@ router.put('/settings', async (req: AuthRequest, res: Response, next: NextFuncti
  * GET /api/admin/audit
  * Get audit logs
  */
-router.get('/audit', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/audit', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
@@ -379,7 +449,7 @@ router.get('/audit', async (req: AuthRequest, res: Response, next: NextFunction)
  * POST /api/admin/reset-database
  * Reset database - clears all data and re-seeds with default data
  */
-router.post('/reset-database', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/reset-database', authorize(['admin']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Only allow admin users to reset database
     if (!req.user) {

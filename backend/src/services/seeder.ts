@@ -96,16 +96,22 @@ export class Seeder {
         }),
       },
       {
+        // The register's role. `settings.read` is required, not a courtesy: the
+        // POS screen needs the store's tax rate, branding, and which tenders are
+        // enabled, and reads them from settings. Payment-processor keys are
+        // stripped from that response server-side, so this grants a cashier
+        // store configuration, not credentials. `customers.read` lets them
+        // attach a sale to an existing customer.
         name: 'Standard',
         system_role: 'standard',
         permissions: JSON.stringify({
           inventory: { read: true, write: false, delete: false },
           reports: { read: false, write: false, delete: false },
           exports: { read: false, write: false, delete: false },
-          settings: { read: false, write: false, delete: false },
+          settings: { read: true, write: false, delete: false },
           users: { read: false, write: false, delete: false },
-          services: { read: false, write: false, delete: false },
-          customers: { read: false, write: false, delete: false },
+          services: { read: true, write: false, delete: false },
+          customers: { read: true, write: false, delete: false },
         }),
       },
     ];

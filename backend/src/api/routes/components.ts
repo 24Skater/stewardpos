@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { authorize, requirePermission } from '../middleware/authorize';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
@@ -30,7 +31,7 @@ router.use(authenticate);
  * GET /api/admin/components
  * Get list of all dependencies with current versions
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Check if user is admin
     if (!req.user) {
@@ -111,7 +112,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
  * GET /api/admin/components/updates
  * Check for available updates for all packages
  */
-router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/updates', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Check admin access
     if (!req.user) {
@@ -212,7 +213,7 @@ router.get('/updates', async (req: AuthRequest, res: Response, next: NextFunctio
  * POST /api/admin/components/update
  * Update one or more packages
  */
-router.post('/update', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/update', authorize(['admin']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Check admin access
     if (!req.user) {
@@ -279,7 +280,7 @@ router.post('/update', async (req: AuthRequest, res: Response, next: NextFunctio
  * POST /api/admin/components/update-all
  * Update all packages to latest versions
  */
-router.post('/update-all', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/update-all', authorize(['admin']), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     // Check admin access
     if (!req.user) {

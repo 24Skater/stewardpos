@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize } from '../middleware/authorize';
+import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -44,7 +44,7 @@ const updateCustomerSchema = createCustomerSchema.partial();
  * GET /api/customers
  * List all customers
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('customers', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const customers = await adapter.getAllCustomers();
@@ -64,7 +64,7 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
  * GET /api/customers/:id
  * Get customer by ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('customers', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -87,7 +87,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/customers
  * Create new customer
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const customerData = createCustomerSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -112,7 +112,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
  * PUT /api/customers/:id
  * Update customer
  */
-router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const customerData = updateCustomerSchema.parse(req.body);
@@ -142,7 +142,7 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * DELETE /api/customers/:id
  * Delete customer (will fail if customer has related records)
  */
-router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', requirePermission('customers', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -193,7 +193,7 @@ const archiveCustomerSchema = z.object({
  * Archive customer and their related records (quotes, orders)
  * Moves data to archive tables for potential restoration later
  */
-router.post('/:id/archive', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/archive', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { reason } = archiveCustomerSchema.parse(req.body);

@@ -35,6 +35,12 @@ export interface LoginRequest {
 /** Payload of POST /api/auth/login. */
 export interface LoginResponse {
   token: string;
+  /**
+   * The token's lifetime as the server issued it (e.g. `'24h'`), so the client
+   * does not have to assume one. Optional for compatibility with a backend
+   * predating this field.
+   */
+  expiresIn?: string;
   user: {
     id: string;
     email: string;
@@ -359,7 +365,15 @@ export interface StoreConfig {
   };
   demoMode?: boolean;
   paymentMethods?: PaymentMethodsConfig;
+  /**
+   * Write-only. The server strips these from every response, so this is set when
+   * *sending* new keys and is always absent on read - see
+   * {@link StoreConfig.terminalCredentialsConfigured}. Omit it (or send `{}`) to
+   * leave the stored keys untouched.
+   */
   terminalCredentials?: TerminalCredentials;
+  /** Read-only: whether any terminal credential is stored. */
+  terminalCredentialsConfigured?: boolean;
 }
 
 export interface Settings {

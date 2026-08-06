@@ -21,6 +21,12 @@ COPY . .
 # Use empty string for relative paths (works with nginx proxy)
 ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+# Vite inlines VITE_* at build time, so these have to be build args - setting them
+# in `environment:` on the running container has no effect on an already-built
+# bundle. Off by default: only the demo deployment advertises its credentials.
+ARG VITE_DEMO_MODE=false
+ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 RUN ./node_modules/.bin/vite build
 
 # Production stage
