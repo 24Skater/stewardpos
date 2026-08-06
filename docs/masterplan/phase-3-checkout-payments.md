@@ -152,3 +152,51 @@ branding settings (Phase 6 provides the config UI; here consume it).
 **Acceptance criteria.** A completed sale yields a correct, branded receipt that prints and emails.
 **Verification.** Complete a sale → open its receipt (correct totals) → email it (console adapter logs
 the message in dev; SMTP delivers in a configured env).
+
+---
+
+## Progress notes (2026-08-06)
+
+**Partially done, ahead of the stated entry criteria.** Phase 2 is not fully
+green (P2-T6 `org_id` is untouched), but the pricing hole was too serious to
+leave: `POST /api/orders` stored whatever totals it was handed, so a shaped
+request bought a $1 item for $0.01. Verified before the fix, on the live stack.
+
+**Landed** — `backend/src/services/pricing.ts` (`repriceOrder`) and its use in
+`POST /api/orders`:
+
+- Line prices come from the catalog. `unitPrice`, `lineTotal`, `subtotal`,
+  `taxTotal`, and `total` are read off the request and discarded; only product
+  and variant ids, quantities, and notes are believed.
+- `nameSnapshot`, size, and colour are snapshotted from the catalog too, so a
+  receipt names what was actually sold rather than what the caller claimed.
+- Tax comes from store settings.
+- All arithmetic is in integer cents, converting back to dollars only at the API
+  boundary.
+- Unknown products, unknown or disabled variants, fractional quantities, and
+  insufficient stock are rejected as 400s. Quantities are summed per variant
+  first, so two lines for the same variant cannot each pass a stock check that
+  the pair would fail.
+
+Verified live after the fix: a request asking to pay $0.01 for a $1 item is
+charged $1 and its forged item name is replaced; a request for 99,999 units is
+refused with the remaining stock; a normal two-unit sale prices correctly and
+decrements stock by two.
+
+**Not done, and why it matters:**
+
+- **Discounts are still client-supplied.** `discountTotal` is clamped to the
+  subtotal so a sale cannot go negative, but a forged request can still ask for
+  100% off. Closing this means validating each applied discount against the
+  discount catalog — checking the type exists, is active, is flagged
+  `showInPos`, and that the computed amount matches — which needs the request to
+  carry the applied discounts rather than a single number. That is the remaining
+  half of C1.
+- Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
+  untouched.
+- Atomicity is partial: `createOrder` already wraps the order, its items, and
+  the stock decrement in one transaction, but the stock check in `repriceOrder`
+  happens before that transaction opens, so two simultaneous sales of the last
+  unit can still both pass. Making the decrement conditional
+  (`UPDATE ... WHERE stock >= $n`) and failing the transaction on no-op is the
+  fix (P3-T3).

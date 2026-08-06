@@ -152,9 +152,14 @@ create/update/delete handlers; `backend/src/api/routes/admin.ts` (list/query aud
 route), P2-T3 (guard test suite), P2-T5 (orders/returns/discounts permissions +
 migration 008), P2-T7 (audit logging).
 
-**Not done:** P2-T4 (setup wizard is functional but its `status` contract and the
-post-completion `409` lock have not been re-verified against the plan), P2-T6
-(nullable `org_id` — untouched).
+P2-T4 is verified: on a completed install `GET /api/setup/status` reports
+`needsSetup: false`, and both `POST /api/setup/complete` and
+`POST /api/setup/test-database` return `409` — so the wizard cannot be replayed
+to mint a second admin. (The plan specifies `{ completed: boolean }`; the
+implementation returns the richer `isInitialized`/`hasAdminUser`/`needsSetup`,
+which is what the client consumes. Left as-is.)
+
+**Not done:** P2-T6 (nullable `org_id` — untouched).
 
 ### Defects found while doing the above
 

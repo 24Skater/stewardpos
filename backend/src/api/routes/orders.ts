@@ -6,6 +6,7 @@ import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import { repriceOrder, type PriceableProduct } from '../../services/pricing';
 
 const router = Router();
 
@@ -46,6 +47,12 @@ const orderItemSchema = z.object({
   ),
 });
 
+/**
+ * The money fields here are accepted for backward compatibility and then
+ * ignored: the server reprices from the catalog. `discountTotal` is the one
+ * exception - it is still honoured, clamped to the subtotal, until discounts are
+ * validated against the discount catalog too.
+ */
 const createOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
   subtotal: z.number().min(0),
@@ -138,7 +145,36 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
   try {
     const orderData = createOrderSchema.parse(req.body);
     const adapter = db.getAdapter();
-    const order = await adapter.createOrder(orderData);
+
+    // Reprice from the catalog. Everything the client said about money -
+    // unitPrice, lineTotal, subtotal, taxTotal, total - is discarded; only the
+    // identifiers and quantities survive. Before this, the API stored whatever
+    // totals it was handed, so a shaped request could buy anything for a penny.
+    const catalog = new Map<string, PriceableProduct>();
+    for (const productId of new Set(orderData.items.map((item) => item.productId))) {
+      const product = await adapter.getProductById(productId);
+      if (product) catalog.set(productId, product as unknown as PriceableProduct);
+    }
+
+    const settings = await adapter.getSettings();
+    const priced = repriceOrder(
+      orderData.items.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        notes: item.notes,
+      })),
+      catalog,
+      {
+        taxRate: Number((settings as { taxRateDefault?: number } | null)?.taxRateDefault ?? 0),
+        requestedDiscount: orderData.discountTotal,
+      }
+    );
+
+    const order = await adapter.createOrder({
+      ...orderData,
+      ...priced,
+    });
 
     // If this was a card payment, link the terminal transaction to the order
     if (orderData.cardTransactionId) {
