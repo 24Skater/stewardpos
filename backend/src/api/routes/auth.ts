@@ -72,6 +72,12 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
       success: true,
       data: {
         token,
+        // The client cannot read the token's `exp` without decoding it, and it
+        // used to assume a 7-day lifetime regardless of what the server issued.
+        // Deployed without JWT_EXPIRES_IN the server signs for 24h, so that
+        // assumption left the client sitting on a dead token for six days,
+        // never refreshing, 401ing on every call. Say it explicitly instead.
+        expiresIn: config.jwt.expiresIn,
         user: {
           id: user.id,
           email: user.email,
@@ -163,7 +169,7 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response, ne
 
     res.json({
       success: true,
-      data: { token },
+      data: { token, expiresIn: config.jwt.expiresIn },
     });
   } catch (error) {
     next(error);

@@ -92,13 +92,26 @@ export async function login(email: string, password: string): Promise<AuthSessio
   return null;
 }
 
+/**
+ * Whether the session may take `action` on `domain`.
+ *
+ * Admins pass regardless, matching the server's `requirePermission`: a resource
+ * key added later must not lock out the account that has to configure it. Keep
+ * the two in step - this decides what the UI offers, the server decides what it
+ * accepts, and a mismatch shows up as a control that always 403s.
+ */
 export function hasPermission(
   session: AuthSession | null,
   domain: keyof RolePermissions,
   action: 'read' | 'write' | 'delete'
 ): boolean {
   if (!session) return false;
-  return session.permissions[domain][action];
+  if (isAdmin(session)) return true;
+  return session.permissions[domain]?.[action] === true;
+}
+
+export function isAdmin(session: AuthSession | null): boolean {
+  return (session?.user?.roles || []).some((role) => role.systemRole === 'admin');
 }
 
 export function hasAnyRole(session: AuthSession | null, roleNames: string[]): boolean {
@@ -124,9 +137,13 @@ function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions 
   for (const perms of permissionsArray) {
     for (const domain in merged) {
       const key = domain as keyof RolePermissions;
-      merged[key].read = merged[key].read || perms[key].read;
-      merged[key].write = merged[key].write || perms[key].write;
-      merged[key].delete = merged[key].delete || perms[key].delete;
+      // A role's permissions JSONB need not carry every key - one written before
+      // a resource existed, or edited by hand, simply omits it. Reading through
+      // an absent key would throw and take down every page behind the session.
+      const granted = perms?.[key];
+      merged[key].read = merged[key].read || granted?.read === true;
+      merged[key].write = merged[key].write || granted?.write === true;
+      merged[key].delete = merged[key].delete || granted?.delete === true;
     }
   }
 
