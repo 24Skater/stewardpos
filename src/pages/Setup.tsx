@@ -8,8 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { apiClient } from '@/lib/api-client';
-import { setupApi } from '@/lib/api';
+import { setupApi, type AuthMethod } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Database, 
@@ -64,7 +63,7 @@ export default function Setup() {
   });
 
   const [auth, setAuth] = useState({
-    methods: ['local'] as string[],
+    methods: ['local'] as AuthMethod[],
     google: { clientId: '', clientSecret: '' },
     oidc: { issuer: '', clientId: '', clientSecret: '' },
   });
@@ -165,21 +164,18 @@ export default function Setup() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post<unknown>(
-        '/api/setup/complete',
-        {
-          adminUser: {
-            name: adminUser.name,
-            email: adminUser.email,
-            password: adminUser.password,
-          },
-          database: dbConfig,
-          auth,
-          environment,
-          demoMode,
-          replication: replication.enabled ? replication : undefined,
-        }
-      );
+      const response = await setupApi.complete({
+        adminUser: {
+          name: adminUser.name,
+          email: adminUser.email,
+          password: adminUser.password,
+        },
+        database: dbConfig,
+        auth,
+        environment,
+        demoMode,
+        replication: replication.enabled ? replication : undefined,
+      });
 
       toast({
         title: 'Setup Complete!',

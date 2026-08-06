@@ -16,7 +16,9 @@ export const customersApi = {
   update: (id: string, body: UpdateCustomerRequest) =>
     apiClient.put<Customer>(`/api/customers/${id}`, body),
   remove: (id: string) => apiClient.delete<void>(`/api/customers/${id}`),
-  archive: (id: string) => apiClient.post<Customer>(`/api/customers/${id}/archive`),
+  /** Soft-delete, preserving the customer's order history. `reason` is recorded. */
+  archive: (id: string, reason?: string) =>
+    apiClient.post<Customer>(`/api/customers/${id}/archive`, { reason }),
   /** Admin only, irreversible: deletes the customer and every related record. */
   purge: (id: string) => apiClient.delete<void>(`/api/customers/${id}/permanent`),
 };

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { apiClient } from '@/lib/api-client';
+import { returnsApi, type RefundMethod, type ReturnStatus } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { getErrorMessage } from '@/lib/errors';
@@ -102,13 +102,9 @@ export default function AdminReturns() {
   const loadReturns = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-      const response = await apiClient.get<Return[]>(
-        `/api/returns?${params.toString()}`
-      );
+      const response = await returnsApi.list({
+        status: statusFilter === 'all' ? undefined : (statusFilter as ReturnStatus),
+      });
       setReturns(response);
     } catch (error: unknown) {
       toast({ title: 'Error loading returns', description: getErrorMessage(error), variant: 'destructive' });
@@ -119,7 +115,7 @@ export default function AdminReturns() {
 
   const loadStats = async () => {
     try {
-      const response = await apiClient.get<ReturnStats>('/api/returns/stats');
+      const response = await returnsApi.stats();
       setStats(response);
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -128,7 +124,7 @@ export default function AdminReturns() {
 
   const loadReturnDetails = async (returnId: string) => {
     try {
-      const response = await apiClient.get<Return>(`/api/returns/${returnId}`);
+      const response = await returnsApi.get(returnId);
       setSelectedReturn(response);
       setDetailsOpen(true);
     } catch (error: unknown) {
@@ -142,23 +138,20 @@ export default function AdminReturns() {
     setProcessing(true);
     try {
       if (actionType === 'refund') {
-        await apiClient.post(`/api/returns/${selectedReturn.id}/process-refund`, {
-          refundMethod,
+        await returnsApi.processRefund(selectedReturn.id, {
+          refundMethod: refundMethod as RefundMethod,
           amount: refundAmount ? parseFloat(refundAmount) : undefined,
           notes: actionNotes,
         });
         toast({ title: 'Refund processed successfully' });
       } else if (actionType === 'restock') {
-        await apiClient.post(`/api/returns/${selectedReturn.id}/restock`, {});
+        await returnsApi.restock(selectedReturn.id);
         toast({ title: 'Items restocked successfully' });
       } else {
         const newStatus = actionType === 'approve' ? 'approved' 
           : actionType === 'reject' ? 'rejected' 
           : 'completed';
-        await apiClient.put(`/api/returns/${selectedReturn.id}/status`, {
-          status: newStatus,
-          internalNotes: actionNotes,
-        });
+        await returnsApi.setStatus(selectedReturn.id, newStatus, actionNotes);
         toast({ title: `Return ${newStatus}` });
       }
       
