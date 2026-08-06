@@ -21,7 +21,14 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { apiClient } from '@/lib/api-client';
+import {
+  customersApi,
+  ordersApi,
+  productsApi,
+  quotesApi,
+  returnsApi,
+  servicesApi,
+} from '@/lib/api';
 import { 
   exportToCSV,
   exportToExcel,
@@ -142,12 +149,12 @@ export default function AdminExports() {
   const loadAllData = async () => {
     try {
       const [ordersRes, quotesRes, customersRes, servicesRes, productsRes, returnsRes] = await Promise.all([
-        apiClient.get<Order[]>('/api/orders'),
-        apiClient.get<Quote[]>('/api/quotes'),
-        apiClient.get<Customer[]>('/api/customers'),
-        apiClient.get<Service[]>('/api/services'),
-        apiClient.get<Product[]>('/api/products'),
-        apiClient.get<Return[]>('/api/returns'),
+        ordersApi.list(),
+        quotesApi.list(),
+        customersApi.list(),
+        servicesApi.list(),
+        productsApi.list(),
+        returnsApi.list(),
       ]);
 
       if (ordersRes) setOrders(ordersRes);
