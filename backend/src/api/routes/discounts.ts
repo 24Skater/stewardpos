@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize } from '../middleware/authorize';
+import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -186,7 +186,7 @@ router.get('/types/:id', async (req: AuthRequest, res: Response, next: NextFunct
 /**
  * POST /api/discounts/types
  */
-router.post('/types', authorize(['admin', 'manager']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/types', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = discountTypeSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -205,7 +205,7 @@ router.post('/types', authorize(['admin', 'manager']), async (req: AuthRequest, 
 /**
  * PUT /api/discounts/types/:id
  */
-router.put('/types/:id', authorize(['admin', 'manager']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/types/:id', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = discountTypeSchema.partial().parse(req.body);
     const adapter = db.getAdapter();
@@ -277,7 +277,7 @@ router.get('/promos/:id', async (req: AuthRequest, res: Response, next: NextFunc
 /**
  * POST /api/discounts/promos
  */
-router.post('/promos', authorize(['admin', 'manager']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/promos', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = promoCodeSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -299,7 +299,7 @@ router.post('/promos', authorize(['admin', 'manager']), async (req: AuthRequest,
 /**
  * PUT /api/discounts/promos/:id
  */
-router.put('/promos/:id', authorize(['admin', 'manager']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/promos/:id', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = promoCodeSchema.partial().parse(req.body);
     const adapter = db.getAdapter();
@@ -468,7 +468,7 @@ router.post('/promos/:id/use', async (req: AuthRequest, res: Response, next: Nex
 /**
  * GET /api/discounts/employee
  */
-router.get('/employee', authorize(['admin', 'manager']), async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/employee', requirePermission('settings', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const discounts = await adapter.getAllEmployeeDiscounts();
