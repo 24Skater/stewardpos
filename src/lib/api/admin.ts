@@ -21,6 +21,8 @@ export type UpdateUserRequest = Partial<CreateUserRequest>;
 
 export interface RoleInput {
   name: string;
+  /** Marks the role as one of the built-in archetypes; omit for custom roles. */
+  systemRole?: 'admin' | 'supervisor' | 'reporter' | 'standard';
   permissions: RolePermissions;
 }
 

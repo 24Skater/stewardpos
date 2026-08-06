@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { apiClient } from '@/lib/api-client';
+import { setupApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
 interface SetupStatus {
@@ -34,7 +34,7 @@ export default function SetupGuard({ children }: SetupGuardProps) {
 
   const checkSetupStatus = async () => {
     try {
-      const response = await apiClient.get<SetupStatus>('/api/setup/status');
+      const response = await setupApi.status();
       if (response && response && response) {
         if (response.needsSetup) {
           setNeedsSetup(true);

@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { apiClient } from '@/lib/api-client';
+import { adminApi } from '@/lib/api';
 import { Search, Eye, RefreshCw } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -38,7 +38,7 @@ export default function AdminAudit() {
   const loadLogs = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<AuditLog[]>('/api/admin/audit?limit=100');
+      const response = await adminApi.audit({ limit: 100 });
       setLogs(response);
     } catch (error: unknown) {
       toast({

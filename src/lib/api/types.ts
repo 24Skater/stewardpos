@@ -21,7 +21,7 @@
  * this is Phase 7 hardening.
  */
 
-import type { ApiRole, RolePermissions } from '../permissions';
+import type { ApiRole, AppRole, RolePermissions } from '../permissions';
 
 export type { AppRole, Permission, RolePermissions, ApiRole } from '../permissions';
 
@@ -236,39 +236,55 @@ export type UpdateCustomerRequest = Partial<CreateCustomerRequest>;
 
 // ===== Services & quotes =====
 
+/** Mirrors the `unitType` enum in `backend/src/api/routes/services.ts`. */
+export type ServiceUnitType = 'flat' | 'hourly' | 'daily' | 'per_item';
+
 export interface Service {
   id: string;
   name: string;
   category: string;
-  description: string;
+  description?: string;
   basePrice?: number;
-  unitType?: 'flat' | 'hourly' | 'per-item';
+  unitType: ServiceUnitType;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface QuoteItem {
-  itemId?: string;
-  variantId?: string;
+  id: string;
+  quoteId?: string;
   serviceId?: string;
-  name: string;
+  /** Joined from `services.name` when the line references a catalog service. */
+  serviceName?: string;
+  description: string;
   quantity: number;
   unitPrice: number;
+  lineTotal: number;
 }
 
-export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
+export type QuoteStatus =
+  | 'draft'
+  | 'sent'
+  | 'accepted'
+  | 'rejected'
+  | 'completed'
+  | 'cancelled';
 
 export interface Quote {
   id: string;
-  customerId: string;
-  items: QuoteItem[];
+  customerId?: string;
+  /** Joined from the customer record; not a column on `quotes`. */
+  customerName?: string;
+  customerEmail?: string;
+  status: QuoteStatus;
   subtotal: number;
   taxTotal: number;
   total: number;
-  status: QuoteStatus;
+  notes?: string;
   createdAt: number;
-  updatedAt: number;
+  expiresAt?: number;
+  items: QuoteItem[];
 }
 
 // ===== Admin: users, roles, settings, audit =====
@@ -276,7 +292,8 @@ export interface Quote {
 export interface Role {
   id: string;
   name: string;
-  systemRole?: string;
+  /** Set only on the built-in archetypes; custom roles leave it unset. */
+  systemRole?: AppRole;
   permissions: RolePermissions;
 }
 

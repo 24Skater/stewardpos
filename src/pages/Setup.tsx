@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { apiClient } from '@/lib/api-client';
+import { setupApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Database, 
@@ -82,7 +83,7 @@ export default function Setup() {
 
   const checkSetupStatus = async () => {
     try {
-      const response = await apiClient.get<SetupStatus>('/api/setup/status');
+      const response = await setupApi.status();
       setSetupStatus(response);
       if (!response.needsSetup) {
         // Setup already complete, redirect to login
@@ -97,10 +98,7 @@ export default function Setup() {
   const testDatabaseConnection = async () => {
     setTestingDb(true);
     try {
-      const response = await apiClient.post<void>(
-        '/api/setup/test-database',
-        database
-      );
+      await setupApi.testDatabase(database);
       
       toast({
         title: 'Success',

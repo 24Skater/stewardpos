@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthLayout, Button, Input, Label } from '@steward-apps/ui';
-import { apiClient } from '@/lib/api-client';
+import { authApi } from '@/lib/api';
 import { authStore } from '@/lib/auth-store';
 import type { LoginRequest, LoginResponse } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -20,10 +20,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await apiClient.post<LoginResponse>('/api/auth/login', {
-        email,
-        password,
-      } as LoginRequest);
+      const response = await authApi.login({ email, password });
 
       if (response.token) {
         authStore.setToken(response.token, '7d');

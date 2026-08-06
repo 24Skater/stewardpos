@@ -53,7 +53,7 @@ export type {
   ReturnReasonCode,
 } from './returns';
 export type { CreateServiceRequest, UpdateServiceRequest } from './services';
-export type { CreateQuoteRequest, UpdateQuoteRequest } from './quotes';
+export type { CreateQuoteRequest, QuoteItemInput, UpdateQuoteRequest } from './quotes';
 export type {
   AuthMethod,
   CompleteSetupRequest,

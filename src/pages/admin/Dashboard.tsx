@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { apiClient } from '@/lib/api-client';
+import { customersApi, discountsApi, ordersApi, productsApi, quotesApi, servicesApi } from '@/lib/api';
 import type { Customer } from '@/lib/api';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
@@ -56,12 +56,12 @@ export default function Dashboard() {
   const loadStats = async () => {
     try {
       const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse] = await Promise.all([
-        apiClient.get<Order[]>('/api/orders'),
-        apiClient.get<Product[]>('/api/products'),
-        apiClient.get<Quote[]>('/api/quotes'),
-        apiClient.get<Service[]>('/api/services'),
-        apiClient.get<Customer[]>('/api/customers'),
-        apiClient.get<{ totalDiscounts: number; totalDiscountAmount: number }>('/api/discounts/stats'),
+        ordersApi.list(),
+        productsApi.list(),
+        quotesApi.list(),
+        servicesApi.list(),
+        customersApi.list(),
+        discountsApi.stats(),
       ]);
 
       const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };

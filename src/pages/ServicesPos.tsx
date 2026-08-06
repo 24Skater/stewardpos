@@ -7,8 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { apiClient } from '@/lib/api-client';
-import type { QuoteItem } from '@/lib/api';
+import { quotesApi, servicesApi, customersApi } from '@/lib/api';
+import type {
+  CreateQuoteRequest,
+  QuoteItemInput,
+  ServiceUnitType,
+} from '@/lib/api';
 import { Search, Plus, UserPlus, ShoppingCart, Calendar, MapPin, Clock, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -20,7 +24,7 @@ interface Service {
   category: string;
   description?: string;
   basePrice?: number;
-  unitType: string;
+  unitType: ServiceUnitType;
   isActive: boolean;
 }
 
@@ -32,8 +36,18 @@ interface Customer {
   phone?: string;
 }
 
-interface ServiceCartItem extends QuoteItem {
+/**
+ * A service line while the quote is still being assembled.
+ *
+ * Deliberately not a {@link QuoteItemInput}: the description sent to the API is
+ * composed from the service name and the collected details at submit time, and
+ * the line total is derived, so neither belongs in draft state.
+ */
+interface ServiceCartItem {
+  serviceId: string;
   serviceName: string;
+  quantity: number;
+  unitPrice: number;
   details: Record<string, string>;
 }
 
@@ -59,8 +73,8 @@ export default function ServicesPos() {
     try {
       setLoading(true);
       const [servicesResponse, customersResponse] = await Promise.all([
-        apiClient.get<Service[]>('/api/services'),
-        apiClient.get<Customer[]>('/api/customers'),
+        servicesApi.list(),
+        customersApi.list(),
       ]);
 
       setServices(servicesResponse.filter(s => s.isActive));
@@ -93,7 +107,6 @@ export default function ServicesPos() {
     const cartItem: ServiceCartItem = {
       serviceId: selectedService.id,
       serviceName: selectedService.name,
-      name: selectedService.name,
       quantity: 1,
       unitPrice: selectedService.basePrice || 0,
       details: serviceDetails,
@@ -113,7 +126,7 @@ export default function ServicesPos() {
     const formData = new FormData(e.currentTarget);
 
     try {
-      const response = await apiClient.post<Customer>('/api/customers', {
+      const response = await customersApi.create({
         name: formData.get('name') as string,
         email: formData.get('email') as string,
         phone: formData.get('phone') as string,
@@ -145,9 +158,9 @@ export default function ServicesPos() {
     const total = subtotal + taxTotal;
 
     try {
-      const quoteData = {
+      const quoteData: CreateQuoteRequest = {
         customerId: selectedCustomer.id,
-        items: cart.map(item => ({
+        items: cart.map((item): QuoteItemInput => ({
           serviceId: item.serviceId,
           description: `${item.serviceName}${Object.keys(item.details).length > 0 ? ' - ' + Object.entries(item.details).map(([k, v]) => `${k}: ${v}`).join(', ') : ''}`,
           quantity: item.quantity,
@@ -161,7 +174,7 @@ export default function ServicesPos() {
         notes: '',
       };
 
-      const response = await apiClient.post<{ id: string }>('/api/quotes', quoteData);
+      await quotesApi.create(quoteData);
       
       toast({ 
         title: 'Quote created successfully',
