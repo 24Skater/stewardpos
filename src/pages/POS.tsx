@@ -602,7 +602,7 @@ export default function POS() {
             await discountsApi.promos.markUsed(discount.id);
           }
         } catch (error) {
-          console.error('Failed to log discount usage:', error);
+          logger.error('Failed to log discount usage', error);
         }
       }
 
@@ -611,11 +611,14 @@ export default function POS() {
         description: `Order ${response.id} saved successfully`,
       });
 
+      // Show what the server actually recorded, not what this screen computed.
+      // The two can differ - a price edited since the catalog was cached, or a
+      // discount the server declined - and a receipt has to match the sale.
       setLastOrderId(response.id);
-      setLastOrderTotal(total);
-      setLastOrderSubtotal(subtotal);
-      setLastOrderTax(taxTotal);
-      setLastOrderDiscount(discountTotal);
+      setLastOrderTotal(response.total);
+      setLastOrderSubtotal(response.subtotal);
+      setLastOrderTax(response.taxTotal);
+      setLastOrderDiscount(response.discountTotal);
       setLastOrderPaymentMethod(selectedPaymentMethod);
       setLastOrderItems([...cart]);
       setLastOrderAuthCode(undefined);
@@ -767,7 +770,7 @@ export default function POS() {
             await discountsApi.promos.markUsed(discount.id);
           }
         } catch (error) {
-          console.error('Failed to log discount usage:', error);
+          logger.error('Failed to log discount usage', error);
         }
       }
 
@@ -776,11 +779,14 @@ export default function POS() {
         description: `Order ${response.id} saved successfully`,
       });
 
+      // Show what the server actually recorded, not what this screen computed.
+      // The two can differ - a price edited since the catalog was cached, or a
+      // discount the server declined - and a receipt has to match the sale.
       setLastOrderId(response.id);
-      setLastOrderTotal(total);
-      setLastOrderSubtotal(subtotal);
-      setLastOrderTax(taxTotal);
-      setLastOrderDiscount(discountTotal);
+      setLastOrderTotal(response.total);
+      setLastOrderSubtotal(response.subtotal);
+      setLastOrderTax(response.taxTotal);
+      setLastOrderDiscount(response.discountTotal);
       setLastOrderPaymentMethod('Card');
       setLastOrderItems([...cart]);
       setLastOrderAuthCode(authCode);
