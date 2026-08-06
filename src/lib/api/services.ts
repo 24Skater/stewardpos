@@ -1,6 +1,8 @@
 import { apiClient } from '../api-client';
 import type { Service } from './types';
 
+export type { ServiceUnitType } from './types';
+
 export type CreateServiceRequest = Omit<Service, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateServiceRequest = Partial<CreateServiceRequest>;
 

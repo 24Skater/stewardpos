@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { apiClient } from '@/lib/api-client';
+import { ordersApi, quotesApi } from '@/lib/api';
 import { DollarSign, ShoppingCart, Briefcase, FileText } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -67,8 +67,8 @@ export default function AdminReports() {
   const loadReports = async () => {
     try {
       const [ordersResponse, quotesResponse] = await Promise.all([
-        apiClient.get<Order[]>('/api/orders'),
-        apiClient.get<Quote[]>('/api/quotes'),
+        ordersApi.list(),
+        quotesApi.list(),
       ]);
 
       const orders = ordersResponse ? ordersResponse : [];

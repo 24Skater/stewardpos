@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiClient } from '@/lib/api-client';
+import { adminApi, productsApi } from '@/lib/api';
 import type { CreateProductRequest, Product, UpdateProductRequest } from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
@@ -44,7 +44,7 @@ export default function AdminInventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<Product[]>('/api/products');
+      const response = await productsApi.list();
       setProducts(response);
     } catch (error: unknown) {
       toast({
@@ -75,7 +75,7 @@ export default function AdminInventory() {
     }
 
     try {
-      const response = await apiClient.post<void>('/api/admin/reset-database');
+      const response = await adminApi.resetDatabase();
       toast({ 
         title: 'Database Reset', 
         description: 'Database reset successfully. Fresh inventory loaded.',
@@ -166,10 +166,7 @@ export default function AdminInventory() {
           image: uploadedImage || editingProduct.image,
           variants: editingProduct.variants || [],
         };
-        const response = await apiClient.post<Product>(
-          '/api/products',
-          createData
-        );
+        const response = await productsApi.create(createData);
         
         setEditDialogOpen(false);
         setEditingProduct(null);
@@ -187,10 +184,7 @@ export default function AdminInventory() {
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
         };
-        const response = await apiClient.put<Product>(
-          `/api/products/${editingProduct.id}`,
-          updateData
-        );
+        const response = await productsApi.update(editingProduct.id, updateData);
         
         setEditDialogOpen(false);
         setEditingProduct(null);
@@ -211,7 +205,7 @@ export default function AdminInventory() {
   const handleDelete = async (productId: string) => {
     if (confirm('Delete this product? This cannot be undone.')) {
       try {
-        const response = await apiClient.delete<void>(`/api/products/${productId}`);
+        const response = await productsApi.remove(productId);
         await loadProducts();
         toast({ title: 'Product deleted' });
       } catch (error: unknown) {

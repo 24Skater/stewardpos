@@ -1,13 +1,24 @@
 import { apiClient } from '../api-client';
-import type { Quote, QuoteItem, QuoteStatus } from './types';
+import type { Quote, QuoteStatus } from './types';
+
+/** A quote line as the API accepts it — no `id`, which the server assigns. */
+export interface QuoteItemInput {
+  serviceId?: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
 
 export interface CreateQuoteRequest {
-  customerId: string;
-  items: QuoteItem[];
+  customerId?: string;
+  items: QuoteItemInput[];
   subtotal: number;
   taxTotal?: number;
   total: number;
+  notes?: string;
   status?: QuoteStatus;
+  expiresAt?: number;
 }
 
 export type UpdateQuoteRequest = Partial<CreateQuoteRequest>;

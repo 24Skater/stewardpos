@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiClient } from "@/lib/api-client";
+import { ordersApi } from '@/lib/api';
 import type { Order, OrderItem } from "@/lib/api";
 import { ArrowLeft, DollarSign, ShoppingCart, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -25,7 +25,7 @@ export default function Reports() {
       const now = Date.now();
       const startDate = now - dateRange * 86400000;
 
-      const response = await apiClient.get<Order[]>('/api/orders');
+      const response = await ordersApi.list();
       const filteredOrders = response.filter(o => o.createdAt >= startDate);
       setOrders(filteredOrders);
 

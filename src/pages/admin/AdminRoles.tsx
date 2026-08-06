@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { apiClient } from '@/lib/api-client';
+import { adminApi } from '@/lib/api';
+import type { AppRole as SystemRoleName } from '@/lib/permissions';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -34,7 +35,7 @@ interface Permissions {
 interface Role {
   id: string;
   name: string;
-  systemRole?: string;
+  systemRole?: SystemRoleName;
   permissions: Permissions;
 }
 
@@ -83,7 +84,7 @@ export default function AdminRoles() {
   const loadRoles = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<Role[]>('/api/admin/roles');
+      const response = await adminApi.roles.list();
       setRoles(response);
     } catch (error: unknown) {
       toast({
@@ -134,14 +135,14 @@ export default function AdminRoles() {
 
     try {
       if (isNewRole) {
-        const response = await apiClient.post<Role>('/api/admin/roles', {
+        const response = await adminApi.roles.create({
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
         });
         toast({ title: 'Role created successfully' });
       } else {
-        const response = await apiClient.put<Role>(`/api/admin/roles/${editingRole.id}`, {
+        const response = await adminApi.roles.update(editingRole.id, {
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
@@ -176,7 +177,7 @@ export default function AdminRoles() {
     if (!confirm('Are you sure you want to delete this role?')) return;
 
     try {
-      const response = await apiClient.delete<void>(`/api/admin/roles/${id}`);
+      const response = await adminApi.roles.remove(id);
       toast({ title: 'Role deleted successfully' });
       await loadRoles();
     } catch (error: unknown) {
@@ -345,7 +346,7 @@ export default function AdminRoles() {
                         value={editingRole.systemRole || 'none'}
                         onValueChange={(value) => setEditingRole({ 
                           ...editingRole, 
-                          systemRole: value === 'none' ? undefined : value 
+                          systemRole: value === 'none' ? undefined : (value as SystemRoleName) 
                         })}
                       >
                         <SelectTrigger>
