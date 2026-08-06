@@ -1,0 +1,66 @@
+import { apiClient, type ResponseMeta } from '../api-client';
+import { qs } from './qs';
+import type {
+  AuditLog,
+  Role,
+  RolePermissions,
+  Settings,
+  UpdateSettingsRequest,
+  User,
+} from './types';
+
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  password: string;
+  roleIds: string[];
+  status?: 'active' | 'inactive';
+}
+
+export type UpdateUserRequest = Partial<CreateUserRequest>;
+
+export interface RoleInput {
+  name: string;
+  permissions: RolePermissions;
+}
+
+export interface AuditQuery {
+  limit?: number;
+  offset?: number;
+  userId?: string;
+}
+
+/**
+ * Admin endpoints (`backend/src/api/routes/admin.ts`).
+ *
+ * Everything here sits behind an authenticated admin session; a 401 unwinds to
+ * the login redirect inside `api-client`.
+ */
+export const adminApi = {
+  users: {
+    list: () => apiClient.get<User[]>('/api/admin/users'),
+    create: (body: CreateUserRequest) => apiClient.post<User>('/api/admin/users', body),
+    update: (id: string, body: UpdateUserRequest) =>
+      apiClient.put<User>(`/api/admin/users/${id}`, body),
+    remove: (id: string) => apiClient.delete<void>(`/api/admin/users/${id}`),
+  },
+
+  roles: {
+    list: () => apiClient.get<Role[]>('/api/admin/roles'),
+    create: (body: RoleInput) => apiClient.post<Role>('/api/admin/roles', body),
+    update: (id: string, body: Partial<RoleInput>) =>
+      apiClient.put<Role>(`/api/admin/roles/${id}`, body),
+    remove: (id: string) => apiClient.delete<void>(`/api/admin/roles/${id}`),
+  },
+
+  settings: {
+    get: () => apiClient.get<Settings>('/api/admin/settings'),
+    update: (body: UpdateSettingsRequest) => apiClient.put<Settings>('/api/admin/settings', body),
+  },
+
+  audit: (query?: AuditQuery): Promise<{ data: AuditLog[]; meta?: ResponseMeta }> =>
+    apiClient.getList<AuditLog[]>(`/api/admin/audit${qs(query)}`),
+
+  /** Destructive: wipes and reseeds every table. Development affordance only. */
+  resetDatabase: () => apiClient.post<void>('/api/admin/reset-database'),
+};

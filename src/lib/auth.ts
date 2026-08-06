@@ -1,7 +1,7 @@
 import { apiClient } from './api-client';
 import { authStore } from './auth-store';
-import type { SessionResponse } from './api-types';
-import type { RolePermissions } from './db';
+import type { SessionResponse } from './api/types';
+import type { RolePermissions } from './permissions';
 import { logger } from './logger';
 
 export interface AuthSession {

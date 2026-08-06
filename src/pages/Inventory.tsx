@@ -3,9 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { ProductVariant } from "@/lib/db";
 import { apiClient } from "@/lib/api-client";
-import type { Product, CreateProductRequest, UpdateProductRequest } from "@/lib/api-types";
+import type {
+  CreateProductRequest,
+  Product,
+  ProductVariant,
+  UpdateProductRequest,
+} from "@/lib/api";
 import { ArrowLeft, Plus, Pencil, Trash2, Package } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";

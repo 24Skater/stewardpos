@@ -1,4 +1,4 @@
-import { Order, OrderItem, Settings } from "@/lib/db";
+import type { Order, OrderItem, Settings } from "@/lib/api";
 
 interface ReceiptProps {
   order: Order;
