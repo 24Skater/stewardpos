@@ -1,24 +1,26 @@
 import { apiClient } from '../api-client';
 
-export type ChargeStatus =
-  | 'pending'
-  | 'processing'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+/** Mirrors `ChargeStatus` in `backend/src/terminal/TerminalPort.ts`. */
+export type ChargeStatus = 'pending' | 'approved' | 'declined' | 'cancelled' | 'error';
 
 export interface TerminalCharge {
   chargeId: string;
   status: ChargeStatus;
   authCode?: string;
-  transactionId?: string;
   errorMessage?: string;
 }
 
+export type ReaderStatus = 'online' | 'offline' | 'ready' | 'initializing' | 'error';
+
 export interface TerminalReader {
   id: string;
-  label?: string;
-  status?: string;
+  label: string;
+  status: ReaderStatus;
+}
+
+export interface ConnectionTestResult {
+  success: boolean;
+  message: string;
 }
 
 export interface CreateChargeRequest {
@@ -40,5 +42,5 @@ export const terminalApi = {
   /** Admin only. */
   listReaders: () => apiClient.get<TerminalReader[]>('/api/terminal/readers'),
   /** Admin only: round-trips the configured provider to verify credentials. */
-  test: () => apiClient.post<{ ok: boolean; message?: string }>('/api/terminal/test'),
+  test: () => apiClient.post<ConnectionTestResult>('/api/terminal/test'),
 };

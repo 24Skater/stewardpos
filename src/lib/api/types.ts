@@ -12,6 +12,13 @@
  *
  * **Casing.** The API speaks camelCase; the adapter layer maps snake_case
  * columns on the way out. Field names here match the JSON exactly.
+ *
+ * **Nulls.** An absent column serialises as `null`, not as a missing key, so a
+ * field marked `?:` here arrives as `null` in practice. The project compiles
+ * with `strictNullChecks` off, so that mismatch is invisible to the type
+ * checker - guard explicitly (`x != null`) rather than trusting `?:` when the
+ * difference between `null` and `undefined` would change behaviour. Tightening
+ * this is Phase 7 hardening.
  */
 
 import type { ApiRole, RolePermissions } from '../permissions';

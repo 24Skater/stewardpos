@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminApi, customersApi, productsApi, returnsApi, uploadApi } from '..';
+import { adminApi, customersApi, productsApi, receiptsApi, returnsApi, uploadApi } from '..';
 
 global.fetch = vi.fn();
 
@@ -89,13 +89,27 @@ describe('typed API SDK', () => {
 
   it('keeps pagination meta on list endpoints that provide it', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
-      mockResponse({ success: true, data: [{ id: 'a1' }], meta: { total: 42, limit: 1 } })
+      mockResponse({
+        success: true,
+        data: [{ id: 'o1' }],
+        pagination: { total: 42, limit: 1, offset: 0, hasMore: true },
+      })
     );
 
-    const { data, meta } = await adminApi.audit({ limit: 1 });
+    const { data, meta } = await receiptsApi.list({ limit: 1 });
 
     expect(data).toHaveLength(1);
-    expect(meta).toEqual({ total: 42, limit: 1 });
+    // /api/receipts names it `pagination`; the client accepts either spelling.
+    expect(meta).toEqual({ total: 42, limit: 1, offset: 0, hasMore: true });
+    expect(lastCall()[0]).toBe('/api/receipts?limit=1');
+  });
+
+  it('returns a bare array for a list endpoint that sends no meta', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true, data: [{ id: 'a1' }] }));
+
+    const logs = await adminApi.audit({ limit: 1 });
+
+    expect(logs).toHaveLength(1);
     expect(lastCall()[0]).toBe('/api/admin/audit?limit=1');
   });
 

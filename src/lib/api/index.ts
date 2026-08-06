@@ -63,7 +63,9 @@ export type {
 } from './setup';
 export type {
   ChargeStatus,
+  ConnectionTestResult,
   CreateChargeRequest,
+  ReaderStatus,
   TerminalCharge,
   TerminalReader,
 } from './terminal';

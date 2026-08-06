@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ProductCard from "@/components/ProductCard";
@@ -6,8 +6,17 @@ import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { apiClient } from "@/lib/api-client";
-import type { CartItem, CreateOrderRequest, Order, Product } from "@/lib/api";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { discountsApi, terminalApi } from "@/lib/api";
+import type {
+  CartItem,
+  CreateOrderRequest,
+  DiscountType as ApiDiscountType,
+  Order,
+  Product,
+} from "@/lib/api";
+import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
+import { logger } from "@/lib/logger";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import { useToast } from "@/hooks/use-toast";
@@ -34,16 +43,16 @@ const CARD_PROVIDER_LABELS: Record<string, string> = {
   generic: 'Card Reader',
 };
 
-interface DiscountType {
-  id: string;
-  name: string;
-  code?: string;
+/**
+ * A quick-discount chip the register can actually price.
+ *
+ * The catalog also supports `buy_x_get_y`, which needs line-level logic this
+ * screen does not have, so those are filtered out at load rather than rendered
+ * as a chip that would compute the wrong amount.
+ */
+type PosDiscountType = Omit<ApiDiscountType, 'discountType'> & {
   discountType: 'percentage' | 'fixed';
-  discountValue: number;
-  color: string;
-  icon?: string;
-  requiresApproval: boolean;
-}
+};
 
 interface AppliedDiscount {
   source: 'quick_discount' | 'promo_code' | 'manual' | 'employee';
@@ -101,9 +110,14 @@ interface TerminalState {
 }
 
 export default function POS() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const {
+    data: products = [],
+    isPending: productsPending,
+    isError: productsFailed,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts();
+  const createOrder = useCreateOrder();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -120,13 +134,12 @@ export default function POS() {
   const [lastOrderDiscount, setLastOrderDiscount] = useState(0);
   const [lastOrderPaymentMethod, setLastOrderPaymentMethod] = useState("");
   const [lastOrderItems, setLastOrderItems] = useState<CartItem[]>([]);
-  const [categories, setCategories] = useState<string[]>(["All"]);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   
   // Discount state
-  const [quickDiscounts, setQuickDiscounts] = useState<DiscountType[]>([]);
+  const [quickDiscounts, setQuickDiscounts] = useState<PosDiscountType[]>([]);
   const [appliedDiscounts, setAppliedDiscounts] = useState<AppliedDiscount[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -137,16 +150,24 @@ export default function POS() {
   // Return dialog state
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   
-  // Store branding
-  const [storeName, setStoreName] = useState("Steward · Register");
-  const [storeLogo, setStoreLogo] = useState<string | null>(null);
+  // Store branding and tax come from settings; the register keeps working on its
+  // defaults if that call fails, rather than blocking a sale.
+  const { data: settings } = useSettings();
+  const storeName = settings?.storeName || "Steward · Register";
+  const storeLogo = settings?.logoUrl || null;
+  const taxRate = settings?.taxRateDefault ?? 0;
 
-  // Payment methods
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsConfig>({
-    cash: { enabled: true },
-    zelle: { enabled: false },
-    card: { enabled: false, provider: 'square' },
-  });
+  const paymentMethods: PaymentMethodsConfig = useMemo(() => {
+    const configured = (settings?.config as { paymentMethods?: PaymentMethodsConfig } | undefined)
+      ?.paymentMethods;
+
+    return {
+      cash: { enabled: true, ...configured?.cash },
+      zelle: { enabled: false, ...configured?.zelle },
+      card: { enabled: false, provider: 'square', ...configured?.card },
+    };
+  }, [settings]);
+
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
 
   // Terminal payment state
@@ -156,15 +177,29 @@ export default function POS() {
   const [lastOrderAuthCode, setLastOrderAuthCode] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    loadProducts();
-    loadCategories();
     loadQuickDiscounts();
-    loadStoreName();
   }, []);
 
+  /**
+   * Keep the selected payment method on something the store actually accepts.
+   *
+   * Settings arrive after first paint, so the initial 'Cash' default can turn out
+   * to be disabled; this falls through to the first enabled method instead of
+   * leaving the cashier on an option that cannot complete.
+   */
   useEffect(() => {
-    filterProducts();
-  }, [products, searchQuery, selectedCategory]);
+    const enabled: Array<[string, boolean | undefined]> = [
+      ['Cash', paymentMethods.cash?.enabled !== false],
+      ['Zelle', paymentMethods.zelle?.enabled],
+      ['Card', paymentMethods.card?.enabled],
+    ];
+
+    const stillOffered = enabled.some(([label, on]) => label === selectedPaymentMethod && on);
+    if (stillOffered) return;
+
+    const fallback = enabled.find(([, on]) => on)?.[0];
+    if (fallback) setSelectedPaymentMethod(fallback);
+  }, [paymentMethods, selectedPaymentMethod]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -185,65 +220,24 @@ export default function POS() {
     };
   }, []);
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get<Product[]>('/api/products');
-      setProducts(response);
-      // Extract unique categories from products
-      const uniqueCategories = new Set(response.map(p => p.category).filter(Boolean));
-      setCategories(["All", ...Array.from(uniqueCategories)]);
-    } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: getErrorMessage(error, 'Failed to load products'),
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCategories = async () => {
-    // Categories are now derived from products in loadProducts
-    // This function is kept for compatibility but does nothing
-  };
-
-  const loadStoreName = async () => {
-    try {
-      const response = await apiClient.get<{ storeName?: string; logoUrl?: string; config?: { paymentMethods?: PaymentMethodsConfig } }>('/api/admin/settings');
-      if (response && response) {
-        if (response.storeName) {
-          setStoreName(response.storeName);
-        }
-        if (response.logoUrl) {
-          setStoreLogo(response.logoUrl);
-        }
-        if (response.config?.paymentMethods) {
-          const pm = response.config.paymentMethods;
-          setPaymentMethods({
-            cash: { enabled: true, ...pm.cash },
-            zelle: { enabled: false, ...pm.zelle },
-            card: { enabled: false, provider: 'square', ...pm.card },
-          });
-          // Default to first enabled method
-          if (pm.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-          else if (pm.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-          else if (pm.card?.enabled) setSelectedPaymentMethod('Card');
-        }
-      }
-    } catch (error) {
-      console.warn('Could not load store settings');
-    }
-  };
+  /** Category filter chips, derived from whatever the catalog actually contains. */
+  const categories = useMemo(
+    () => ["All", ...new Set(products.map(p => p.category).filter(Boolean))],
+    [products]
+  );
 
   const loadQuickDiscounts = async () => {
     try {
-      const response = await apiClient.get<DiscountType[]>('/api/discounts/types/pos');
-      setQuickDiscounts(response);
+      const available = await discountsApi.types.listForPos();
+      setQuickDiscounts(
+        available.filter(
+          (discount): discount is PosDiscountType =>
+            discount.discountType === 'percentage' || discount.discountType === 'fixed'
+        )
+      );
     } catch (error) {
-      // Non-critical, silently fail
-      console.warn('Failed to load quick discounts:', error);
+      // Non-critical: the register still sells without quick-discount chips.
+      logger.warn('Failed to load quick discounts', error);
     }
   };
 
@@ -265,7 +259,25 @@ export default function POS() {
     }, 0);
   };
 
-  const applyQuickDiscount = (discount: DiscountType) => {
+  /**
+   * The money on the current cart.
+   *
+   * Single definition so cash checkout, card authorisation, and the order posted
+   * after a card approval cannot drift apart - they previously each recomputed
+   * this, and each hard-coded a 0% tax rate regardless of store settings.
+   *
+   * Phase 3 moves this arithmetic server-side; until then the client's figures
+   * are what the backend records.
+   */
+  const calculateTotals = () => {
+    const subtotal = calculateSubtotal();
+    const discountTotal = getTotalDiscount();
+    const taxTotal = (subtotal - discountTotal) * taxRate;
+
+    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal };
+  };
+
+  const applyQuickDiscount = (discount: PosDiscountType) => {
     // Check if already applied
     if (appliedDiscounts.some(d => d.source === 'quick_discount' && d.id === discount.id)) {
       toast({ title: 'Discount already applied', variant: 'destructive' });
@@ -379,22 +391,19 @@ export default function POS() {
     setAppliedDiscounts([]);
   };
 
-  const filterProducts = () => {
-    let filtered = products;
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter(p => p.category === selectedCategory);
-    }
+    return products.filter(product => {
+      if (selectedCategory !== "All" && product.category !== selectedCategory) return false;
+      if (!query) return true;
 
-    if (searchQuery) {
-      filtered = filtered.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.barcode?.includes(searchQuery)
+      return (
+        product.name.toLowerCase().includes(query) ||
+        Boolean(product.barcode?.includes(query))
       );
-    }
-
-    setFilteredProducts(filtered);
-  };
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   const handleBarcodeSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -534,14 +543,8 @@ export default function POS() {
 
   const handleCompleteCheckout = async () => {
     try {
-      // TODO: Get settings from API when settings endpoint is available
-      const taxRate = 0; // Default to 0 for now
-      
-      const subtotal = calculateSubtotal();
-      const discountTotal = getTotalDiscount();
-      const taxTotal = (subtotal - discountTotal) * taxRate;
-      const total = subtotal - discountTotal + taxTotal;
-      
+      const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
+
       const orderData: CreateOrderRequest = {
         items: cart.map(item => {
           const orderItem: CreateOrderRequest['items'][number] = {
@@ -570,7 +573,7 @@ export default function POS() {
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
 
-      const response = await apiClient.post<Order>('/api/orders', orderData);
+      const response = await createOrder.mutateAsync(orderData);
       
       // Log discount usage for each applied discount
       for (const discount of appliedDiscounts) {
@@ -620,8 +623,7 @@ export default function POS() {
       setCheckoutOpen(false);
       setReceiptDialogOpen(true);
       
-      // Reload products to update stock
-      await loadProducts();
+      // Stock moved server-side; the order mutation invalidates the catalog cache.
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -645,34 +647,29 @@ export default function POS() {
   };
 
   const handleChargeCard = async () => {
-    const subtotal = calculateSubtotal();
-    const discountTotal = getTotalDiscount();
-    const taxRate = 0;
-    const taxTotal = (subtotal - discountTotal) * taxRate;
-    const total = subtotal - discountTotal + taxTotal;
+    const { total } = calculateTotals();
+    // Card processors bill in minor units, so this is the one figure sent in cents.
     const amountCents = Math.round(total * 100);
     setTerminalState({ phase: 'charging' });
 
     try {
-      const chargeData = await apiClient.post<{ chargeId: string }>('/api/terminal/charge', {
+      const { chargeId } = await terminalApi.charge({
         amount: amountCents,
         currency: 'USD',
         description: 'POS Checkout',
       });
 
-      const { chargeId } = chargeData;
       setTerminalState({ phase: 'waiting', chargeId });
 
       terminalTimeoutRef.current = setTimeout(async () => {
         stopTerminalPolling();
-        await apiClient.post(`/api/terminal/cancel/${chargeId}`, {});
+        await terminalApi.cancel(chargeId);
         setTerminalState({ phase: 'error', errorMessage: 'No response from terminal — charge cancelled' });
       }, 90_000);
 
       terminalPollRef.current = setInterval(async () => {
         try {
-          const statusData = await apiClient.get<{ status: string; authCode?: string; errorMessage?: string }>(`/api/terminal/status/${chargeId}`);
-          const { status, authCode, errorMessage } = statusData;
+          const { status, authCode, errorMessage } = await terminalApi.status(chargeId);
 
           if (status === 'approved') {
             stopTerminalPolling();
@@ -704,18 +701,14 @@ export default function POS() {
     const { chargeId } = terminalState;
     stopTerminalPolling();
     if (chargeId) {
-      await apiClient.post(`/api/terminal/cancel/${chargeId}`, {}).catch(() => {});
+      await terminalApi.cancel(chargeId).catch(() => {});
     }
     setTerminalState({ phase: 'idle' });
   };
 
   const completeCardOrder = async (chargeId: string, authCode?: string) => {
     try {
-      const taxRate = 0;
-      const subtotal = calculateSubtotal();
-      const discountTotal = getTotalDiscount();
-      const taxTotal = (subtotal - discountTotal) * taxRate;
-      const total = subtotal - discountTotal + taxTotal;
+      const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
       const orderData: CreateOrderRequest & { cardTransactionId?: string; cardAuthCode?: string } = {
         items: cart.map(item => {
@@ -745,7 +738,7 @@ export default function POS() {
         cardAuthCode: authCode,
       };
 
-      const response = await apiClient.post<Order>('/api/orders', orderData);
+      const response = await createOrder.mutateAsync(orderData);
 
       // Log discount usage for each applied discount
       for (const discount of appliedDiscounts) {
@@ -793,8 +786,6 @@ export default function POS() {
       setTerminalState({ phase: 'idle' });
       setCheckoutOpen(false);
       setReceiptDialogOpen(true);
-
-      await loadProducts();
     } catch (error: unknown) {
       toast({
         title: 'Order save failed',
@@ -948,19 +939,43 @@ export default function POS() {
 
           {/* Products Grid */}
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onClick={() => handleProductClick(product)}
-                />
-              ))}
-            </div>
-            {filteredProducts.length === 0 && (
+            {productsPending ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Loader2 className="w-10 h-10 text-muted-foreground/50 mb-4 animate-spin" />
+                <p className="text-muted-foreground">Loading catalog…</p>
+              </div>
+            ) : productsFailed ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <AlertTriangle className="w-12 h-12 text-destructive/70 mb-4" />
+                <p className="font-medium text-foreground">Catalog unavailable</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  {getErrorMessage(productsError, 'Could not reach the product service.')}
+                </p>
+                <Button variant="outline" className="mt-4" onClick={() => refetchProducts()}>
+                  Try again
+                </Button>
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Package className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                <p className="text-muted-foreground">No products found</p>
+                <p className="text-muted-foreground">
+                  {products.length === 0 ? 'No products in the catalog yet' : 'No products found'}
+                </p>
+                {products.length > 0 && (
+                  <p className="text-sm text-muted-foreground/70 mt-1">
+                    Try a different search or category
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {filteredProducts.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onClick={() => handleProductClick(product)}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -1361,7 +1376,7 @@ export default function POS() {
       <QuickReturnDialog
         open={returnDialogOpen}
         onClose={() => setReturnDialogOpen(false)}
-        onComplete={() => loadProducts()}
+        onComplete={() => refetchProducts()}
       />
     </div>
   );
