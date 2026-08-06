@@ -201,6 +201,20 @@ decrements stock by two.
   apply a configured discount.
 - Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
   untouched.
+
+- **The card path charges before the server prices.** `handleChargeCard` sends
+  the terminal an amount computed on the client, and only afterwards posts the
+  order for the server to reprice. If the two disagree — a price edited since
+  the catalog was cached, or a discount the server declines — the customer's
+  card is charged one amount and the order records another, with the card
+  already authorised.
+
+  The receipt now displays the server's figures rather than the client's, so the
+  discrepancy is at least visible instead of hidden. The real fix is a "price
+  this cart" endpoint the register calls before charging, so the amount sent to
+  the terminal is the authoritative one; that also gives the cart a place to
+  surface a rejected discount before the customer is standing there. Worth doing
+  alongside P3-T2 (split tender), which needs the same endpoint.
 - ~~Atomicity is partial~~ — **fixed.** The decrement is now conditional
   (`UPDATE ... WHERE id = $2 AND stock >= $1`) and a no-op fails the
   transaction, so the pre-transaction stock check in `repriceOrder` is an early
