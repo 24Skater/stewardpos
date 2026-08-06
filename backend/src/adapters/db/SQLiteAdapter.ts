@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import logger from '../../utils/logger';
-import { DatabaseError } from '../../utils/errors';
+import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
 
 export interface SQLiteConfig {
@@ -425,13 +425,21 @@ export class SQLiteAdapter {
 
           // Update variant stock if variantId is provided
           if (item.variantId) {
-            this.db
+            // Conditional for the same reason as the Postgres adapter: clamping
+            // at zero reported success on an oversell instead of failing.
+            const stockResult = this.db
               .prepare(
                 `UPDATE product_variants 
-                 SET stock = MAX(0, stock - ?)
-                 WHERE id = ?`
+                 SET stock = stock - ?
+                 WHERE id = ? AND stock >= ?`
               )
-              .run(item.quantity, item.variantId);
+              .run(item.quantity, item.variantId, item.quantity);
+
+            if (stockResult.changes === 0) {
+              throw new ValidationError(
+                `Not enough stock for "${item.nameSnapshot ?? item.productId}"`
+              );
+            }
           }
         }
       }
@@ -453,6 +461,9 @@ export class SQLiteAdapter {
     try {
       return transaction();
     } catch (error) {
+      // A stock conflict is the caller's problem: keep it a 400.
+      if (error instanceof ValidationError) throw error;
+
       logger.error('Error creating order:', error);
       throw new DatabaseError('Failed to create order');
     }

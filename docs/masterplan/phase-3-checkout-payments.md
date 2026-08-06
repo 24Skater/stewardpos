@@ -194,9 +194,10 @@ decrements stock by two.
   half of C1.
 - Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
   untouched.
-- Atomicity is partial: `createOrder` already wraps the order, its items, and
-  the stock decrement in one transaction, but the stock check in `repriceOrder`
-  happens before that transaction opens, so two simultaneous sales of the last
-  unit can still both pass. Making the decrement conditional
-  (`UPDATE ... WHERE stock >= $n`) and failing the transaction on no-op is the
-  fix (P3-T3).
+- ~~Atomicity is partial~~ — **fixed.** The decrement is now conditional
+  (`UPDATE ... WHERE id = $2 AND stock >= $1`) and a no-op fails the
+  transaction, so the pre-transaction stock check in `repriceOrder` is an early
+  courtesy rather than the guarantee. Verified by firing two concurrent sales of
+  a variant with one unit left: one 201, one 400, final stock 0. The previous
+  `GREATEST(0, stock - $1)` clamped at zero and reported success, so both sales
+  were recorded against a single unit.

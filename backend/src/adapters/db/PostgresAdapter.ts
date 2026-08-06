@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import logger from '../../utils/logger';
-import { DatabaseError } from '../../utils/errors';
+import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
 
 export interface PostgresConfig {
@@ -465,14 +465,30 @@ export class PostgresAdapter {
           );
           items.push(itemResult.rows[0]);
 
-          // Update variant stock if variantId is provided
+          // Decrement stock, conditionally.
+          //
+          // `WHERE stock >= $1` is what makes this safe under concurrency: the
+          // repricing pass checks stock before this transaction opens, so two
+          // registers selling the last unit can both pass that check. The row
+          // lock here means only one of them matches, and the other updates
+          // nothing and rolls the whole order back.
+          //
+          // The previous `GREATEST(0, stock - $1)` did the opposite - it clamped
+          // at zero and reported success, so an oversold item silently sat at 0
+          // stock while both sales were recorded.
           if (item.variantId) {
-            await client.query(
+            const stockResult = await client.query(
               `UPDATE product_variants 
-               SET stock = GREATEST(0, stock - $1)
-               WHERE id = $2`,
+               SET stock = stock - $1
+               WHERE id = $2 AND stock >= $1`,
               [item.quantity, item.variantId]
             );
+
+            if (stockResult.rowCount === 0) {
+              throw new ValidationError(
+                `Not enough stock for "${item.nameSnapshot ?? item.productId}"`
+              );
+            }
           }
         }
       }
@@ -485,6 +501,12 @@ export class PostgresAdapter {
       };
     } catch (error) {
       await client.query('ROLLBACK');
+
+      // A stock conflict is the caller's problem, not the server's: let it
+      // through as the 400 it is, rather than flattening it into a generic
+      // "Failed to create order" 500 that tells the cashier nothing.
+      if (error instanceof ValidationError) throw error;
+
       logger.error('Error creating order:', error);
       throw new DatabaseError('Failed to create order');
     } finally {
