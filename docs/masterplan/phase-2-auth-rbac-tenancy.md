@@ -143,3 +143,52 @@ create/update/delete handlers; `backend/src/api/routes/admin.ts` (list/query aud
 2. Ensure `AdminAudit.tsx` reads from `GET /api/admin/audit` with pagination/filtering.
 **Acceptance criteria.** Mutations produce audit rows visible in AdminAudit.
 **Verification.** Edit a product via API → an audit row appears in `GET /api/admin/audit`.
+
+---
+
+## Progress notes (2026-08-06)
+
+**Done:** P2-T1 (middleware hardened), P2-T2 (auth + RBAC applied across every
+route), P2-T3 (guard test suite), P2-T5 (orders/returns/discounts permissions +
+migration 008), P2-T7 (audit logging).
+
+**Not done:** P2-T4 (setup wizard is functional but its `status` contract and the
+post-completion `409` lock have not been re-verified against the plan), P2-T6
+(nullable `org_id` — untouched).
+
+### Defects found while doing the above
+
+Each verified against the running stack, and each fixed in the commit that found
+it unless noted:
+
+1. `authenticate` never loaded the user, so a **deactivated account kept full
+   access** until its token expired.
+2. `authorize(['admin', 'manager'])` guarded uploads and discount management, but
+   **no `manager` role has ever existed** — those endpoints were admin-only, and
+   supervisors holding the matching permission were refused.
+3. **Product and service catalogs were world-readable**, including SKUs and live
+   stock counts.
+4. **`config.terminalCredentials` was returned in plaintext** by
+   `GET /api/admin/settings` — the store's Stripe secret key and Square token, to
+   anyone who could read settings.
+5. **A partial product update wiped every field it did not mention.** Both
+   adapters wrote all six columns unconditionally against an all-optional update
+   schema.
+6. **`createAuditLog` was never called**, so the audit page had always been empty.
+7. The client **hard-coded a 7-day token lifetime** while the server defaults to
+   24h, leaving it convinced a dead token was good for six days.
+8. `mergePermissions` **threw on a role whose permissions JSON omitted a key**,
+   taking down every page behind the session.
+
+### Known gap: the backend is not linted
+
+`backend/package.json` runs `eslint src --ext .ts`; `--ext` was removed in ESLint
+9, and there is no `backend/eslint.config.js`, so ESLint walks up and applies the
+repo root's React config against a mismatched `typescript-eslint` major and
+crashes. The backend CI job runs typecheck, test, and build — not lint — so this
+has never failed a build, and backend source has effectively never been linted.
+
+Fixing it needs a backend-local flat config (Node globals, no react plugins, its
+own installed plugin versions) plus a corrected script and a CI step. The
+`config-protection` hook blocks writing ESLint config files, so this is left for
+a deliberate decision rather than worked around.
