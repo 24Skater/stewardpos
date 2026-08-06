@@ -5,14 +5,15 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import { apiClient } from "@/lib/api-client";
 import { discountsApi, terminalApi } from "@/lib/api";
 import type {
   CartItem,
   CreateOrderRequest,
   DiscountType as ApiDiscountType,
   Order,
+  PaymentMethodsConfig,
   Product,
+  ValidatedPromo,
 } from "@/lib/api";
 import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
 import { logger } from "@/lib/logger";
@@ -26,12 +27,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from '@/lib/errors';
-
-interface PaymentMethodsConfig {
-  cash?: { enabled: boolean };
-  zelle?: { enabled: boolean; destination?: string };
-  card?: { enabled: boolean; provider?: string };
-}
 
 const CARD_PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
@@ -62,16 +57,6 @@ interface AppliedDiscount {
   type: 'percentage' | 'fixed';
   value: number;
   amount: number;
-}
-
-/** A promo code accepted by /api/discounts/promos/validate. */
-interface PromoValidation {
-  id: string;
-  code: string;
-  name: string;
-  discountType: AppliedDiscount['type'];
-  discountValue: number;
-  discountAmount: number;
 }
 
 const iconMap: Record<string, LucideIcon> = {
@@ -158,8 +143,7 @@ export default function POS() {
   const taxRate = settings?.taxRateDefault ?? 0;
 
   const paymentMethods: PaymentMethodsConfig = useMemo(() => {
-    const configured = (settings?.config as { paymentMethods?: PaymentMethodsConfig } | undefined)
-      ?.paymentMethods;
+    const configured = settings?.config?.paymentMethods;
 
     return {
       cash: { enabled: true, ...configured?.cash },
@@ -310,40 +294,49 @@ export default function POS() {
     setPromoLoading(true);
     try {
       const subtotal = calculateSubtotal();
-      const { promo } = await apiClient.post<{ valid: boolean; promo: PromoValidation }>(
-        '/api/discounts/promos/validate',
-        {
-          code: promoCodeInput.trim().toUpperCase(),
-          cartTotal: subtotal,
-          itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
-        }
-      );
+      const { promo } = await discountsApi.promos.validate({
+        code: promoCodeInput.trim().toUpperCase(),
+        cartTotal: subtotal,
+        itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+      });
 
       // A rejected code comes back as success:false, which the client raises; the
       // catch below surfaces the server's reason.
-      {
-        // Check if already applied
-        if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === promo.id)) {
-          toast({ title: 'Promo code already applied', variant: 'destructive' });
-          return;
-        }
 
-        setAppliedDiscounts([...appliedDiscounts, {
-          source: 'promo_code',
-          id: promo.id,
-          code: promo.code,
-          name: promo.name,
-          type: promo.discountType,
-          value: promo.discountValue,
-          amount: promo.discountAmount,
-        }]);
-
-        setPromoCodeInput("");
-        toast({
-          title: 'Promo code applied!',
-          description: `${promo.name} - $${promo.discountAmount.toFixed(2)} off`
-        });
+      // Check if already applied
+      if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === promo.id)) {
+        toast({ title: 'Promo code already applied', variant: 'destructive' });
+        return;
       }
+
+      // Only these two kinds carry a cart-level amount the register can subtract.
+      // `free_shipping`, `buy_x_get_y`, and `free_item` need line-level handling
+      // this screen does not have, and the server returns 0 for them - applying
+      // one anyway would take nothing off while telling the cashier it worked.
+      if (promo.discountType !== 'percentage' && promo.discountType !== 'fixed') {
+        toast({
+          title: 'Promo code not supported at the register',
+          description: `${promo.name} is a ${promo.discountType.replace(/_/g, ' ')} offer, which has to be applied another way.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setAppliedDiscounts([...appliedDiscounts, {
+        source: 'promo_code',
+        id: promo.id,
+        code: promo.code,
+        name: promo.name,
+        type: promo.discountType,
+        value: promo.discountValue,
+        amount: promo.discountAmount,
+      }]);
+
+      setPromoCodeInput("");
+      toast({
+        title: 'Promo code applied!',
+        description: `${promo.name} - $${promo.discountAmount.toFixed(2)} off`
+      });
     } catch (error: unknown) {
       toast({ title: 'Promo code not applied', description: getErrorMessage(error, 'Invalid promo code'), variant: 'destructive' });
     } finally {
@@ -578,7 +571,7 @@ export default function POS() {
       // Log discount usage for each applied discount
       for (const discount of appliedDiscounts) {
         try {
-          await apiClient.post('/api/discounts/usage', {
+          await discountsApi.usage.record({
             orderId: response.id,
             discountSource: discount.source,
             discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
@@ -593,7 +586,7 @@ export default function POS() {
 
           // Increment promo code usage if applicable
           if (discount.source === 'promo_code' && discount.id) {
-            await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
+            await discountsApi.promos.markUsed(discount.id);
           }
         } catch (error) {
           console.error('Failed to log discount usage:', error);
@@ -743,7 +736,7 @@ export default function POS() {
       // Log discount usage for each applied discount
       for (const discount of appliedDiscounts) {
         try {
-          await apiClient.post('/api/discounts/usage', {
+          await discountsApi.usage.record({
             orderId: response.id,
             discountSource: discount.source,
             discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
@@ -757,7 +750,7 @@ export default function POS() {
           });
 
           if (discount.source === 'promo_code' && discount.id) {
-            await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
+            await discountsApi.promos.markUsed(discount.id);
           }
         } catch (error) {
           console.error('Failed to log discount usage:', error);

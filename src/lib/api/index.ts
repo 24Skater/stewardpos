@@ -12,6 +12,7 @@ export * from './types';
 export { adminApi } from './admin';
 export { apiKeysApi } from './apiKeys';
 export { authApi } from './auth';
+export { componentsApi } from './components';
 export { customersApi } from './customers';
 export { discountsApi } from './discounts';
 export { ordersApi } from './orders';
@@ -42,7 +43,14 @@ export type {
   PromoCodeInput,
   ValidatePromoRequest,
   ValidatePromoResponse,
+  ValidatedPromo,
 } from './discounts';
+export type {
+  Component,
+  ComponentCategory,
+  ComponentSide,
+  ComponentUpdate,
+} from './components';
 export type { ReceiptEmailLog, ReceiptSearchQuery } from './receipts';
 export type {
   CreateReturnItem,

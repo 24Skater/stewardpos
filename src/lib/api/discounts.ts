@@ -70,11 +70,29 @@ export interface ValidatePromoRequest {
   categoryIds?: string[];
 }
 
+/**
+ * A promo code that passed validation, with the amount it takes off *this* cart.
+ *
+ * Deliberately not the full {@link PromoCode}: the endpoint returns only what the
+ * register needs to show and apply the discount, plus the computed
+ * `discountAmount` (percentage codes are capped at `maxDiscount` server-side).
+ */
+export interface ValidatedPromo {
+  id: string;
+  code: string;
+  name: string;
+  discountType: 'percentage' | 'fixed' | 'free_shipping' | 'buy_x_get_y' | 'free_item';
+  discountValue: number;
+  discountAmount: number;
+}
+
+/**
+ * A rejected code comes back as `success: false`, which `apiClient` raises, so a
+ * returned value here always means `valid: true`.
+ */
 export interface ValidatePromoResponse {
   valid: boolean;
-  reason?: string;
-  discountAmount?: number;
-  promo?: PromoCode;
+  promo: ValidatedPromo;
 }
 
 export interface DiscountUsageQuery {

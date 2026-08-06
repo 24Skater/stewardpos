@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { apiClient } from '@/lib/api-client';
+import { apiKeysApi, type ApiKeyScope } from '@/lib/api';
 import { Key, Plus, Trash2, Copy, Eye, EyeOff, Code, BookOpen, Shield, Clock, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -58,7 +58,8 @@ interface ApiDocs {
   errors: Record<string, string>;
 }
 
-const SCOPES = [
+/** The scopes the backend accepts, in ascending order of privilege. */
+const SCOPES: Array<{ id: ApiKeyScope; label: string; description: string }> = [
   { id: 'read', label: 'Read', description: 'Read access to resources' },
   { id: 'write', label: 'Write', description: 'Create and update resources' },
   { id: 'delete', label: 'Delete', description: 'Delete resources' },
@@ -77,7 +78,7 @@ export default function AdminApiKeys() {
   // Form state
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
-  const [formScopes, setFormScopes] = useState<string[]>(['read']);
+  const [formScopes, setFormScopes] = useState<ApiKeyScope[]>(['read']);
   const [formRateLimit, setFormRateLimit] = useState(1000);
   
   const { toast } = useToast();
@@ -90,7 +91,7 @@ export default function AdminApiKeys() {
   const loadApiKeys = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<ApiKey[]>('/api/admin/api-keys');
+      const response = await apiKeysApi.list();
       setApiKeys(response);
     } catch (error: unknown) {
       toast({
@@ -105,7 +106,7 @@ export default function AdminApiKeys() {
 
   const loadApiDocs = async () => {
     try {
-      const response = await apiClient.get<ApiDocs>('/api/admin/api-keys/docs/reference');
+      const response = await apiKeysApi.reference();
       setApiDocs(response);
     } catch (error) {
       console.warn('Could not load API docs');
@@ -119,7 +120,7 @@ export default function AdminApiKeys() {
     }
 
     try {
-      const response = await apiClient.post<ApiKey>('/api/admin/api-keys', {
+      const response = await apiKeysApi.create({
         name: formName,
         description: formDescription,
         scopes: formScopes,
@@ -147,7 +148,7 @@ export default function AdminApiKeys() {
     }
 
     try {
-      const response = await apiClient.delete<void>(`/api/admin/api-keys/${id}`);
+      const response = await apiKeysApi.remove(id);
       toast({ title: 'API key revoked' });
       await loadApiKeys();
     } catch (error: unknown) {
@@ -161,7 +162,7 @@ export default function AdminApiKeys() {
 
   const handleToggleActive = async (key: ApiKey) => {
     try {
-      const response = await apiClient.put<void>(`/api/admin/api-keys/${key.id}`, {
+      const response = await apiKeysApi.update(key.id, {
         isActive: !key.isActive,
       });
       toast({ title: `API key ${key.isActive ? 'disabled' : 'enabled'}` });

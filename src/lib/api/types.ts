@@ -312,6 +312,56 @@ export interface User {
   createdAt: number;
 }
 
+/** Which tenders the register offers, and how the card one is wired. */
+export interface PaymentMethodsConfig {
+  cash?: { enabled: boolean };
+  zelle?: { enabled: boolean; destination?: string };
+  card?: { enabled: boolean; provider?: string };
+}
+
+/**
+ * Per-provider terminal credentials.
+ *
+ * Only the keys for the configured `card.provider` are meaningful. These are
+ * write-mostly: the settings form posts them, and the server uses them to build
+ * a terminal adapter.
+ */
+export interface TerminalCredentials {
+  stripeSecretKey?: string;
+  stripeTerminalLocationId?: string;
+  stripeReaderId?: string;
+  squareAccessToken?: string;
+  squareLocationId?: string;
+  squareDeviceId?: string;
+  cloverApiToken?: string;
+  cloverMerchantId?: string;
+  cloverDeviceId?: string;
+  verifoneApiKey?: string;
+  verifoneTerminalId?: string;
+  verifoneMerchantId?: string;
+  dejavooApiKey?: string;
+  dejavooTerminalId?: string;
+  dejavooMerchantId?: string;
+}
+
+/**
+ * The free-form `settings.config` JSON column.
+ *
+ * The backend validates it only as `z.record(z.any())`, so this describes the
+ * keys the app actually reads and writes rather than a guaranteed schema - treat
+ * every field as possibly absent.
+ */
+export interface StoreConfig {
+  authMethods?: {
+    local?: boolean;
+    google?: boolean;
+    oidc?: boolean;
+  };
+  demoMode?: boolean;
+  paymentMethods?: PaymentMethodsConfig;
+  terminalCredentials?: TerminalCredentials;
+}
+
 export interface Settings {
   taxRateDefault: number;
   storeName: string;
@@ -321,7 +371,7 @@ export interface Settings {
   logoUrl?: string;
   iconUrl?: string;
   brandColor?: string;
-  config?: Record<string, unknown>;
+  config?: StoreConfig;
   // Receipt branding (migration 005)
   storeAddress?: string;
   storeCity?: string;

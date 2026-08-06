@@ -7,24 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { apiClient } from '@/lib/api-client';
+import { componentsApi, type Component, type ComponentUpdate } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Search, RefreshCw, Download, Package, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, type AuthSession } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
-
-interface Component {
-  name: string;
-  currentVersion: string;
-  type: 'frontend' | 'backend';
-  category: 'dependency' | 'devDependency';
-}
-
-interface ComponentUpdate extends Component {
-  latestVersion: string;
-}
 
 export default function AdminComponents() {
   const [components, setComponents] = useState<Component[]>([]);
@@ -55,7 +44,7 @@ export default function AdminComponents() {
   const loadComponents = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get<Component[]>('/api/admin/components');
+      const response = await componentsApi.list();
       if (response && response && response) {
         setComponents(response);
       } else {
@@ -81,7 +70,7 @@ export default function AdminComponents() {
   const checkForUpdates = async () => {
     try {
       setIsCheckingUpdates(true);
-      const response = await apiClient.get<ComponentUpdate[]>('/api/admin/components/updates');
+      const response = await componentsApi.updates();
       setUpdates(response);
       if (response.length > 0) {
         toast({
@@ -121,10 +110,7 @@ export default function AdminComponents() {
   const confirmUpdate = async () => {
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<unknown>('/api/admin/components/update', {
-        packages: selectedPackages,
-        type: updateType,
-      });
+      const response = await componentsApi.update(selectedPackages, updateType);
 
       toast({
         title: 'Success',
@@ -152,9 +138,7 @@ export default function AdminComponents() {
 
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<unknown>('/api/admin/components/update-all', {
-        type,
-      });
+      const response = await componentsApi.updateAll(type);
 
       toast({
         title: 'Success',

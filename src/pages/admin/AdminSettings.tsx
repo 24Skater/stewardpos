@@ -6,54 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { apiClient } from '@/lib/api-client';
+import { adminApi, terminalApi } from '@/lib/api';
+import type {
+  PaymentMethodsConfig,
+  Settings,
+  TerminalCredentials,
+} from '@/lib/api';
 import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
-
-interface PaymentMethodsConfig {
-  cash?: { enabled: boolean };
-  zelle?: { enabled: boolean; destination?: string };
-  card?: { enabled: boolean; provider?: string };
-}
-
-interface TerminalCredentials {
-  stripeSecretKey?: string;
-  stripeTerminalLocationId?: string;
-  stripeReaderId?: string;
-  squareAccessToken?: string;
-  squareLocationId?: string;
-  squareDeviceId?: string;
-  cloverApiToken?: string;
-  cloverMerchantId?: string;
-  cloverDeviceId?: string;
-  verifoneApiKey?: string;
-  verifoneTerminalId?: string;
-  verifoneMerchantId?: string;
-  dejavooApiKey?: string;
-  dejavooTerminalId?: string;
-  dejavooMerchantId?: string;
-}
-
-interface Settings {
-  taxRateDefault: number;
-  storeName: string;
-  storeEmail: string;
-  storePhone: string;
-  timezone: string;
-  config?: {
-    authMethods?: {
-      local?: boolean;
-      google?: boolean;
-      oidc?: boolean;
-    };
-    demoMode?: boolean;
-    paymentMethods?: PaymentMethodsConfig;
-    terminalCredentials?: TerminalCredentials;
-  };
-}
 
 const CARD_PROVIDERS = [
   { value: 'square', label: 'Square' },
@@ -120,7 +83,7 @@ export default function AdminSettings() {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<Settings>('/api/admin/settings');
+      const response = await adminApi.settings.get();
       if (response && response) {
         setSettings({
           ...settings,
@@ -162,7 +125,7 @@ export default function AdminSettings() {
           terminalCredentials: terminalCreds,
         },
       };
-      const response = await apiClient.put<Settings>('/api/admin/settings', payload);
+      const response = await adminApi.settings.update(payload);
       toast({ title: 'Settings saved successfully' });
     } catch (error: unknown) {
       toast({
@@ -178,7 +141,7 @@ export default function AdminSettings() {
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      await apiClient.post<void>('/api/terminal/test', {});
+      await terminalApi.test();
       toast({
         title: 'Connection successful',
         description: 'The terminal responded to the test request.',
@@ -197,7 +160,7 @@ export default function AdminSettings() {
   const handleDiscoverReaders = async () => {
     setDiscoveringReaders(true);
     try {
-      const data = await apiClient.get<Array<{ id: string; label: string; status: string }>>('/api/terminal/readers');
+      const data = await terminalApi.listReaders();
       const found = (data as unknown as { data?: Array<{ id: string; label: string; status: string }> }).data || [];
       setReaders(found);
       toast({ title: `Found ${found.length} reader(s)` });
@@ -219,7 +182,7 @@ export default function AdminSettings() {
 
     try {
       setResetting(true);
-      const response = await apiClient.post<void>('/api/admin/reset-database', {});
+      const response = await adminApi.resetDatabase();
       toast({ title: 'Database reset successfully' });
     } catch (error: unknown) {
       toast({

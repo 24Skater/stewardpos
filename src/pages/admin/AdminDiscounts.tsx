@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api-client';
+import { adminApi, discountsApi } from '@/lib/api';
 import { 
   Plus, Pencil, Trash2, Tag, Users, Percent, DollarSign, 
   Gift, Clock, Search, CheckCircle2, XCircle, AlertCircle,
@@ -248,7 +248,7 @@ export default function AdminDiscounts() {
   const { data: discountTypes = [], isLoading: loadingTypes } = useQuery({
     queryKey: ['discount-types'],
     queryFn: async () => {
-      const res = await apiClient.get<DiscountType[]>('/api/discounts/types');
+      const res = await discountsApi.types.list();
       return res;
     },
   });
@@ -256,7 +256,7 @@ export default function AdminDiscounts() {
   const { data: promoCodes = [], isLoading: loadingPromos } = useQuery({
     queryKey: ['promo-codes'],
     queryFn: async () => {
-      const res = await apiClient.get<PromoCode[]>('/api/discounts/promos');
+      const res = await discountsApi.promos.list();
       return res;
     },
   });
@@ -264,7 +264,7 @@ export default function AdminDiscounts() {
   const { data: employeeDiscounts = [], isLoading: loadingEmployee } = useQuery({
     queryKey: ['employee-discounts'],
     queryFn: async () => {
-      const res = await apiClient.get<EmployeeDiscount[]>('/api/discounts/employee');
+      const res = await discountsApi.employee.list();
       return res;
     },
   });
@@ -272,7 +272,7 @@ export default function AdminDiscounts() {
   const { data: discountStats } = useQuery({
     queryKey: ['discount-stats'],
     queryFn: async () => {
-      const res = await apiClient.get<DiscountStats>('/api/discounts/stats');
+      const res = await discountsApi.stats();
       return res;
     },
   });
@@ -280,14 +280,14 @@ export default function AdminDiscounts() {
   const { data: users = [] } = useQuery({
     queryKey: ['users-for-employee-discount'],
     queryFn: async () => {
-      const res = await apiClient.get<AdminUser[]>('/api/admin/users');
+      const res = await adminApi.users.list();
       return res;
     },
   });
 
   // Mutations
   const createDiscountType = useMutation({
-    mutationFn: (data: DiscountTypePayload) => apiClient.post('/api/discounts/types', data),
+    mutationFn: (data: DiscountTypePayload) => discountsApi.types.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discount-types'] });
       setDiscountTypeDialog(false);
@@ -297,7 +297,7 @@ export default function AdminDiscounts() {
   });
 
   const updateDiscountType = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: DiscountTypePayload }) => apiClient.put(`/api/discounts/types/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: DiscountTypePayload }) => discountsApi.types.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discount-types'] });
       setDiscountTypeDialog(false);
@@ -307,7 +307,7 @@ export default function AdminDiscounts() {
   });
 
   const deleteDiscountType = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/discounts/types/${id}`),
+    mutationFn: (id: string) => discountsApi.types.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discount-types'] });
       toast({ title: 'Quick discount deleted' });
@@ -316,7 +316,7 @@ export default function AdminDiscounts() {
   });
 
   const createPromoCode = useMutation({
-    mutationFn: (data: PromoCodePayload) => apiClient.post('/api/discounts/promos', data),
+    mutationFn: (data: PromoCodePayload) => discountsApi.promos.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
       setPromoCodeDialog(false);
@@ -326,7 +326,7 @@ export default function AdminDiscounts() {
   });
 
   const updatePromoCode = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: PromoCodePayload }) => apiClient.put(`/api/discounts/promos/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: PromoCodePayload }) => discountsApi.promos.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
       setPromoCodeDialog(false);
@@ -336,7 +336,7 @@ export default function AdminDiscounts() {
   });
 
   const deletePromoCode = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/discounts/promos/${id}`),
+    mutationFn: (id: string) => discountsApi.promos.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
       toast({ title: 'Promo code deleted' });
@@ -345,7 +345,7 @@ export default function AdminDiscounts() {
   });
 
   const upsertEmployeeDiscount = useMutation({
-    mutationFn: (data: EmployeeDiscountPayload) => apiClient.post('/api/discounts/employee', data),
+    mutationFn: (data: EmployeeDiscountPayload) => discountsApi.employee.upsert(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-discounts'] });
       setEmployeeDiscountDialog(false);
@@ -355,7 +355,7 @@ export default function AdminDiscounts() {
   });
 
   const deleteEmployeeDiscount = useMutation({
-    mutationFn: (userId: string) => apiClient.delete(`/api/discounts/employee/${userId}`),
+    mutationFn: (userId: string) => discountsApi.employee.remove(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-discounts'] });
       toast({ title: 'Employee discount removed' });
