@@ -67,6 +67,9 @@ export class Seeder {
           users: { read: true, write: true, delete: true },
           services: { read: true, write: true, delete: true },
           customers: { read: true, write: true, delete: true },
+          orders: { read: true, write: true, delete: true },
+          returns: { read: true, write: true, delete: true },
+          discounts: { read: true, write: true, delete: true },
         }),
       },
       {
@@ -80,6 +83,9 @@ export class Seeder {
           users: { read: true, write: false, delete: false },
           services: { read: true, write: true, delete: true },
           customers: { read: true, write: true, delete: true },
+          orders: { read: true, write: true, delete: false },
+          returns: { read: true, write: true, delete: false },
+          discounts: { read: true, write: true, delete: false },
         }),
       },
       {
@@ -93,6 +99,9 @@ export class Seeder {
           users: { read: false, write: false, delete: false },
           services: { read: true, write: false, delete: false },
           customers: { read: true, write: false, delete: false },
+          orders: { read: true, write: false, delete: false },
+          returns: { read: true, write: false, delete: false },
+          discounts: { read: true, write: false, delete: false },
         }),
       },
       {
@@ -112,6 +121,9 @@ export class Seeder {
           users: { read: false, write: false, delete: false },
           services: { read: true, write: false, delete: false },
           customers: { read: true, write: false, delete: false },
+          orders: { read: true, write: true, delete: false },
+          returns: { read: true, write: false, delete: false },
+          discounts: { read: true, write: false, delete: false },
         }),
       },
     ];

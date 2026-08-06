@@ -1,7 +1,7 @@
 import { apiClient } from './api-client';
 import { authStore } from './auth-store';
 import type { SessionResponse } from './api/types';
-import type { RolePermissions } from './permissions';
+import { PERMISSION_RESOURCES, type RolePermissions } from './permissions';
 import { logger } from './logger';
 
 export interface AuthSession {
@@ -124,15 +124,14 @@ export function hasRole(session: AuthSession | null, roleName: string): boolean 
 }
 
 function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions {
-  const merged: RolePermissions = {
-    inventory: { read: false, write: false, delete: false },
-    reports: { read: false, write: false, delete: false },
-    exports: { read: false, write: false, delete: false },
-    settings: { read: false, write: false, delete: false },
-    users: { read: false, write: false, delete: false },
-    services: { read: false, write: false, delete: false },
-    customers: { read: false, write: false, delete: false },
-  };
+  // Built from PERMISSION_RESOURCES so a new resource cannot be added to the
+  // model and silently forgotten here, which would leave it permanently denied.
+  const merged = Object.fromEntries(
+    PERMISSION_RESOURCES.map((resource) => [
+      resource,
+      { read: false, write: false, delete: false },
+    ])
+  ) as unknown as RolePermissions;
 
   for (const perms of permissionsArray) {
     for (const domain in merged) {

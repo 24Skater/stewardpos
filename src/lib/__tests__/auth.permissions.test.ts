@@ -1,16 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { hasPermission, isAdmin, type AuthSession } from '../auth';
-import type { RolePermissions } from '../permissions';
+import { PERMISSION_RESOURCES, type RolePermissions } from '../permissions';
 
-const NONE: RolePermissions = {
-  inventory: { read: false, write: false, delete: false },
-  reports: { read: false, write: false, delete: false },
-  exports: { read: false, write: false, delete: false },
-  settings: { read: false, write: false, delete: false },
-  users: { read: false, write: false, delete: false },
-  services: { read: false, write: false, delete: false },
-  customers: { read: false, write: false, delete: false },
-};
+/** Every resource denied — derived from the model so adding one cannot skew a test. */
+const NONE = Object.fromEntries(
+  PERMISSION_RESOURCES.map((resource) => [resource, { read: false, write: false, delete: false }])
+) as unknown as RolePermissions;
 
 function session(
   permissions: Partial<RolePermissions>,

@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, UnauthorizedError, getErrorMessage } from '../../utils/errors';
 import db from '../../services/database';
 import { createTerminalAdapter, TerminalConfig } from '../../terminal/TerminalAdapterFactory';
@@ -30,7 +31,7 @@ async function getAdapter(dbAdapter: ReturnType<typeof db.getAdapter>) {
   };
 }
 
-router.post('/charge', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/charge', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const parsed = chargeSchema.safeParse(req.body);
     if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
@@ -59,7 +60,7 @@ router.post('/charge', async (req: AuthRequest, res: Response, next: NextFunctio
   }
 });
 
-router.get('/status/:chargeId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/status/:chargeId', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { chargeId } = req.params;
     const dbAdapter = db.getAdapter();
@@ -79,7 +80,7 @@ router.get('/status/:chargeId', async (req: AuthRequest, res: Response, next: Ne
   }
 });
 
-router.post('/cancel/:chargeId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/cancel/:chargeId', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { chargeId } = req.params;
     const dbAdapter = db.getAdapter();

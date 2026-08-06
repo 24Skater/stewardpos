@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -68,7 +69,7 @@ const createOrderSchema = z.object({
  * GET /api/orders
  * List all orders
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('orders', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const orders = await adapter.getAllOrders();
@@ -88,7 +89,7 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
  * GET /api/orders/customer/:email
  * Get orders by customer email
  */
-router.get('/customer/:email', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/customer/:email', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { email } = req.params;
     const adapter = db.getAdapter();
@@ -109,7 +110,7 @@ router.get('/customer/:email', async (req: AuthRequest, res: Response, next: Nex
  * GET /api/orders/:id
  * Get order by ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -132,7 +133,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/orders
  * Create new order
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const orderData = createOrderSchema.parse(req.body);
     const adapter = db.getAdapter();

@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -91,7 +92,7 @@ function generateStoreCreditCode(): string {
  * GET /api/returns
  * List all returns with optional filters
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { status, startDate, endDate, customerId } = req.query;
@@ -116,7 +117,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
  * GET /api/returns/stats
  * Get return statistics for reporting
  */
-router.get('/stats', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/stats', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { startDate, endDate } = req.query;
@@ -139,7 +140,7 @@ router.get('/stats', async (req: AuthRequest, res: Response, next: NextFunction)
  * GET /api/returns/order/:orderId
  * Get returns for a specific order
  */
-router.get('/order/:orderId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/order/:orderId', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { orderId } = req.params;
     const adapter = db.getAdapter();
@@ -158,7 +159,7 @@ router.get('/order/:orderId', async (req: AuthRequest, res: Response, next: Next
  * GET /api/returns/customer/:customerId
  * Get returns for a specific customer
  */
-router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/customer/:customerId', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { customerId } = req.params;
     const adapter = db.getAdapter();
@@ -177,7 +178,7 @@ router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next
  * GET /api/returns/:id
  * Get return by ID with items
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -200,7 +201,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/returns
  * Create a new return
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = createReturnSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -242,7 +243,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
  * PUT /api/returns/:id/status
  * Update return status (approve/reject/complete)
  */
-router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id/status', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const data = updateReturnStatusSchema.parse(req.body);
@@ -277,7 +278,7 @@ router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunc
  * POST /api/returns/:id/process-refund
  * Process refund for a return
  */
-router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/process-refund', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const data = processRefundSchema.parse(req.body);
@@ -361,7 +362,7 @@ router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next:
  * POST /api/returns/:id/restock
  * Restock items from a return
  */
-router.post('/:id/restock', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/restock', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { itemIds } = req.body; // Optional: specific items to restock
