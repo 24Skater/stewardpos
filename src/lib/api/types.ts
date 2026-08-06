@@ -1,0 +1,452 @@
+/**
+ * Shared DTO types — the single source of truth for the shapes the REST API
+ * exchanges with this client.
+ *
+ * These describe the *unwrapped* payloads. `api-client` consumes the
+ * `{success, data}` envelope, so nothing here models it.
+ *
+ * **Money.** Every amount is a `number` of **dollars** at this boundary: the
+ * backend serialises Postgres `DECIMAL` columns to JSON numbers. Server-side
+ * arithmetic works in integer cents (see Phase 3 repricing); do not assume the
+ * two representations are interchangeable when writing back.
+ *
+ * **Casing.** The API speaks camelCase; the adapter layer maps snake_case
+ * columns on the way out. Field names here match the JSON exactly.
+ */
+
+import type { ApiRole, RolePermissions } from '../permissions';
+
+export type { AppRole, Permission, RolePermissions, ApiRole } from '../permissions';
+
+// ===== Auth =====
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+/** Payload of POST /api/auth/login. */
+export interface LoginResponse {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleIds: string[];
+    roles: ApiRole[];
+  };
+}
+
+/** Payload of GET /api/auth/session. */
+export interface SessionResponse {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    roleIds: string[];
+    status: string;
+    roles: ApiRole[];
+  };
+}
+
+// ===== Catalog =====
+
+export interface Category {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
+export interface ProductVariant {
+  id: string;
+  size?: string;
+  color?: string;
+  priceOverride?: number;
+  priceDelta?: number;
+  sku?: string;
+  barcode?: string;
+  stock: number;
+  enabled: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  category: string;
+  basePrice: number;
+  image?: string;
+  barcode?: string;
+  variants: ProductVariant[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateProductRequest {
+  name: string;
+  description?: string;
+  category?: string;
+  basePrice: number;
+  image?: string;
+  barcode?: string;
+  variants?: Omit<ProductVariant, 'id'>[];
+}
+
+export interface UpdateProductRequest {
+  name?: string;
+  description?: string;
+  category?: string;
+  basePrice?: number;
+  image?: string;
+  barcode?: string;
+}
+
+/**
+ * Effective price of a variant.
+ *
+ * An override replaces the base price outright; otherwise the delta is added to
+ * it. Kept client-side because the cart previews prices before the server
+ * reprices the order.
+ */
+export function calculateVariantPrice(basePrice: number, variant: ProductVariant): number {
+  if (variant.priceOverride !== undefined && variant.priceOverride !== null) {
+    return variant.priceOverride;
+  }
+  return basePrice + (variant.priceDelta || 0);
+}
+
+// ===== Cart (client-only) =====
+
+/**
+ * A line in the register's working cart.
+ *
+ * Purely local state — it is never returned by the API, only converted into
+ * {@link CreateOrderRequest} items at checkout.
+ */
+export interface CartItem {
+  productId: string;
+  variantId: string;
+  quantity: number;
+  price: number;
+  nameSnapshot?: string;
+  size?: string;
+  color?: string;
+  notes?: string;
+  lineDiscount?: number;
+}
+
+// ===== Orders =====
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  productId: string;
+  variantId: string;
+  nameSnapshot: string;
+  size?: string;
+  color?: string;
+  quantity: number;
+  unitPrice: number;
+  lineDiscount: number;
+  lineTotal: number;
+  notes?: string;
+}
+
+export interface Order {
+  id: string;
+  createdAt: number;
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  total: number;
+  paymentMethod: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  cardTransactionId?: string;
+  cardAuthCode?: string;
+  items?: OrderItem[];
+}
+
+export interface CreateOrderRequest {
+  items: Array<{
+    productId: string;
+    variantId?: string;
+    nameSnapshot: string;
+    size?: string;
+    color?: string;
+    quantity: number;
+    unitPrice: number;
+    lineDiscount?: number;
+    lineTotal: number;
+    notes?: string;
+  }>;
+  subtotal: number;
+  discountTotal?: number;
+  taxTotal?: number;
+  total: number;
+  paymentMethod: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  cardTransactionId?: string;
+  cardAuthCode?: string;
+}
+
+// ===== Customers =====
+
+export interface Customer {
+  id: string;
+  name: string;
+  org?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  notes?: string;
+  tags?: string[];
+  lastOrderAt?: number;
+  lifetimeValue?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateCustomerRequest {
+  name: string;
+  org?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  notes?: string;
+}
+
+export type UpdateCustomerRequest = Partial<CreateCustomerRequest>;
+
+// ===== Services & quotes =====
+
+export interface Service {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  basePrice?: number;
+  unitType?: 'flat' | 'hourly' | 'per-item';
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface QuoteItem {
+  itemId?: string;
+  variantId?: string;
+  serviceId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
+
+export interface Quote {
+  id: string;
+  customerId: string;
+  items: QuoteItem[];
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  status: QuoteStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ===== Admin: users, roles, settings, audit =====
+
+export interface Role {
+  id: string;
+  name: string;
+  systemRole?: string;
+  permissions: RolePermissions;
+}
+
+/**
+ * A staff account as the API returns it.
+ *
+ * No password hash: that column never leaves the server.
+ */
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  roleIds: string[];
+  status: 'active' | 'inactive';
+  lastLoginAt?: number;
+  createdAt: number;
+}
+
+export interface Settings {
+  taxRateDefault: number;
+  storeName: string;
+  storeEmail: string;
+  storePhone: string;
+  timezone?: string;
+  logoUrl?: string;
+  iconUrl?: string;
+  brandColor?: string;
+  config?: Record<string, unknown>;
+  // Receipt branding (migration 005)
+  storeAddress?: string;
+  storeCity?: string;
+  storeState?: string;
+  storeZip?: string;
+  storeNumber?: string;
+  receiptLogoUrl?: string;
+  receiptHeaderText?: string;
+  receiptFooterText?: string;
+  receiptShowLogo?: boolean;
+  receiptShowBarcode?: boolean;
+}
+
+export type UpdateSettingsRequest = Partial<Settings>;
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  userId: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}
+
+// ===== Returns (migration 003) =====
+
+export type ReturnStatus = 'pending' | 'approved' | 'completed' | 'rejected';
+export type ReturnKind = 'return' | 'exchange' | 'void';
+
+export interface ReturnItem {
+  id: string;
+  productId: string;
+  variantId?: string;
+  nameSnapshot: string;
+  size?: string;
+  color?: string;
+  originalQuantity: number;
+  returnQuantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  condition: string;
+  restocked: boolean;
+  notes?: string;
+}
+
+export interface Return {
+  id: string;
+  originalOrderId: string;
+  returnNumber: string;
+  returnType: ReturnKind;
+  status: ReturnStatus;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerId?: string;
+  customerName?: string;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  refundMethod?: string;
+  refundStatus: string;
+  refundProcessedAt?: number;
+  storeCreditAmount: number;
+  storeCreditCode?: string;
+  reasonCode?: string;
+  reasonDetails?: string;
+  internalNotes?: string;
+  restockItems: boolean;
+  restockingFee: number;
+  createdByName?: string;
+  approvedByName?: string;
+  originalOrderTotal?: number;
+  createdAt: number;
+  updatedAt: number;
+  items?: ReturnItem[];
+}
+
+export interface ReturnStats {
+  totalReturns: number;
+  completedReturns: number;
+  pendingReturns: number;
+  rejectedReturns: number;
+  totalRefunded: number;
+  totalStoreCredits: number;
+  uniqueCustomers: number;
+}
+
+// ===== Discounts (migration 004) =====
+
+export interface DiscountType {
+  id: string;
+  name: string;
+  description?: string;
+  code?: string;
+  discountType: 'percentage' | 'fixed' | 'buy_x_get_y';
+  discountValue: number;
+  minPurchase: number;
+  maxDiscount?: number | null;
+  appliesTo: string;
+  applicableIds: string[];
+  requiresApproval: boolean;
+  approvalThreshold?: number | null;
+  requiresEmployeeId: boolean;
+  displayOrder: number;
+  color: string;
+  icon?: string;
+  showInPos: boolean;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export interface PromoCode {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  discountType: 'percentage' | 'fixed' | 'free_shipping' | 'buy_x_get_y' | 'free_item';
+  discountValue: number;
+  minPurchase: number;
+  maxDiscount?: number | null;
+  maxUses?: number | null;
+  maxUsesPerCustomer: number;
+  currentUses: number;
+  startsAt: number;
+  expiresAt?: number | null;
+  firstOrderOnly: boolean;
+  stackable: boolean;
+  isActive: boolean;
+  createdAt: number;
+  createdByName?: string;
+}
+
+export interface EmployeeDiscount {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  discountPercentage: number;
+  maxDiscountAmount?: number | null;
+  currentMonthUsage: number;
+  requiresManagerApprovalAbove?: number | null;
+  isActive: boolean;
+  approvedByName?: string;
+  approvedAt?: number;
+}
+
+/** Aggregate discount figures shown on the summary cards. */
+export interface DiscountStats {
+  totalDiscounts: number;
+  totalDiscountAmount: number;
+}

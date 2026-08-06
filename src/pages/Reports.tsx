@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiClient } from "@/lib/api-client";
-import type { Order, OrderItem } from "@/lib/api-types";
+import type { Order, OrderItem } from "@/lib/api";
 import { ArrowLeft, DollarSign, ShoppingCart, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthLayout, Button, Input, Label } from '@steward-apps/ui';
 import { apiClient } from '@/lib/api-client';
 import { authStore } from '@/lib/auth-store';
-import type { LoginRequest, LoginResponse } from '@/lib/api-types';
+import type { LoginRequest, LoginResponse } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn } from 'lucide-react';
 import Logo from '@/components/Logo';

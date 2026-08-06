@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { apiClient } from '@/lib/api-client';
-import type { Product, CreateProductRequest, UpdateProductRequest } from '@/lib/api-types';
+import type { CreateProductRequest, Product, UpdateProductRequest } from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';

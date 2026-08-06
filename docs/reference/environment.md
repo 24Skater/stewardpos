@@ -68,6 +68,24 @@ cp .env.prod.example .env.prod
 | MinIO API | 9002 | 9004 | 9000 |
 | MinIO Console | 9003 | 9005 | 9001 |
 
+## How the Frontend Finds the Backend
+
+The frontend reaches the API two different ways, and `VITE_API_BASE_URL` is what
+switches between them.
+
+| Mode | `VITE_API_BASE_URL` | How requests resolve |
+|------|---------------------|----------------------|
+| Local dev (`npm run dev`) | leave empty | The app issues same-origin `/api/...` requests. Vite's dev server proxies `/api` and `/uploads` to the backend (default `http://localhost:3002`). |
+| Docker / built bundle | absolute URL, e.g. `http://localhost:3002` | Baked into the bundle at build time; requests go straight to that origin, and backend `CORS_ORIGIN` must allow the frontend's origin. |
+
+Because Vite inlines `VITE_*` variables during `vite build`, the value is fixed
+when the image is built — changing it later requires a rebuild, not a restart.
+
+Override the dev proxy target with `VITE_DEV_API_PROXY_TARGET` if the backend is
+not on port 3002 (for example, when pointing the dev UI at the QA backend on
+3003). `/uploads` is proxied alongside `/api` because uploaded logos and icons
+are stored as relative URLs.
+
 ## Environment Differences
 
 | Setting | DEV | QA | PROD |

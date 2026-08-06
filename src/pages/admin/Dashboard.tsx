@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
-import type { Customer } from '@/lib/api-types';
+import type { Customer } from '@/lib/api';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';

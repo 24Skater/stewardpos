@@ -1,5 +1,5 @@
 import { apiClient } from './api-client';
-import type { LoginResponse } from './api-types';
+import type { LoginResponse } from './api/types';
 
 interface AuthToken {
   token: string;

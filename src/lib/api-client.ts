@@ -175,6 +175,25 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
+  /**
+   * POST multipart form data (file uploads).
+   *
+   * Deliberately does not set `Content-Type`: the browser must generate it so it
+   * can append the multipart boundary. Setting it by hand produces a body the
+   * server cannot parse.
+   */
+  async postForm<T>(path: string, form: FormData): Promise<T> {
+    const token = await getToken();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: form,
+    });
+    return handleResponse<T>(response);
+  },
+
   /** GET a list endpoint, keeping the envelope's pagination `meta`. */
   async getList<T>(path: string): Promise<{ data: T; meta?: ResponseMeta }> {
     const token = await getToken();

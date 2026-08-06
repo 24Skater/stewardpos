@@ -51,7 +51,7 @@ import {
 } from '@/lib/export-utils';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
-import type { Product } from '@/lib/api-types';
+import type { Product } from '@/lib/api';
 import type { OrderItem, QuoteItem, ReturnItem, ExportRow } from '@/lib/export-utils';
 
 interface Order {
