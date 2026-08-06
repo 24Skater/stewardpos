@@ -221,12 +221,12 @@ export class SQLiteAdapter {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          product.name,
-          product.description,
-          product.category,
-          product.basePrice,
-          product.image,
-          product.barcode,
+          product.name ?? null,
+          product.description ?? null,
+          product.category ?? null,
+          product.basePrice ?? null,
+          product.image ?? null,
+          product.barcode ?? null,
           now,
           now
         );
@@ -305,9 +305,17 @@ export class SQLiteAdapter {
       const now = Date.now();
       const result = this.db
         .prepare(
+          // COALESCE for the same reason as the Postgres adapter: every field on
+          // the update schema is optional, and writing the parameters straight
+          // through wipes whatever the caller did not send.
           `UPDATE products 
-           SET name = ?, description = ?, category = ?, base_price = ?, 
-               image = ?, barcode = ?, updated_at = ?
+           SET name = COALESCE(?, name),
+               description = COALESCE(?, description),
+               category = COALESCE(?, category),
+               base_price = COALESCE(?, base_price),
+               image = COALESCE(?, image),
+               barcode = COALESCE(?, barcode),
+               updated_at = ?
            WHERE id = ?`
         )
         .run(

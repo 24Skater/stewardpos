@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
 
 const router = Router();
 
@@ -149,6 +150,8 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     }
 
     logger.info(`Created order: ${order.id} - Total: $${order.total}`);
+    // Orders are immutable, so one create row is the whole story for a sale.
+    await audit(req, { action: 'create', entity: 'order', entityId: String(order.id), after: order });
 
     res.status(201).json({
       success: true,

@@ -6,6 +6,7 @@ import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
 
 const router = Router();
 
@@ -225,6 +226,7 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     });
 
     logger.info(`Created return: ${returnNumber} for order ${data.originalOrderId}`);
+    await audit(req, { action: 'create', entity: 'return', entityId: String(returnData.id), after: returnData });
 
     res.status(201).json({
       success: true,
@@ -260,6 +262,7 @@ router.put('/:id/status', requirePermission('returns', 'write'), async (req: Aut
     }
 
     logger.info(`Updated return ${id} status to: ${data.status}`);
+    await audit(req, { action: 'update', entity: 'return', entityId: id, after: { status: data.status, internalNotes: data.internalNotes } });
 
     res.json({
       success: true,
@@ -340,6 +343,8 @@ router.post('/:id/process-refund', requirePermission('returns', 'write'), async 
     });
 
     logger.info(`Processed refund for return ${id}: $${refundAmount} via ${data.refundMethod}`);
+    // Money leaving the till is the single most important thing to attribute.
+    await audit(req, { action: 'refund', entity: 'return', entityId: id, after: { refundAmount, refundMethod: data.refundMethod } });
 
     res.json({
       success: true,
@@ -378,6 +383,7 @@ router.post('/:id/restock', requirePermission('returns', 'write'), async (req: A
     const restockedItems = await adapter.restockReturnItems(id, itemIds);
 
     logger.info(`Restocked ${restockedItems.length} items from return ${id}`);
+    await audit(req, { action: 'restock', entity: 'return', entityId: id, after: { restockedItems } });
 
     res.json({
       success: true,

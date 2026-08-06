@@ -7,6 +7,7 @@ import { Seeder } from '../../services/seeder';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import componentsRoutes from './components';
 
@@ -73,6 +74,7 @@ router.post('/users', requirePermission('users', 'write'), async (req: AuthReque
     });
 
     logger.info(`Created user: ${user.email} (${user.id})`);
+    await audit(req, { action: 'create', entity: 'user', entityId: String(user.id), after: user });
 
     res.status(201).json({
       success: true,
@@ -112,6 +114,7 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     }
 
     logger.info(`Updated user: ${id}`);
+    await audit(req, { action: 'update', entity: 'user', entityId: id, after: user });
 
     res.json({
       success: true,
@@ -141,6 +144,7 @@ router.delete('/users/:id', requirePermission('users', 'delete'), async (req: Au
     }
 
     logger.info(`Deleted user: ${id}`);
+    await audit(req, { action: 'delete', entity: 'user', entityId: id });
 
     res.json({
       success: true,
@@ -198,6 +202,7 @@ router.post('/roles', requirePermission('users', 'write'), async (req: AuthReque
     const role = await adapter.createRole(roleData);
 
     logger.info(`Created role: ${role.name} (${role.id})`);
+    await audit(req, { action: 'create', entity: 'role', entityId: String(role.id), after: role });
 
     res.status(201).json({
       success: true,
@@ -221,6 +226,8 @@ router.put('/roles/:id', requirePermission('users', 'write'), async (req: AuthRe
     const { id } = req.params;
     const roleData = updateRoleSchema.parse(req.body);
     const adapter = db.getAdapter();
+    // Captured first so the audit row can show what the permissions were.
+    const before = await adapter.getRoleById(id);
     const role = await adapter.updateRole(id, roleData);
 
     if (!role) {
@@ -228,6 +235,7 @@ router.put('/roles/:id', requirePermission('users', 'write'), async (req: AuthRe
     }
 
     logger.info(`Updated role: ${id}`);
+    await audit(req, { action: 'update', entity: 'role', entityId: id, before, after: role });
 
     res.json({
       success: true,
@@ -250,6 +258,7 @@ router.delete('/roles/:id', requirePermission('users', 'delete'), async (req: Au
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
+    const before = await adapter.getRoleById(id);
     const deleted = await adapter.deleteRole(id);
 
     if (!deleted) {
@@ -257,6 +266,7 @@ router.delete('/roles/:id', requirePermission('users', 'delete'), async (req: Au
     }
 
     logger.info(`Deleted role: ${id}`);
+    await audit(req, { action: 'delete', entity: 'role', entityId: id, before });
 
     res.json({
       success: true,
@@ -400,11 +410,19 @@ router.put('/settings', requirePermission('settings', 'write'), async (req: Auth
   try {
     const settingsData = updateSettingsSchema.parse(req.body);
     const adapter = db.getAdapter();
+    const before = await adapter.getSettings();
     const settings = await adapter.updateSettings(
       await preserveSecrets(settingsData as Record<string, unknown>, adapter)
     );
 
     logger.info('Settings updated');
+    await audit(req, {
+      action: 'update',
+      entity: 'settings',
+      entityId: SINGLETON_ENTITY_ID,
+      before,
+      after: settings,
+    });
 
     res.json({
       success: true,

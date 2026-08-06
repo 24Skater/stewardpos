@@ -5,6 +5,7 @@ import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
 
 const router = Router();
 
@@ -94,6 +95,7 @@ router.post('/', requirePermission('customers', 'write'), async (req: AuthReques
     const customer = await adapter.createCustomer(customerData);
 
     logger.info(`Created customer: ${customer.name} (${customer.id})`);
+    await audit(req, { action: 'create', entity: 'customer', entityId: String(customer.id), after: customer });
 
     res.status(201).json({
       success: true,
@@ -124,6 +126,7 @@ router.put('/:id', requirePermission('customers', 'write'), async (req: AuthRequ
     }
 
     logger.info(`Updated customer: ${id}`);
+    await audit(req, { action: 'update', entity: 'customer', entityId: id, after: customer });
 
     res.json({
       success: true,
@@ -153,6 +156,7 @@ router.delete('/:id', requirePermission('customers', 'delete'), async (req: Auth
     }
 
     logger.info(`Deleted customer: ${id}`);
+    await audit(req, { action: 'delete', entity: 'customer', entityId: id });
 
     res.json({
       success: true,
@@ -212,6 +216,7 @@ router.post('/:id/archive', requirePermission('customers', 'write'), async (req:
     }
 
     logger.info(`Archived customer: ${customer.name} (${id}) by user ${req.user!.id}`);
+    await audit(req, { action: 'archive', entity: 'customer', entityId: id, before: customer });
 
     res.json({
       success: true,
