@@ -30,6 +30,52 @@ export interface TerminalTransactionUpdate {
   durationMs?: number;
 }
 
+/**
+ * Turn an `order_items` row into the camelCase DTO the API publishes.
+ *
+ * Shared by every path that returns order lines. It was previously inlined at
+ * each read site and omitted entirely on create, which meant a completed sale
+ * responded with raw snake_case columns while a subsequent read of the same
+ * order came back camelCase - the client saw `undefined` for every line total
+ * on the response it got immediately after checkout.
+ *
+ * DECIMAL columns arrive from `pg` as strings; the numeric fields are parsed
+ * here so callers never have to.
+ */
+export function mapOrderItemRow(item: DbRow): DbRow {
+  return {
+    id: item.id,
+    orderId: item.order_id,
+    productId: item.product_id,
+    variantId: item.variant_id,
+    nameSnapshot: item.name_snapshot,
+    size: item.size,
+    color: item.color,
+    quantity: item.quantity,
+    unitPrice: parseFloat(item.unit_price as string),
+    lineDiscount: parseFloat(item.line_discount as string),
+    lineTotal: parseFloat(item.line_total as string),
+    notes: item.notes,
+  };
+}
+
+/** Turn an `orders` row into the camelCase DTO the API publishes. */
+export function mapOrderRow(order: DbRow): DbRow {
+  return {
+    id: order.id,
+    createdAt: new Date(order.created_at as string).getTime(),
+    subtotal: parseFloat(order.subtotal as string),
+    discountTotal: parseFloat(order.discount_total as string),
+    taxTotal: parseFloat(order.tax_total as string),
+    total: parseFloat(order.total as string),
+    paymentMethod: order.payment_method,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    cardTransactionId: order.card_transaction_id ?? null,
+    cardAuthCode: order.card_auth_code ?? null,
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -424,16 +470,8 @@ export class PostgresAdapter {
       await client.query('COMMIT');
 
       return {
-        id: newOrder.id,
-        createdAt: new Date(newOrder.created_at).getTime(),
-        subtotal: parseFloat(newOrder.subtotal),
-        discountTotal: parseFloat(newOrder.discount_total),
-        taxTotal: parseFloat(newOrder.tax_total),
-        total: parseFloat(newOrder.total),
-        paymentMethod: newOrder.payment_method,
-        customerEmail: newOrder.customer_email,
-        customerPhone: newOrder.customer_phone,
-        items,
+        ...mapOrderRow(newOrder),
+        items: items.map(mapOrderItemRow),
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -466,33 +504,12 @@ export class PostgresAdapter {
           if (!itemsMap.has(orderId)) {
             itemsMap.set(orderId, []);
           }
-          itemsMap.get(orderId)!.push({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineDiscount: parseFloat(item.line_discount),
-            lineTotal: parseFloat(item.line_total),
-            notes: item.notes,
-          });
+          itemsMap.get(orderId)!.push(mapOrderItemRow(item));
         });
       }
 
       return result.rows.map((order) => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -520,29 +537,8 @@ export class PostgresAdapter {
       );
 
       return {
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
-        items: itemsResult.rows.map((item) => ({
-          id: item.id,
-          orderId: item.order_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          nameSnapshot: item.name_snapshot,
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity,
-          unitPrice: parseFloat(item.unit_price),
-          lineDiscount: parseFloat(item.line_discount),
-          lineTotal: parseFloat(item.line_total),
-          notes: item.notes,
-        })),
+        ...mapOrderRow(order),
+        items: itemsResult.rows.map(mapOrderItemRow),
       };
     } catch (error) {
       logger.error('Error getting order by ID:', error);
@@ -1882,33 +1878,12 @@ export class PostgresAdapter {
           if (!itemsMap.has(orderId)) {
             itemsMap.set(orderId, []);
           }
-          itemsMap.get(orderId)!.push({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineDiscount: parseFloat(item.line_discount),
-            lineTotal: parseFloat(item.line_total),
-            notes: item.notes,
-          });
+          itemsMap.get(orderId)!.push(mapOrderItemRow(item));
         });
       }
 
       return result.rows.map((order) => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -2662,15 +2637,7 @@ export class PostgresAdapter {
       const result = await this.pool.query(query, params);
 
       return result.rows.map(order => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         itemCount: parseInt(order.item_count),
       }));
     } catch (error) {

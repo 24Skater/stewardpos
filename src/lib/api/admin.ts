@@ -1,4 +1,4 @@
-import { apiClient, type ResponseMeta } from '../api-client';
+import { apiClient } from '../api-client';
 import { qs } from './qs';
 import type {
   AuditLog,
@@ -58,8 +58,13 @@ export const adminApi = {
     update: (body: UpdateSettingsRequest) => apiClient.put<Settings>('/api/admin/settings', body),
   },
 
-  audit: (query?: AuditQuery): Promise<{ data: AuditLog[]; meta?: ResponseMeta }> =>
-    apiClient.getList<AuditLog[]>(`/api/admin/audit${qs(query)}`),
+  /**
+   * Audit log.
+   *
+   * Accepts `limit`/`offset` but returns no total, so a caller cannot know
+   * whether more rows exist beyond asking for one more than it needs.
+   */
+  audit: (query?: AuditQuery) => apiClient.get<AuditLog[]>(`/api/admin/audit${qs(query)}`),
 
   /** Destructive: wipes and reseeds every table. Development affordance only. */
   resetDatabase: () => apiClient.post<void>('/api/admin/reset-database'),
