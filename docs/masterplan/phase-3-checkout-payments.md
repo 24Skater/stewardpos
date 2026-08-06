@@ -185,13 +185,20 @@ decrements stock by two.
 
 **Not done, and why it matters:**
 
-- **Discounts are still client-supplied.** `discountTotal` is clamped to the
-  subtotal so a sale cannot go negative, but a forged request can still ask for
-  100% off. Closing this means validating each applied discount against the
-  discount catalog — checking the type exists, is active, is flagged
-  `showInPos`, and that the computed amount matches — which needs the request to
-  carry the applied discounts rather than a single number. That is the remaining
-  half of C1.
+- ~~Discounts are still client-supplied~~ — **fixed.** `POST /api/orders` now
+  takes an `appliedDiscounts` array naming *which* discounts were applied, and
+  resolves each against the catalog: it must exist, be active, be flagged
+  `showInPos` for a register discount, be inside its date window, be under its
+  usage cap, and meet its minimum purchase. The amount is computed from the
+  stored definition; a bare `discountTotal` is now worth nothing. Manual
+  discounts have no catalog entry to check, so they require `discounts.write` —
+  a cashier cannot grant one. Employee discounts are refused pending their own
+  entitlement checks, rather than honoured unverified.
+
+  Verified live: a bare `discountTotal: 9999` yields $0 off; a request claiming
+  90% against a stored 10% discount takes 10%; an invented discount id is
+  rejected; a cashier's manual 100%-off is refused while the same cashier can
+  apply a configured discount.
 - Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
   untouched.
 - ~~Atomicity is partial~~ — **fixed.** The decrement is now conditional

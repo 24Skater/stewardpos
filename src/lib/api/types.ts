@@ -180,6 +180,22 @@ export interface Order {
   items?: OrderItem[];
 }
 
+/**
+ * A discount the register applied, as sent at checkout.
+ *
+ * The server resolves each against the discount catalog and computes the amount
+ * itself — this only identifies *which* discount. `type`/`value` are read only
+ * for a `manual` discount, and only from a caller allowed to grant one.
+ */
+export interface AppliedDiscountRequest {
+  source: 'quick_discount' | 'promo_code' | 'manual' | 'employee';
+  id?: string;
+  code?: string;
+  type?: 'percentage' | 'fixed';
+  value?: number;
+  reason?: string;
+}
+
 export interface CreateOrderRequest {
   items: Array<{
     productId: string;
@@ -194,9 +210,14 @@ export interface CreateOrderRequest {
     notes?: string;
   }>;
   subtotal: number;
+  /**
+   * Ignored by the server, which reprices. Send `appliedDiscounts` to actually
+   * take money off.
+   */
   discountTotal?: number;
   taxTotal?: number;
   total: number;
+  appliedDiscounts?: AppliedDiscountRequest[];
   paymentMethod: string;
   customerEmail?: string;
   customerPhone?: string;

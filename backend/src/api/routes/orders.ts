@@ -6,12 +6,26 @@ import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
-import { repriceOrder, type PriceableProduct } from '../../services/pricing';
+import { repriceOrder, toCents, toDollars, type PriceableProduct } from '../../services/pricing';
+import { validateAppliedDiscounts } from '../../services/discountPricing';
 
 const router = Router();
 
 // All order routes require authentication (orders contain sensitive data)
 router.use(authenticate);
+
+/**
+ * Whether this caller may apply an ad-hoc discount.
+ *
+ * A manual discount has no catalog entry to validate against, so who may grant
+ * one is the only control there is. A cashier holding `orders.write` cannot; an
+ * admin, or anyone with `discounts.write`, can.
+ */
+function grantsManualDiscount(req: AuthRequest): boolean {
+  return (req.user?.roles ?? []).some(
+    (role) => role.systemRole === 'admin' || role.permissions?.discounts?.write === true
+  );
+}
 
 /**
  * Order API Routes
@@ -47,11 +61,24 @@ const orderItemSchema = z.object({
   ),
 });
 
+/** A discount the register says it applied. Its value is resolved server-side. */
+const appliedDiscountSchema = z.object({
+  source: z.enum(['quick_discount', 'promo_code', 'manual', 'employee']),
+  id: z.string().optional(),
+  code: z.string().optional(),
+  type: z.enum(['percentage', 'fixed']).optional(),
+  value: z.number().optional(),
+  reason: z.string().optional(),
+});
+
 /**
  * The money fields here are accepted for backward compatibility and then
- * ignored: the server reprices from the catalog. `discountTotal` is the one
- * exception - it is still honoured, clamped to the subtotal, until discounts are
- * validated against the discount catalog too.
+ * ignored: the server reprices from the catalog.
+ *
+ * `discountTotal` included. A caller that wants a discount applied must say
+ * *which* discounts, via `appliedDiscounts`, so each can be checked against the
+ * catalog. A bare `discountTotal` is an unverifiable claim and is now worth
+ * nothing.
  */
 const createOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
@@ -59,6 +86,7 @@ const createOrderSchema = z.object({
   discountTotal: z.number().min(0).default(0),
   taxTotal: z.number().min(0).default(0),
   total: z.number().min(0),
+  appliedDiscounts: z.array(appliedDiscountSchema).default([]),
   paymentMethod: z.string(),
   // Customer information is optional - can be omitted, empty string, or valid email
   customerEmail: z.preprocess(
@@ -157,6 +185,27 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     }
 
     const settings = await adapter.getSettings();
+    const taxRate = Number((settings as { taxRateDefault?: number } | null)?.taxRateDefault ?? 0);
+
+    // Price the lines first: a percentage discount needs a subtotal to apply to.
+    const lines = repriceOrder(
+      orderData.items.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        notes: item.notes,
+      })),
+      catalog,
+      { taxRate }
+    );
+
+    // Then resolve each claimed discount against the catalog. The amount comes
+    // from the stored definition; the request only says which one.
+    const validated = await validateAppliedDiscounts(orderData.appliedDiscounts, adapter, {
+      subtotalCents: toCents(lines.subtotal),
+      mayGrantManualDiscount: grantsManualDiscount(req),
+    });
+
     const priced = repriceOrder(
       orderData.items.map((item) => ({
         productId: item.productId,
@@ -165,10 +214,7 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
         notes: item.notes,
       })),
       catalog,
-      {
-        taxRate: Number((settings as { taxRateDefault?: number } | null)?.taxRateDefault ?? 0),
-        requestedDiscount: orderData.discountTotal,
-      }
+      { taxRate, requestedDiscount: toDollars(validated.totalCents) }
     );
 
     const order = await adapter.createOrder({
