@@ -1,20 +1,27 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
 const router = Router();
 
+// Authenticated throughout: the service catalog carries pricing, which is not
+// something to serve to anonymous callers.
+router.use(authenticate);
+
 /**
  * Service API Routes
  * 
- * GET    /api/services          - List all services
- * GET    /api/services/:id      - Get service by ID
- * POST   /api/services          - Create new service (requires auth)
- * PUT    /api/services/:id      - Update service (requires auth)
- * DELETE /api/services/:id      - Delete service (requires auth)
+ * All routes require a session; the verbs map onto the `services` permission.
+ *
+ * GET    /api/services          - List all services      (services.read)
+ * GET    /api/services/:id      - Get service by ID      (services.read)
+ * POST   /api/services          - Create new service     (services.write)
+ * PUT    /api/services/:id      - Update service         (services.write)
+ * DELETE /api/services/:id      - Delete service         (services.delete)
  */
 
 // Validation schemas
@@ -40,7 +47,7 @@ const updateServiceSchema = z.object({
  * GET /api/services
  * List all services (public)
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('services', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const services = await adapter.getAllServices();
@@ -60,7 +67,7 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
  * GET /api/services/:id
  * Get service by ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('services', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -83,7 +90,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/services
  * Create new service (requires authentication)
  */
-router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('services', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const serviceData = createServiceSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -108,7 +115,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response, next: Nex
  * PUT /api/services/:id
  * Update service (requires authentication)
  */
-router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', requirePermission('services', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const serviceData = updateServiceSchema.parse(req.body);
@@ -138,7 +145,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next: N
  * DELETE /api/services/:id
  * Delete service (requires authentication)
  */
-router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', requirePermission('services', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();

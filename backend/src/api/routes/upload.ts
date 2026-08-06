@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize } from '../middleware/authorize';
+import { requirePermission } from '../middleware/authorize';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -64,7 +64,7 @@ const upload = multer({
 
 // All upload routes require authentication and admin/manager role
 router.use(authenticate);
-router.use(authorize(['admin', 'manager']));
+router.use(requirePermission('settings', 'write'));
 
 /**
  * POST /api/upload/:type

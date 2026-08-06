@@ -1,14 +1,17 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
 const router = Router();
 
-// GET endpoints are public (for browsing products)
-// Write operations (POST, PUT, DELETE) require authentication
+// Every endpoint requires a session. Reads are not public: a product carries its
+// variants, and those carry SKUs and live stock counts, which is inventory data
+// a store should not publish. The register is behind a login anyway.
+router.use(authenticate);
 
 /**
  * Product/Inventory API Routes
@@ -53,9 +56,9 @@ const updateProductSchema = z.object({
 
 /**
  * GET /api/products
- * List all products (public - no auth required)
+ * List all products
  */
-router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('inventory', 'read'), async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const products = await adapter.getAllProducts();
@@ -73,9 +76,9 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 
 /**
  * GET /api/products/:id
- * Get product by ID (public - no auth required)
+ * Get product by ID
  */
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('inventory', 'read'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -96,9 +99,9 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * POST /api/products
- * Create new product (requires authentication)
+ * Create new product
  */
-router.post('/', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('inventory', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const productData = createProductSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -121,9 +124,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response, next: Nex
 
 /**
  * PUT /api/products/:id
- * Update product (requires authentication)
+ * Update product
  */
-router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', requirePermission('inventory', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const productData = updateProductSchema.parse(req.body);
@@ -151,9 +154,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next: N
 
 /**
  * DELETE /api/products/:id
- * Delete product (requires authentication)
+ * Delete product
  */
-router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', requirePermission('inventory', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
