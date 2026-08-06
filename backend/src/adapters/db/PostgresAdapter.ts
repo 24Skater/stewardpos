@@ -351,19 +351,29 @@ export class PostgresAdapter {
 
   async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
+      // COALESCE, not bare assignment: every field on the update schema is
+      // optional, so a caller changing only the price sends nothing else. Writing
+      // the parameters straight through set those columns to NULL - erasing the
+      // description, category, image, and barcode of any product updated in part,
+      // and failing outright on `name`, which is NOT NULL.
       const result = await this.pool.query(
         `UPDATE products 
-         SET name = $1, description = $2, category = $3, base_price = $4, 
-             image = $5, barcode = $6, updated_at = CURRENT_TIMESTAMP
+         SET name = COALESCE($1, name),
+             description = COALESCE($2, description),
+             category = COALESCE($3, category),
+             base_price = COALESCE($4, base_price),
+             image = COALESCE($5, image),
+             barcode = COALESCE($6, barcode),
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = $7
          RETURNING *`,
         [
-          product.name,
-          product.description,
-          product.category,
-          product.basePrice,
-          product.image,
-          product.barcode,
+          product.name ?? null,
+          product.description ?? null,
+          product.category ?? null,
+          product.basePrice ?? null,
+          product.image ?? null,
+          product.barcode ?? null,
           id,
         ]
       );

@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
 
 const router = Router();
 
@@ -108,6 +109,7 @@ router.post('/', requirePermission('inventory', 'write'), async (req: AuthReques
     const product = await adapter.createProduct(productData);
 
     logger.info(`Created product: ${product.name} (${product.id})`);
+    await audit(req, { action: 'create', entity: 'product', entityId: String(product.id), after: product });
 
     res.status(201).json({
       success: true,
@@ -131,6 +133,8 @@ router.put('/:id', requirePermission('inventory', 'write'), async (req: AuthRequ
     const { id } = req.params;
     const productData = updateProductSchema.parse(req.body);
     const adapter = db.getAdapter();
+    // Read first so the audit row can show what the values were.
+    const before = await adapter.getProductById(id);
     const product = await adapter.updateProduct(id, productData);
 
     if (!product) {
@@ -138,6 +142,7 @@ router.put('/:id', requirePermission('inventory', 'write'), async (req: AuthRequ
     }
 
     logger.info(`Updated product: ${id}`);
+    await audit(req, { action: 'update', entity: 'product', entityId: id, before, after: product });
 
     res.json({
       success: true,
@@ -160,6 +165,7 @@ router.delete('/:id', requirePermission('inventory', 'delete'), async (req: Auth
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
+    const before = await adapter.getProductById(id);
     const deleted = await adapter.deleteProduct(id);
 
     if (!deleted) {
@@ -167,6 +173,7 @@ router.delete('/:id', requirePermission('inventory', 'delete'), async (req: Auth
     }
 
     logger.info(`Deleted product: ${id}`);
+    await audit(req, { action: 'delete', entity: 'product', entityId: id, before });
 
     res.json({
       success: true,
