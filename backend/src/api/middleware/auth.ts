@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import config from '../../config';
+import logger from '../../utils/logger';
 import db from '../../services/database';
 import { AuthenticationError } from '../../utils/errors';
 
@@ -12,7 +14,17 @@ export interface AuthRole {
   permissions?: Record<string, { read?: boolean; write?: boolean; delete?: boolean }>;
 }
 
+/** Set when a request authenticated with an API key rather than a session. */
+export interface AuthenticatedApiKey {
+  id: string;
+  name: string;
+  scopes: ApiKeyScope[];
+}
+
+export type ApiKeyScope = 'read' | 'write' | 'delete' | 'admin';
+
 export interface AuthRequest extends Request {
+  apiKey?: AuthenticatedApiKey;
   user?: {
     id: string;
     email: string;
@@ -31,6 +43,84 @@ interface TokenClaims {
   id: string;
   email: string;
   roleIds: string[];
+}
+
+/**
+ * Permissions an API key's scopes grant.
+ *
+ * Scopes are coarse — they say what a key may *do*, not what to. Expanding them
+ * into the same per-resource shape a role carries lets `requirePermission` treat
+ * a key and a person identically, rather than growing a second authorisation
+ * path that could drift from the first.
+ *
+ * `admin` maps to the admin archetype, so it bypasses per-resource checks
+ * exactly as an admin role does. That is what the scope means, and it is opt-in
+ * when the key is minted.
+ */
+function roleForScopes(scopes: ApiKeyScope[]): AuthRole {
+  const canWrite = scopes.includes('write') || scopes.includes('delete');
+  const canDelete = scopes.includes('delete');
+  const grant = {
+    read: scopes.length > 0,
+    write: canWrite,
+    delete: canDelete,
+  };
+
+  const resources = [
+    'inventory', 'reports', 'exports', 'settings', 'users',
+    'services', 'customers', 'orders', 'returns', 'discounts',
+  ];
+
+  return {
+    id: 'api-key',
+    name: 'API key',
+    systemRole: scopes.includes('admin') ? 'admin' : undefined,
+    permissions: Object.fromEntries(resources.map((resource) => [resource, grant])),
+  };
+}
+
+/**
+ * Authenticate an `X-API-Key` header, if one is present.
+ *
+ * Returns `false` when there is no key to try, so the caller can fall through to
+ * session auth. A key that is present but bad rejects outright rather than
+ * falling through — silently downgrading to "anonymous" would turn a typo in a
+ * key into a confusing 401 from somewhere else.
+ */
+async function authenticateApiKey(req: AuthRequest): Promise<boolean> {
+  const presented = req.headers['x-api-key'];
+  const key = Array.isArray(presented) ? presented[0] : presented;
+  if (!key) return false;
+
+  // `spk_<8 hex>_<64 hex>` — the prefix is indexed, the secret is not stored.
+  const prefix = key.split('_').slice(0, 2).join('_');
+  const record = await db.getAdapter().getApiKeyByPrefix(prefix);
+
+  if (!record || record.isActive === false) {
+    throw new AuthenticationError('Not authenticated');
+  }
+  if (record.expiresAt != null && record.expiresAt <= Date.now()) {
+    throw new AuthenticationError('Not authenticated');
+  }
+  if (!(await bcrypt.compare(key, String(record.keyHash)))) {
+    throw new AuthenticationError('Not authenticated');
+  }
+
+  const scopes = (record.scopes as ApiKeyScope[]) ?? ['read'];
+  req.apiKey = { id: String(record.id), name: String(record.name), scopes };
+  req.user = {
+    id: `api-key:${record.id}`,
+    email: `api-key:${record.name}`,
+    roleIds: [],
+    roles: [roleForScopes(scopes)],
+  };
+
+  // Best-effort: a failure to stamp last-used must not fail the request.
+  db.getAdapter()
+    .updateApiKeyLastUsed(String(record.id))
+    .catch((error: unknown) => logger.warn('Could not record API key usage', error));
+
+  return true;
 }
 
 function readBearerToken(req: Request): string | null {
@@ -55,6 +145,12 @@ function readBearerToken(req: Request): string | null {
  */
 export async function authenticate(req: AuthRequest, _res: Response, next: NextFunction) {
   try {
+    // An API key is an alternative credential, not a lesser one: it produces the
+    // same `req.user` shape so every downstream permission check is unchanged.
+    if (await authenticateApiKey(req)) {
+      return next();
+    }
+
     const token = readBearerToken(req);
     if (!token) {
       throw new AuthenticationError('Not authenticated');
