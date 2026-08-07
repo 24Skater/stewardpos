@@ -297,7 +297,23 @@ const updateSettingsSchema = z.object({
   logoUrl: flexibleUrl,
   iconUrl: flexibleUrl,
   brandColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable().or(z.literal('')),
-  config: z.record(z.any()).optional(),
+  // Freeform, but the one key the catalog reads back is checked here rather than
+  // defended against at read time: a store that stores `"5"` and sees no change
+  // to its low-stock list has been given no reason why.
+  config: z
+    .record(z.any())
+    .optional()
+    .refine(
+      (config) => {
+        const threshold = config?.lowStockThreshold;
+        return (
+          threshold === undefined ||
+          threshold === null ||
+          (typeof threshold === 'number' && Number.isInteger(threshold) && threshold >= 0)
+        );
+      },
+      { message: 'lowStockThreshold must be a whole number of units' }
+    ),
   // Receipt branding
   storeAddress: z.string().optional().nullable(),
   storeCity: z.string().optional().nullable(),

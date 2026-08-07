@@ -34,6 +34,10 @@ const variantSchema = z.object({
   barcode: z.string().optional(),
   stock: z.number().int().min(0).default(0),
   enabled: z.boolean().default(true),
+  // Per-variant override of the store's low-stock threshold. Null means "use
+  // the store default" — what counts as low differs by item, and two wedding
+  // cakes is a lot where two rolls of receipt paper is nearly none.
+  lowStockThreshold: z.number().int().min(0).nullable().optional(),
 });
 
 const createProductSchema = z.object({
@@ -107,6 +111,48 @@ router.get('/', requirePermission('inventory', 'read'), async (req: Request, res
   }
 });
 
+
+/**
+ * The store default when a variant sets no threshold of its own.
+ *
+ * 10 because that is what the admin screens had hardcoded, in two places, so
+ * this changes nothing a shop currently sees. It is overridable per store via
+ * `settings.config.lowStockThreshold`, and per variant above.
+ */
+const DEFAULT_LOW_STOCK_THRESHOLD = 10;
+
+/**
+ * GET /api/products/low-stock
+ * What needs reordering.
+ *
+ * Two admin screens each decided for themselves that "low" meant under 10, by
+ * scanning the whole catalog client-side. That is a policy question, not a
+ * rendering one: it belongs where a shop can set it, and it should not depend on
+ * having already downloaded every product.
+ *
+ * Declared before `/:id` so it is not read as a product id.
+ */
+router.get('/low-stock', requirePermission('inventory', 'read'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const adapter = db.getAdapter();
+    const settings = (await adapter.getSettings()) as Record<string, unknown> | null;
+    const config = (settings?.config ?? {}) as Record<string, unknown>;
+
+    // A stored 0 is a real choice — "only tell me when it is actually gone" —
+    // so this checks the type rather than falsiness.
+    const configured = config.lowStockThreshold;
+    const fallback =
+      typeof configured === 'number' && Number.isFinite(configured) && configured >= 0
+        ? configured
+        : DEFAULT_LOW_STOCK_THRESHOLD;
+
+    const items = await adapter.getLowStockVariants(fallback);
+
+    res.json({ success: true, data: items, meta: { total: items.length, defaultThreshold: fallback } });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * GET /api/products/barcode/:code
@@ -279,6 +325,10 @@ const createVariantSchema = z.object({
   barcode: z.string().optional(),
   stock: z.number().int().min(0).default(0),
   enabled: z.boolean().default(true),
+  // Per-variant override of the store's low-stock threshold. Null means "use
+  // the store default" — what counts as low differs by item, and two wedding
+  // cakes is a lot where two rolls of receipt paper is nearly none.
+  lowStockThreshold: z.number().int().min(0).nullable().optional(),
 });
 
 const updateVariantSchema = createVariantSchema.partial();

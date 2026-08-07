@@ -80,6 +80,13 @@ export interface ProductVariant {
   barcode?: string;
   stock: number;
   enabled: boolean;
+  /**
+   * Per-variant override of the store's low-stock threshold.
+   *
+   * Null means "use the store default" — send an explicit null to clear an
+   * override, since omitting the field leaves the stored value alone.
+   */
+  lowStockThreshold?: number | null;
 }
 
 export interface Product {

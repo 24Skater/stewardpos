@@ -131,7 +131,26 @@ match — the underlying search is a substring one, and `123` must not ring up a
 item barcoded `1234`. It is declared before `/:id` so a scan is not mistaken for
 a product id.
 
-**Still open for this phase:** categories CRUD (P4-T2), product images through
-MinIO, and low-stock signals. The register still filters its loaded catalog
+**Low-stock signals are done.** `GET /api/products/low-stock` returns the
+variants at or below their threshold, worst shortfall first, with the product
+they belong to.
+
+The threshold is per-variant with a store-wide fallback, because what counts as
+low differs by item — two wedding cakes is a lot where two rolls of receipt
+paper is nearly none — and because a shop can be out of Large while Small is
+fine. Disabled variants are excluded: they are not for sale, so they cannot run
+out, and including them buries real shortages under discontinued ones.
+
+The store default lives in `settings.config.lowStockThreshold` and is validated
+on write rather than defended against on read, so a store that saves `"5"` is
+told why nothing changed. A configured **0** is honoured as a real policy
+("tell me only when it is actually gone") rather than being read as unset.
+
+Two admin screens had each decided for themselves that low meant under 10, by
+scanning the whole downloaded catalog. Both now ask the server, so they cannot
+disagree, and raising the store threshold moves both together.
+
+**Still open for this phase:** categories CRUD (P4-T2) and product images
+through MinIO. The register still filters its loaded catalog
 client-side rather than using the search endpoint — fine while a catalog fits in
 a page, and the endpoint is there when it does not.

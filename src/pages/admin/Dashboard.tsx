@@ -55,13 +55,14 @@ export default function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse] = await Promise.all([
+      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse, lowStockResponse] = await Promise.all([
         ordersApi.list(),
         productsApi.list(),
         quotesApi.list(),
         servicesApi.list(),
         customersApi.list(),
         discountsApi.stats(),
+        productsApi.lowStock(),
       ]);
 
       const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };
@@ -71,6 +72,7 @@ export default function Dashboard() {
       const quotes = quotesResponse ? quotesResponse : [];
       const services = servicesResponse ? servicesResponse : [];
       const customers = customersResponse ? customersResponse : [];
+      const lowStockItems = lowStockResponse ? lowStockResponse : [];
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -80,11 +82,14 @@ export default function Dashboard() {
       const todayOrders = orders.filter(o => o.createdAt >= todayTimestamp);
       const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
 
-      // Low stock
-      const lowStock = products.reduce((count, p) => {
-        const hasLowStock = p.variants?.some(v => v.enabled && v.stock < 10);
-        return hasLowStock ? count + 1 : count;
-      }, 0);
+      // Low stock, counted by product rather than by variant, so a shirt that is
+      // low in three sizes reads as one thing to reorder.
+      //
+      // This used to apply its own `stock < 10` rule to the loaded catalog. The
+      // threshold is a store setting and can be overridden per variant, so the
+      // server is the only thing that knows it; deciding here meant this tile
+      // and the inventory screen could disagree.
+      const lowStock = new Set(lowStockItems.map(item => item.productId)).size;
 
       // Service stats
       const todayQuotes = quotes.filter(q => q.createdAt >= todayTimestamp && q.status === 'completed');

@@ -146,6 +146,9 @@ export function mapVariantRow(row: DbRow): DbRow {
     barcode: row.barcode,
     stock: row.stock,
     enabled: row.enabled,
+    // Null means "use the store default", so a shop can change its mind about
+    // what counts as low without editing every variant it owns.
+    lowStockThreshold: row.low_stock_threshold ?? null,
   };
 }
 
@@ -335,7 +338,8 @@ export class PostgresAdapter {
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
-                    'enabled', pv.enabled
+                    'enabled', pv.enabled,
+                    'lowStockThreshold', pv.low_stock_threshold
                   )
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
@@ -380,7 +384,8 @@ export class PostgresAdapter {
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
-                    'enabled', pv.enabled
+                    'enabled', pv.enabled,
+                    'lowStockThreshold', pv.low_stock_threshold
                   )
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
@@ -3690,8 +3695,9 @@ export class PostgresAdapter {
 
       const result = await this.pool.query(
         `INSERT INTO product_variants
-         (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+          low_stock_threshold)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [
           productId,
@@ -3703,6 +3709,7 @@ export class PostgresAdapter {
           variant.barcode ?? null,
           variant.stock ?? 0,
           variant.enabled !== false,
+          variant.lowStockThreshold ?? null,
         ]
       );
       return mapVariantRow(result.rows[0]);
@@ -3735,7 +3742,14 @@ export class PostgresAdapter {
              sku = COALESCE($7, sku),
              barcode = COALESCE($8, barcode),
              stock = COALESCE($9, stock),
-             enabled = COALESCE($10, enabled)
+             enabled = COALESCE($10, enabled),
+             -- Explicit null means "go back to the store default", which
+             -- COALESCE alone cannot express: it reads every null as "not
+             -- mentioned", so a threshold once set could never be cleared.
+             low_stock_threshold = CASE
+               WHEN $12::boolean THEN NULL
+               ELSE COALESCE($11, low_stock_threshold)
+             END
          WHERE id = $1 AND product_id = $2
          RETURNING *`,
         [
@@ -3749,12 +3763,54 @@ export class PostgresAdapter {
           variant.barcode ?? null,
           variant.stock ?? null,
           variant.enabled ?? null,
+          variant.lowStockThreshold ?? null,
+          'lowStockThreshold' in variant && variant.lowStockThreshold === null,
         ]
       );
       return result.rows[0] ? mapVariantRow(result.rows[0]) : null;
     } catch (error) {
       logger.error('Error updating variant:', error);
       throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  /**
+   * Variants at or below their low-stock threshold.
+   *
+   * The threshold is per-variant, falling back to the store default, because a
+   * shop can be out of Large while Small is fine — and because what counts as
+   * low differs by item: two wedding cakes is a lot, two rolls of receipt paper
+   * is nearly none.
+   *
+   * Disabled variants are excluded. They are not for sale, so they cannot run
+   * out, and including them would bury the real shortages under discontinued
+   * ones.
+   *
+   * Ordered by how far under the threshold each one is, so the most urgent
+   * comes first rather than whatever happens to sort first alphabetically.
+   */
+  async getLowStockVariants(defaultThreshold: number): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT v.*, p.id AS product_id, p.name AS product_name, p.category
+         FROM product_variants v
+         JOIN products p ON p.id = v.product_id
+         WHERE v.enabled = true
+           AND v.stock <= COALESCE(v.low_stock_threshold, $1)
+         ORDER BY v.stock - COALESCE(v.low_stock_threshold, $1) ASC, p.name ASC`,
+        [defaultThreshold]
+      );
+
+      return result.rows.map((row) => ({
+        ...mapVariantRow(row),
+        productId: row.product_id,
+        productName: row.product_name,
+        category: row.category,
+        threshold: row.low_stock_threshold ?? defaultThreshold,
+      }));
+    } catch (error) {
+      logger.error('Error loading low stock variants:', error);
+      throw new DatabaseError('Failed to load low stock');
     }
   }
 
