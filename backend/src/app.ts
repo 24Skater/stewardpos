@@ -6,6 +6,7 @@ import path from 'path';
 import config from './config';
 import { errorHandler } from './api/middleware/errorHandler';
 import { requestLogger } from './api/middleware/requestLogger';
+import logger from './utils/logger';
 
 // Import routes
 import authRoutes from './api/routes/auth';
@@ -47,10 +48,16 @@ app.use(cors({
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    // Refuse by omitting the CORS headers rather than raising. Throwing here
+    // reached the error handler as an unclassified Error and surfaced as a 500,
+    // which reads as "the server broke" in logs and monitoring when the truth is
+    // that a caller was turned away by policy. The browser blocks the response
+    // either way; this just stops a policy decision looking like an outage.
+    logger.warn(`Blocked cross-origin request from ${origin}`);
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

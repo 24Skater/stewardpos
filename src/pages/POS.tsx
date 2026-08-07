@@ -253,6 +253,29 @@ export default function POS() {
    * Phase 3 moves this arithmetic server-side; until then the client's figures
    * are what the backend records.
    */
+  /**
+   * The receipt's line items, taken from the created order.
+   *
+   * Not the local cart: the totals on the receipt come from the server now, and
+   * pairing those with client-side line prices would print a receipt whose lines
+   * do not add up to its own total whenever the server repriced something.
+   * Falls back to the cart only if the response carries no items.
+   */
+  const receiptLinesFrom = (order: Order): CartItem[] =>
+    (order.items ?? []).length > 0
+      ? order.items!.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          price: item.unitPrice,
+          nameSnapshot: item.nameSnapshot,
+          size: item.size,
+          color: item.color,
+          notes: item.notes,
+          lineDiscount: item.lineDiscount,
+        }))
+      : [...cart];
+
   /** Strip an applied discount down to what the server needs to re-resolve it. */
   const toDiscountRequests = (applied: AppliedDiscount[]) =>
     applied.map((discount) => ({
@@ -620,7 +643,7 @@ export default function POS() {
       setLastOrderTax(response.taxTotal);
       setLastOrderDiscount(response.discountTotal);
       setLastOrderPaymentMethod(selectedPaymentMethod);
-      setLastOrderItems([...cart]);
+      setLastOrderItems(receiptLinesFrom(response));
       setLastOrderAuthCode(undefined);
       setCart([]);
       setCustomerEmail("");
@@ -810,7 +833,7 @@ export default function POS() {
       setLastOrderTax(response.taxTotal);
       setLastOrderDiscount(response.discountTotal);
       setLastOrderPaymentMethod('Card');
-      setLastOrderItems([...cart]);
+      setLastOrderItems(receiptLinesFrom(response));
       setLastOrderAuthCode(authCode);
       setCart([]);
       setCustomerEmail('');
