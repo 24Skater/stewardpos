@@ -3774,6 +3774,200 @@ export class PostgresAdapter {
     }
   }
 
+  // ===== Categories =====
+  //
+  // `products.category` holds the category *name*, not a foreign key. That is
+  // how the schema already was, and converting it would mean backfilling every
+  // product whose category was typed rather than picked, plus rewriting the
+  // catalog filter, the CSV import, and the exports. The cost is that the two
+  // have to be kept in step by hand — which is what `renameCategory` is for.
+
+  async getAllCategories(): Promise<DbRow[]> {
+    try {
+      // The product count comes back with the row because every caller wants it:
+      // the admin list shows it, and delete needs it to explain a refusal.
+      const result = await this.pool.query(
+        `SELECT c.id, c.name, c.icon, COUNT(p.id)::int AS product_count
+         FROM categories c
+         LEFT JOIN products p ON p.category = c.name
+         GROUP BY c.id, c.name, c.icon
+         ORDER BY c.name ASC`
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        icon: row.icon,
+        productCount: row.product_count,
+      }));
+    } catch (error) {
+      logger.error('Error getting categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /**
+   * Category names that products use but no category row defines.
+   *
+   * `products.category` is free text historically, so a typo or an import could
+   * put a product in a category the manager cannot see — and therefore cannot
+   * rename, merge, or clean up. Surfacing them is what makes "products
+   * reference valid categories" something a shop can actually act on.
+   */
+  async getUnmanagedCategories(): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT p.category AS name, COUNT(*)::int AS product_count
+         FROM products p
+         LEFT JOIN categories c ON c.name = p.category
+         WHERE c.id IS NULL AND p.category IS NOT NULL AND p.category <> ''
+         GROUP BY p.category
+         ORDER BY p.category ASC`
+      );
+      return result.rows.map((row) => ({ name: row.name, productCount: row.product_count }));
+    } catch (error) {
+      logger.error('Error getting unmanaged categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /** Null when the name is already taken, which the route turns into a 409. */
+  async createCategory(name: string, icon: string | null): Promise<DbRow | null> {
+    try {
+      // Case-insensitive: "drinks" alongside "Drinks" is a typo, not two
+      // categories, and the products under each would never appear together.
+      const clash = await this.pool.query('SELECT id FROM categories WHERE LOWER(name) = LOWER($1)', [
+        name,
+      ]);
+      if (clash.rows.length > 0) return null;
+
+      const result = await this.pool.query(
+        'INSERT INTO categories (name, icon) VALUES ($1, $2) RETURNING id, name, icon',
+        [name, icon]
+      );
+      return { ...result.rows[0], productCount: 0 };
+    } catch (error) {
+      logger.error('Error creating category:', error);
+      throw new DatabaseError('Failed to create category');
+    }
+  }
+
+  /**
+   * Rename a category, carrying its products with it.
+   *
+   * Because `products.category` stores the name, renaming the row alone would
+   * leave every product pointing at a category that no longer exists — they
+   * would vanish from the category filter while still claiming to be in it. The
+   * two writes are one transaction so a failure cannot leave that state behind.
+   */
+  async renameCategory(
+    id: string,
+    name: string,
+    icon: string | null | undefined
+  ): Promise<DbRow | null | 'duplicate'> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query('SELECT name FROM categories WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const clash = await client.query(
+        'SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND id <> $2',
+        [name, id]
+      );
+      if (clash.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return 'duplicate';
+      }
+
+      const previousName = existing.rows[0].name;
+      const result = await client.query(
+        'UPDATE categories SET name = $2, icon = COALESCE($3, icon) WHERE id = $1 RETURNING id, name, icon',
+        [id, name, icon ?? null]
+      );
+
+      const moved = await client.query('UPDATE products SET category = $1 WHERE category = $2', [
+        name,
+        previousName,
+      ]);
+
+      await client.query('COMMIT');
+      return { ...result.rows[0], productCount: moved.rowCount ?? 0 };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error renaming category:', error);
+      throw new DatabaseError('Failed to rename category');
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Delete a category, optionally moving its products somewhere else first.
+   *
+   * Without `reassignTo` an in-use category is refused rather than deleted:
+   * `products.category` is NOT NULL, so the products would be left naming a
+   * category that no longer exists and would disappear from the filter.
+   */
+  async deleteCategory(
+    id: string,
+    reassignTo?: string
+  ): Promise<'deleted' | 'not_found' | { inUse: number } | 'bad_target'> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query('SELECT name FROM categories WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return 'not_found';
+      }
+      const name = existing.rows[0].name;
+
+      const inUse = await client.query(
+        'SELECT COUNT(*)::int AS count FROM products WHERE category = $1',
+        [name]
+      );
+      const count = inUse.rows[0].count;
+
+      if (count > 0) {
+        if (!reassignTo) {
+          await client.query('ROLLBACK');
+          return { inUse: count };
+        }
+
+        // The destination has to be a real category, or reassignment would
+        // strand the products just as thoroughly as deleting outright.
+        const target = await client.query(
+          'SELECT name FROM categories WHERE LOWER(name) = LOWER($1) AND id <> $2',
+          [reassignTo, id]
+        );
+        if (target.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'bad_target';
+        }
+
+        await client.query('UPDATE products SET category = $1 WHERE category = $2', [
+          target.rows[0].name,
+          name,
+        ]);
+      }
+
+      await client.query('DELETE FROM categories WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return 'deleted';
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error deleting category:', error);
+      throw new DatabaseError('Failed to delete category');
+    } finally {
+      client.release();
+    }
+  }
+
   /**
    * Variants at or below their low-stock threshold.
    *

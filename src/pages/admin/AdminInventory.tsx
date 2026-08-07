@@ -6,8 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { adminApi, productsApi } from '@/lib/api';
-import type { CreateProductRequest, Product, UpdateProductRequest } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { adminApi, categoriesApi, productsApi } from '@/lib/api';
+import type {
+  Category,
+  CreateProductRequest,
+  Product,
+  UnmanagedCategory,
+  UpdateProductRequest,
+} from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -21,6 +28,9 @@ export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
   /** Products the server considers low, by its threshold rather than this screen's. */
   const [lowStockProductIds, setLowStockProductIds] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<Category[]>([]);
+  /** Names products use that no category defines — visible so they can be fixed. */
+  const [unmanagedCategories, setUnmanagedCategories] = useState<UnmanagedCategory[]>([]);
   const [search, setSearch] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -46,14 +56,17 @@ export default function AdminInventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const [response, lowStock] = await Promise.all([
+      const [response, lowStock, categoryList] = await Promise.all([
         productsApi.list(),
         // Reloaded alongside the catalog, so correcting a stock count updates
         // the badge without a manual refresh.
         productsApi.lowStock(),
+        categoriesApi.listWithUnmanaged(),
       ]);
       setProducts(response);
       setLowStockProductIds(new Set((lowStock ?? []).map(item => item.productId)));
+      setCategories(categoryList.data ?? []);
+      setUnmanagedCategories(categoryList.meta?.unmanaged ?? []);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -69,6 +82,20 @@ export default function AdminInventory() {
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.category.toLowerCase().includes(search.toLowerCase())
   );
+
+  // The managed categories, plus whatever this product already says, so an
+  // out-of-list value is preserved rather than quietly reassigned on save.
+  const categoryOptions = Array.from(
+    new Set(
+      [
+        ...categories.map(c => c.name),
+        // Unmanaged names too, so moving a product into one that already exists
+        // does not require first recreating it as a managed category.
+        ...unmanagedCategories.map(c => c.name),
+        editingProduct?.category,
+      ].filter(Boolean) as string[]
+    )
+  ).sort((a, b) => a.localeCompare(b));
 
   const canWrite = hasPermission(session, 'inventory', 'write');
   const canDelete = hasPermission(session, 'inventory', 'delete');
@@ -383,10 +410,31 @@ export default function AdminInventory() {
                   </div>
                   <div>
                     <Label>Category</Label>
-                    <Input
-                      value={editingProduct.category}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    />
+                    {/*
+                      A free-text box here meant a typo produced a second
+                      category that no other product would ever share, and the
+                      seeded `categories` table went unused because nothing
+                      could read it.
+
+                      A product whose category is not in the list still shows
+                      it, rather than appearing blank — otherwise saving an
+                      unrelated edit would silently move the product.
+                    */}
+                    <Select
+                      value={editingProduct.category || undefined}
+                      onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categoryOptions.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label>Base Price</Label>
