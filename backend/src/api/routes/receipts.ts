@@ -2,7 +2,8 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { ValidationError, NotFoundError, ServiceUnavailableError } from '../../utils/errors';
+import { sendEmail } from '../../services/email';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -22,6 +23,47 @@ router.use(authenticate);
  */
 
 // Validation schemas
+/**
+ * The plain-text receipt a customer receives.
+ *
+ * Text rather than HTML: a receipt is a list of lines and a total, it has to
+ * survive every mail client, and an HTML one is a second thing to keep in step
+ * with the printed version for no gain.
+ */
+function renderReceiptText(
+  order: Record<string, unknown>,
+  subject: string,
+  includeItems: boolean
+): string {
+  const money = (value: unknown) => `$${Number(value ?? 0).toFixed(2)}`;
+  const lines = [subject, new Date(Number(order.createdAt)).toLocaleString(), ''];
+
+  if (includeItems) {
+    for (const item of (order.items as Array<Record<string, unknown>>) ?? []) {
+      // `nameSnapshot` and `lineTotal` are the real field names - guessing at
+      // `productName`/`total` rendered every line as "1 x Item  $0.00".
+      //
+      // The snapshot is also the correct field on principle: it is the name as
+      // sold, so renaming a product later cannot rewrite a receipt already
+      // issued for it.
+      const variant = [item.size, item.color].filter(Boolean).join(' ');
+      const name = `${item.nameSnapshot ?? 'Item'}${variant ? ` (${variant})` : ''}`;
+      lines.push(`${item.quantity} x ${name}  ${money(item.lineTotal)}`);
+    }
+    lines.push('');
+  }
+
+  lines.push(`Subtotal  ${money(order.subtotal)}`);
+  // Only when there was one - a "Discount $0.00" line invites the question of
+  // which discount, and there wasn't one.
+  if (Number(order.discountTotal ?? 0) > 0) lines.push(`Discount  -${money(order.discountTotal)}`);
+  lines.push(`Tax       ${money(order.taxTotal)}`);
+  lines.push(`Total     ${money(order.total)}`);
+  if (order.paymentMethod) lines.push(`Paid by   ${order.paymentMethod}`);
+
+  return lines.join('\n');
+}
+
 const resendReceiptSchema = z.object({
   email: z.string().email(),
   includeItems: z.boolean().default(true),
@@ -171,22 +213,6 @@ router.post('/:id/resend', requirePermission('orders', 'write'), async (req: Aut
       throw new NotFoundError('Receipt not found');
     }
 
-    // In production, this would send an actual email
-    // For now, we log the receipt email and track it
-    
-    // Log the email send
-    await adapter.logReceiptEmail({
-      orderId: id,
-      recipientEmail: data.email,
-      subject: `Receipt #${id.slice(0, 8).toUpperCase()}`,
-      receiptType: 'sale',
-      status: 'sent',
-      sentBy: req.user?.id,
-    });
-
-    logger.info(`Resent receipt for order ${id} to ${data.email}`);
-
-    // Build receipt content for response
     const receiptContent = {
       orderId: order.id,
       createdAt: order.createdAt,
@@ -199,11 +225,52 @@ router.post('/:id/resend', requirePermission('orders', 'write'), async (req: Aut
       customerEmail: order.customerEmail,
     };
 
+    const subject = `Receipt #${id.slice(0, 8).toUpperCase()}`;
+
+    // This used to log `status: 'sent'` and reply "Receipt sent to ..." without
+    // anything being sent. A shop reading its own resend history would see a
+    // customer had been emailed when they had not - the worst kind of wrong,
+    // because it looks like evidence.
+    const result = await sendEmail({
+      to: data.email,
+      subject,
+      text: renderReceiptText(order, subject, data.includeItems),
+    });
+
+    // Recorded whatever the outcome, including failures: a resend that did not
+    // arrive is exactly what someone reads this history to find out.
+    await adapter.logReceiptEmail({
+      orderId: id,
+      recipientEmail: data.email,
+      subject,
+      receiptType: 'sale',
+      // The actual outcome, including `logged`. Recording a log-only send as
+      // `failed` is its own lie: it shows a bounce to someone reading the
+      // history to find out whether their customer got the receipt.
+      status: result.status,
+      sentBy: req.user?.id,
+    });
+
+    if (result.status === 'failed') {
+      logger.warn(`Receipt for order ${id} could not be emailed to ${data.email}: ${result.detail}`);
+      throw new ServiceUnavailableError(`The receipt could not be sent: ${result.detail}`);
+    }
+
+    logger.info(`Receipt for order ${id} to ${data.email}: ${result.status}`);
+
     res.json({
       success: true,
-      message: `Receipt sent to ${data.email}`,
+      // The message reflects what actually happened. With no mail adapter
+      // configured the default is `console`, and claiming delivery there is the
+      // bug this replaces.
+      message:
+        result.status === 'sent'
+          ? `Receipt sent to ${data.email}`
+          : `No email adapter is configured, so the receipt for ${data.email} was written to the server log instead`,
       data: {
         sentTo: data.email,
+        status: result.status,
+        detail: result.detail,
         receiptContent,
       },
     });

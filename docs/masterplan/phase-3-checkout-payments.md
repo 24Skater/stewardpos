@@ -167,15 +167,31 @@ Against the phase's stated exit criteria:
 | A branded receipt can be printed and emailed | ⚠️ printing works; **no email is sent by anything yet** |
 | ≥80% coverage on checkout modules | ✅ pricing 100%, tender 100%, returnPricing 98%, storeCredits 100%, orders 91%, drawer 85% |
 
-**Still open:** the live Stripe Terminal path (P3-T5), and receipt email — the
-resend endpoint records that it sent one but no mail is actually dispatched,
-which is worth knowing before anyone relies on it.
+**Receipt email is done.** `backend/src/services/email.ts` implements the three
+adapters `config.email.adapter` already named — `console`, `smtp` (nodemailer),
+and `resend` — none of which existed.
+
+The resend endpoint used to record `status: 'sent'` and reply "Receipt sent
+to …" without anything being sent. A shop reading its own resend history would
+see a customer had been emailed when they had not, which is the worst kind of
+wrong because it looks like evidence.
+
+It now sends, and reports what actually happened. `console`, the default,
+returns `logged` — deliberately not `sent`, since calling a log entry a delivery
+is the original bug. A refusal by the mail server is a **502**, not a 500: the
+request was fine and the server is fine, something downstream is not, and
+reporting it as a server fault sends whoever reads the logs to the wrong place.
+Every outcome is written to the history, failures included — a resend that did
+not arrive is exactly what someone reads that history to find out.
+
+**Still open:** the live Stripe Terminal path (P3-T5). It needs real credentials
+and hardware to verify, so it stays simulated rather than being written blind.
 
 ## Progress notes (2026-08-06)
 
-**Partially done, ahead of the stated entry criteria.** Phase 2 is not fully
-green (P2-T6 `org_id` is untouched), but the pricing hole was too serious to
-leave: `POST /api/orders` stored whatever totals it was handed, so a shaped
+**Partially done, ahead of the stated entry criteria.** Phase 2 was not yet
+fully green when this started (P2-T6 `org_id` was untouched; it has since
+landed), but the pricing hole was too serious to leave: `POST /api/orders` stored whatever totals it was handed, so a shaped
 request bought a $1 item for $0.01. Verified before the fix, on the live stack.
 
 **Landed** — `backend/src/services/pricing.ts` (`repriceOrder`) and its use in
