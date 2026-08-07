@@ -123,6 +123,7 @@ export function mapVariantRow(row: DbRow): DbRow {
     barcode: row.barcode,
     stock: row.stock,
     enabled: Boolean(row.enabled),
+    lowStockThreshold: row.low_stock_threshold ?? null,
   };
 }
 
@@ -291,17 +292,7 @@ export class SQLiteAdapter {
           basePrice: product.base_price,
           image: product.image,
           barcode: product.barcode,
-          variants: variants.map((v) => ({
-            id: v.id,
-            size: v.size,
-            color: v.color,
-            priceOverride: v.price_override,
-            priceDelta: v.price_delta,
-            sku: v.sku,
-            barcode: v.barcode,
-            stock: v.stock,
-            enabled: v.enabled === 1,
-          })),
+          variants: variants.map(mapVariantRow),
           createdAt: product.created_at,
           updatedAt: product.updated_at,
         };
@@ -336,17 +327,7 @@ export class SQLiteAdapter {
         basePrice: product.base_price,
         image: product.image,
         barcode: product.barcode,
-        variants: variants.map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          priceOverride: v.price_override,
-          priceDelta: v.price_delta,
-          sku: v.sku,
-          barcode: v.barcode,
-          stock: v.stock,
-          enabled: v.enabled === 1,
-        })),
+        variants: variants.map(mapVariantRow),
         createdAt: product.created_at,
         updatedAt: product.updated_at,
       };
@@ -409,17 +390,7 @@ export class SQLiteAdapter {
             .prepare('SELECT * FROM product_variants WHERE rowid = ?')
             .get(variantResult.lastInsertRowid) as any;
 
-          variants.push({
-            id: createdVariant.id,
-            size: createdVariant.size,
-            color: createdVariant.color,
-            priceOverride: createdVariant.price_override,
-            priceDelta: createdVariant.price_delta,
-            sku: createdVariant.sku,
-            barcode: createdVariant.barcode,
-            stock: createdVariant.stock,
-            enabled: createdVariant.enabled === 1,
-          });
+          variants.push(mapVariantRow(createdVariant));
         }
       }
 
@@ -3667,14 +3638,16 @@ export class SQLiteAdapter {
       this.db
         .prepare(
           `INSERT INTO product_variants
-           (id, product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+            low_stock_threshold)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           id, productId, variant.size ?? null, variant.color ?? null,
           variant.priceOverride ?? null, variant.priceDelta ?? null,
           variant.sku ?? null, variant.barcode ?? null,
-          variant.stock ?? 0, variant.enabled !== false ? 1 : 0
+          variant.stock ?? 0, variant.enabled !== false ? 1 : 0,
+          variant.lowStockThreshold ?? null
         );
 
       return mapVariantRow(
@@ -3702,7 +3675,12 @@ export class SQLiteAdapter {
                sku = COALESCE(?, sku),
                barcode = COALESCE(?, barcode),
                stock = COALESCE(?, stock),
-               enabled = COALESCE(?, enabled)
+               enabled = COALESCE(?, enabled),
+               -- See the Postgres adapter: explicit null clears the override.
+               low_stock_threshold = CASE
+                 WHEN ? = 1 THEN NULL
+                 ELSE COALESCE(?, low_stock_threshold)
+               END
            WHERE id = ? AND product_id = ?`
         )
         .run(
@@ -3711,6 +3689,8 @@ export class SQLiteAdapter {
           variant.sku ?? null, variant.barcode ?? null,
           variant.stock ?? null,
           variant.enabled === undefined ? null : variant.enabled ? 1 : 0,
+          'lowStockThreshold' in variant && variant.lowStockThreshold === null ? 1 : 0,
+          variant.lowStockThreshold ?? null,
           variantId, productId
         );
 
@@ -3721,6 +3701,33 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error updating variant:', error);
       throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  /** See the Postgres adapter for the reasoning behind the fallback and ordering. */
+  async getLowStockVariants(defaultThreshold: number): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT v.*, p.id AS product_id, p.name AS product_name, p.category
+           FROM product_variants v
+           JOIN products p ON p.id = v.product_id
+           WHERE v.enabled = 1
+             AND v.stock <= COALESCE(v.low_stock_threshold, ?)
+           ORDER BY v.stock - COALESCE(v.low_stock_threshold, ?) ASC, p.name ASC`
+        )
+        .all(defaultThreshold, defaultThreshold) as DbRow[];
+
+      return rows.map((row) => ({
+        ...mapVariantRow(row),
+        productId: row.product_id,
+        productName: row.product_name,
+        category: row.category,
+        threshold: row.low_stock_threshold ?? defaultThreshold,
+      }));
+    } catch (error) {
+      logger.error('Error loading low stock variants:', error);
+      throw new DatabaseError('Failed to load low stock');
     }
   }
 

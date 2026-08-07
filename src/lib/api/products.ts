@@ -27,6 +27,15 @@ export interface ProductQuery {
   offset?: number;
 }
 
+/** A variant that has run low, with the product it belongs to. */
+export interface LowStockItem extends ProductVariant {
+  productId: string;
+  productName: string;
+  category: string;
+  /** The threshold this row was judged against — its own, or the store default. */
+  threshold: number;
+}
+
 export const productsApi = {
   /**
    * The catalog.
@@ -49,6 +58,13 @@ export const productsApi = {
     apiClient.get<{ product: Product; variant: ProductVariant | null }>(
       `/api/products/barcode/${encodeURIComponent(code)}`
     ),
+  /**
+   * What needs reordering, worst first.
+   *
+   * The threshold is the store's, or the variant's own override — not a number
+   * the caller picks, so two screens cannot disagree about what "low" means.
+   */
+  lowStock: () => apiClient.get<LowStockItem[]>('/api/products/low-stock'),
   get: (id: string) => apiClient.get<Product>(`/api/products/${id}`),
   create: (body: CreateProductRequest) => apiClient.post<Product>('/api/products', body),
   update: (id: string, body: UpdateProductRequest) =>

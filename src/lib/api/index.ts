@@ -63,7 +63,7 @@ export type {
   ReturnListQuery,
   ReturnReasonCode,
 } from './returns';
-export type { ProductQuery, VariantInput } from './products';
+export type { LowStockItem, ProductQuery, VariantInput } from './products';
 export type { CreateServiceRequest, UpdateServiceRequest } from './services';
 export type { StoreCredit, StoreCreditStatus } from './storeCredits';
 export type { CreateQuoteRequest, QuoteItemInput, UpdateQuoteRequest } from './quotes';

@@ -115,6 +115,27 @@ describe('PUT /api/products/:id/variants/:variantId', () => {
     expect(updateVariant).toHaveBeenCalledWith('p1', 'v1', { enabled: false });
   });
 
+  it('sets a per-variant low-stock threshold', async () => {
+    await request(app)
+      .put('/api/products/p1/variants/v1')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ lowStockThreshold: 4 });
+
+    expect(updateVariant).toHaveBeenCalledWith('p1', 'v1', { lowStockThreshold: 4 });
+  });
+
+  it('passes an explicit null through, so the override can be cleared', async () => {
+    // Null has to survive as far as the adapter: it is the only way back to the
+    // store default, and a COALESCE that reads it as "not mentioned" would make
+    // a threshold permanent once set.
+    await request(app)
+      .put('/api/products/p1/variants/v1')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ lowStockThreshold: null });
+
+    expect(updateVariant).toHaveBeenCalledWith('p1', 'v1', { lowStockThreshold: null });
+  });
+
   it('404s for a variant that is not on that product', async () => {
     updateVariant.mockResolvedValue(null);
 

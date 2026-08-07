@@ -19,6 +19,8 @@ import { getErrorMessage } from '@/lib/errors';
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
+  /** Products the server considers low, by its threshold rather than this screen's. */
+  const [lowStockProductIds, setLowStockProductIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -44,8 +46,14 @@ export default function AdminInventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await productsApi.list();
+      const [response, lowStock] = await Promise.all([
+        productsApi.list(),
+        // Reloaded alongside the catalog, so correcting a stock count updates
+        // the badge without a manual refresh.
+        productsApi.lowStock(),
+      ]);
       setProducts(response);
+      setLowStockProductIds(new Set((lowStock ?? []).map(item => item.productId)));
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -295,7 +303,10 @@ export default function AdminInventory() {
                 {filteredProducts.map((product) => {
                   const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
                   const activeVariants = product.variants.filter(v => v.enabled).length;
-                  const lowStock = product.variants.some(v => v.enabled && v.stock < 10);
+                  // The server decides what "low" means — it is a store setting
+                  // with a per-variant override, and this screen judging for
+                  // itself is how it and the dashboard came to disagree.
+                  const lowStock = lowStockProductIds.has(product.id);
 
                   return (
                     <TableRow key={product.id}>
