@@ -15,6 +15,7 @@ export { authApi } from './auth';
 export { componentsApi } from './components';
 export { customersApi } from './customers';
 export { discountsApi } from './discounts';
+export { drawerApi } from './drawer';
 export { ordersApi } from './orders';
 export { productsApi } from './products';
 export { quotesApi } from './quotes';
@@ -52,6 +53,7 @@ export type {
   ComponentSide,
   ComponentUpdate,
 } from './components';
+export type { DrawerSession, DrawerSessionStatus } from './drawer';
 export type { ReceiptEmailLog, ReceiptSearchQuery } from './receipts';
 export type {
   CreateReturnItem,

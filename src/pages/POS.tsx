@@ -17,9 +17,10 @@ import type {
 } from "@/lib/api";
 import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
 import { logger } from "@/lib/logger";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2 } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
+import CashDrawerDialog from "@/components/CashDrawerDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -134,6 +135,9 @@ export default function POS() {
   
   // Return dialog state
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+
+  // Cash drawer state
+  const [drawerDialogOpen, setDrawerDialogOpen] = useState(false);
   
   // Store branding and tax come from settings; the register keeps working on its
   // defaults if that call fails, rather than blocking a sale.
@@ -883,6 +887,15 @@ export default function POS() {
           <div className="flex gap-2">
             <Button
               variant="outline"
+              onClick={() => setDrawerDialogOpen(true)}
+              className="border-border"
+              size="sm"
+            >
+              <Wallet className="w-4 h-4 mr-1" />
+              Drawer
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setReturnDialogOpen(true)}
               className="border-destructive text-destructive hover:bg-destructive/10"
               size="sm"
@@ -1483,6 +1496,8 @@ export default function POS() {
       </Dialog>
 
       {/* Quick Return Dialog */}
+      <CashDrawerDialog open={drawerDialogOpen} onOpenChange={setDrawerDialogOpen} />
+
       <QuickReturnDialog
         open={returnDialogOpen}
         onClose={() => setReturnDialogOpen(false)}

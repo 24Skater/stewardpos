@@ -210,9 +210,25 @@ decrements stock by two.
   Computing against the *repriced* total is the point: a request claiming a
   $0.01 total while tendering $20 is charged $3 and given $17 back, not $19.99.
 
-- Split tender and cash-drawer sessions (P3-T2, and the drawer half of P3-T4/T5):
-  untouched. The drawer needs its own table and open/close flow; store credit
-  also waits on split tender, since a credit is a tender rather than a discount.
+- **Cash-drawer sessions are done** (the rest of P3-T4). Migration 011 adds
+  `cash_drawer_sessions`; `/api/drawer` opens, reports, closes, and lists them.
+  Expected cash is the opening float plus cash taken in less change given, over
+  sales rung while the session was open — card sales are excluded, since they
+  never touch the till. It is always computed server-side and never accepted
+  from the caller: a reconciliation means nothing if both sides come from the
+  counter.
+
+  One session at a time is enforced by a partial unique index rather than a
+  read-then-write, so two cashiers cannot both open a drawer and leave "which
+  till did this sale go into" unanswerable.
+
+  The register gains a Drawer button showing the open/close form with a live
+  shortfall preview, so a discrepancy is visible while there is still time to
+  recount.
+
+- Split tender (P3-T2): untouched. Store credit waits on it too, since a credit
+  is a tender rather than a discount and modelling it as one would understate
+  revenue.
 
 - ~~The card path charges before the server prices~~ — **fixed.**
   `POST /api/orders/quote` prices a cart without committing to it, sharing the
