@@ -155,6 +155,22 @@ the message in dev; SMTP delivers in a configured env).
 
 ---
 
+## Status (2026-08-07): the money path is complete
+
+Against the phase's stated exit criteria:
+
+| Criterion | Result |
+|---|---|
+| `POST /api/orders` ignores client prices, reprices in cents, applies tax + discounts, one transaction, rejects on insufficient stock | ✅ |
+| Cash (with change) and split tender both complete a sale | ✅ card *terminal* is simulated — the live Stripe path (P3-T5) is not wired |
+| A cash-drawer session exists (open/close, expected vs counted) | ✅ |
+| A branded receipt can be printed and emailed | ⚠️ printing works; **no email is sent by anything yet** |
+| ≥80% coverage on checkout modules | ✅ pricing 100%, tender 100%, returnPricing 98%, storeCredits 100%, orders 91%, drawer 85% |
+
+**Still open:** the live Stripe Terminal path (P3-T5), and receipt email — the
+resend endpoint records that it sent one but no mail is actually dispatched,
+which is worth knowing before anyone relies on it.
+
 ## Progress notes (2026-08-06)
 
 **Partially done, ahead of the stated entry criteria.** Phase 2 is not fully
