@@ -44,15 +44,34 @@ interface CatalogDiscount {
   currentUses?: number;
 }
 
+/** A staff member's standing discount entitlement. */
+export interface EmployeeEntitlement {
+  userId: string;
+  userName?: string;
+  discountPercentage: number;
+  /** Monthly cap in dollars, if any. */
+  maxDiscountAmount?: number | null;
+  /** Dollars already used against that cap this month. */
+  currentMonthUsage?: number;
+  /** Above this amount a manager has to sign off. */
+  requiresManagerApprovalAbove?: number | null;
+  /** Non-empty means the entitlement only covers those categories. */
+  allowedCategories?: string[] | null;
+  isActive?: boolean;
+}
+
 /** The catalog lookups this needs, so it can be tested without a database. */
 export interface DiscountLookups {
   getDiscountTypeById(id: string): Promise<CatalogDiscount | null>;
   getPromoCodeById(id: string): Promise<CatalogDiscount | null>;
   getPromoCodeByCode(code: string): Promise<CatalogDiscount | null>;
+  getEmployeeDiscountByUser(userId: string): Promise<EmployeeEntitlement | null>;
 }
 
 export interface ValidateDiscountsOptions {
   subtotalCents: number;
+  /** The signed-in user, so an employee discount defaults to their own. */
+  actingUserId?: string;
   /**
    * Whether the acting user may grant an ad-hoc discount.
    *
@@ -147,10 +166,70 @@ export async function validateAppliedDiscounts(
     }
 
     if (request.source === 'employee') {
-      // Employee entitlements are per-user and carry their own approval
-      // thresholds; wiring that up is separate work. Refusing is the safe
-      // reading - the alternative is honouring an unverified number.
-      throw new ValidationError('Employee discounts cannot be applied to a sale yet');
+      const subjectId = request.id || options.actingUserId;
+      if (!subjectId) {
+        throw new ValidationError('An employee discount needs an employee');
+      }
+
+      // Applying someone else's entitlement is a supervisor action - otherwise a
+      // cashier could reach for whichever colleague has the better rate.
+      if (subjectId !== options.actingUserId && !options.mayGrantManualDiscount) {
+        throw new ValidationError("You can only apply your own employee discount");
+      }
+
+      const entitlement = await lookups.getEmployeeDiscountByUser(subjectId);
+      if (!entitlement) {
+        throw new ValidationError('That employee has no discount entitlement');
+      }
+      if (entitlement.isActive === false) {
+        throw new ValidationError('That employee discount is not active');
+      }
+
+      // A category-restricted entitlement only covers some lines, which needs
+      // line-level logic this does not have. Applying it to the whole cart would
+      // discount items it was never meant to cover.
+      if (entitlement.allowedCategories && entitlement.allowedCategories.length > 0) {
+        throw new ValidationError(
+          'Category-restricted employee discounts cannot be applied at the register'
+        );
+      }
+
+      let cents = Math.round(remainingCents * (entitlement.discountPercentage / 100));
+
+      // The cap is monthly and cumulative, so what is left of it - not the cap
+      // itself - is the ceiling for this sale.
+      if (entitlement.maxDiscountAmount != null) {
+        const remainingAllowanceCents =
+          toCents(entitlement.maxDiscountAmount) - toCents(entitlement.currentMonthUsage ?? 0);
+        if (remainingAllowanceCents <= 0) {
+          throw new ValidationError('That employee has used their discount allowance this month');
+        }
+        cents = Math.min(cents, remainingAllowanceCents);
+      }
+
+      // No approval flow exists at the register, so an amount that needs one is
+      // refused rather than quietly granted without it.
+      if (
+        entitlement.requiresManagerApprovalAbove != null &&
+        cents > toCents(entitlement.requiresManagerApprovalAbove) &&
+        !options.mayGrantManualDiscount
+      ) {
+        throw new ValidationError('That discount needs manager approval');
+      }
+
+      cents = Math.min(cents, remainingCents);
+      remainingCents -= cents;
+      discounts.push({
+        source: 'employee',
+        id: subjectId,
+        name: entitlement.userName
+          ? `Employee discount (${entitlement.userName})`
+          : 'Employee discount',
+        type: 'percentage',
+        value: entitlement.discountPercentage,
+        amount: toDollars(cents),
+      });
+      continue;
     }
 
     const catalog =
