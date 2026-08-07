@@ -141,5 +141,20 @@ to `used`. What remains is wiring it into checkout as a *tender* — it reduces
 what is owed rather than what is charged, so it belongs with split tender
 (P3-T2) and must not be modelled as a discount, which would understate revenue.
 
-Still open for this phase: exchanges (`returnType: 'exchange'`) are accepted but
-priced as a plain return.
+**Exchanges are now refused rather than mispriced.** `returnType: 'exchange'`
+was accepted and then priced as a plain return: the customer got a full refund
+and nothing was charged for the replacement, so they walked out with a new item
+*and* their money back. Verified against the live stack before the change.
+
+Nothing anywhere carries replacement items — not the request schema, not the
+DTOs, not the admin UI — so there was no exchange to price, only a refund
+wearing the wrong label. Refusing it costs nobody anything today (no interface
+offers it) and closes a money hole reachable by anyone who can record a return.
+The error says what to do instead: record a return, then ring the replacement up
+as a new sale, which is the same money and the correct records.
+
+Implementing exchanges properly means replacement line items, a price difference
+that can run in either direction, and stock moving both ways. That is a feature,
+and building it blind against no interface would be guesswork.
+
+**Phase 5 is otherwise complete.**

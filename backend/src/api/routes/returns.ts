@@ -53,7 +53,29 @@ const returnItemSchema = z.object({
 
 const createReturnSchema = z.object({
   originalOrderId: z.string(),
-  returnType: z.enum(['return', 'exchange', 'void']).default('return'),
+  /**
+   * `exchange` is refused, deliberately.
+   *
+   * It was accepted and then priced as a plain return: the customer got a full
+   * refund and nothing was charged for the replacement, so they left with a new
+   * item and their money back. Verified against the live stack before this.
+   *
+   * Nothing anywhere carries replacement items — not this schema, not the DTOs,
+   * not the admin UI — so there is no exchange to price, only a refund wearing
+   * the wrong label. Refusing it costs nobody anything today and closes the
+   * hole. Implementing it means replacement line items, a price difference that
+   * can go either way, and stock moving in both directions; that is a feature,
+   * and building it blind against no interface would be guesswork.
+   */
+  returnType: z
+    .enum(['return', 'exchange', 'void'], {
+      errorMap: () => ({ message: 'returnType must be "return" or "void"' }),
+    })
+    .default('return')
+    .refine((value) => value !== 'exchange', {
+      message:
+        'Exchanges are not supported yet. Record a return, then ring up the replacement as a new sale.',
+    }),
   customerEmail: z.preprocess(nullToUndefined, z.string().email().optional()),
   customerPhone: z.preprocess(nullToUndefined, z.string().optional()),
   customerId: z.preprocess(nullToUndefined, z.string().optional()),
