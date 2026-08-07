@@ -98,6 +98,28 @@ export function mapStoreCreditRow(row: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
+export function mapDrawerSessionRow(row: DbRow): DbRow {
+  const money = (value: unknown) => (value == null ? null : parseFloat(value as string));
+
+  return {
+    id: row.id,
+    openedBy: row.opened_by,
+    openedByName: row.opened_by_name ?? null,
+    closedBy: row.closed_by,
+    closedByName: row.closed_by_name ?? null,
+    openedAt: new Date(row.opened_at as string).getTime(),
+    closedAt: row.closed_at ? new Date(row.closed_at as string).getTime() : null,
+    openingFloat: money(row.opening_float),
+    expectedCash: money(row.expected_cash),
+    countedCash: money(row.counted_cash),
+    variance: money(row.variance),
+    notes: row.notes ?? null,
+    status: row.status,
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -3386,4 +3408,128 @@ export class PostgresAdapter {
       throw new DatabaseError('Failed to update terminal transaction');
     }
   }
+
+  // ===== Cash drawer sessions =====
+
+  async getOpenDrawerSession(): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT s.*, o.name AS opened_by_name
+         FROM cash_drawer_sessions s
+         LEFT JOIN users o ON s.opened_by = o.id
+         WHERE s.status = 'open'
+         LIMIT 1`
+      );
+      return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting open drawer session:', error);
+      throw new DatabaseError('Failed to get drawer session');
+    }
+  }
+
+  /**
+   * Open a drawer.
+   *
+   * Relies on the partial unique index for exclusivity rather than checking
+   * first: two cashiers opening at once would both pass a prior read, and then
+   * neither would know which drawer a sale belonged to.
+   */
+  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO cash_drawer_sessions (opened_by, opening_float, status)
+         VALUES ($1, $2, 'open')
+         RETURNING *`,
+        [userId ?? null, openingFloat]
+      );
+      return mapDrawerSessionRow(result.rows[0]);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new ValidationError('A drawer session is already open');
+      }
+      logger.error('Error opening drawer session:', error);
+      throw new DatabaseError('Failed to open drawer session');
+    }
+  }
+
+  /**
+   * Cash the drawer should hold: the float, plus cash taken in, less change
+   * given out, for sales rung while this session was open.
+   *
+   * Only cash sales count - a card sale never touches the drawer. Sales with no
+   * recorded tender fall back to their total, which is what a cash sale
+   * contributed before `amount_tendered` existed.
+   */
+  async getExpectedDrawerCash(sessionId: string): Promise<number> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           s.opening_float
+             + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+             AS expected
+         FROM cash_drawer_sessions s
+         LEFT JOIN orders o
+           ON LOWER(o.payment_method) = 'cash'
+          AND o.created_at >= s.opened_at
+          AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+         WHERE s.id = $1
+         GROUP BY s.opening_float`,
+        [sessionId]
+      );
+      return result.rows[0] ? parseFloat(result.rows[0].expected) : 0;
+    } catch (error) {
+      logger.error('Error computing expected drawer cash:', error);
+      throw new DatabaseError('Failed to compute expected cash');
+    }
+  }
+
+  async closeDrawerSession(
+    sessionId: string,
+    countedCash: number,
+    expectedCash: number,
+    userId?: string,
+    notes?: string
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE cash_drawer_sessions
+         SET status = 'closed',
+             closed_at = NOW(),
+             closed_by = $2,
+             counted_cash = $3,
+             expected_cash = $4,
+             -- Cast explicitly: Postgres cannot infer the type of two untyped
+             -- parameters being subtracted, and fails with "operator is not
+             -- unique: unknown - unknown".
+             variance = $3::numeric - $4::numeric,
+             notes = $5
+         WHERE id = $1 AND status = 'open'
+         RETURNING *`,
+        [sessionId, userId ?? null, countedCash, expectedCash, notes ?? null]
+      );
+      return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error closing drawer session:', error);
+      throw new DatabaseError('Failed to close drawer session');
+    }
+  }
+
+  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+         FROM cash_drawer_sessions s
+         LEFT JOIN users o ON s.opened_by = o.id
+         LEFT JOIN users c ON s.closed_by = c.id
+         ORDER BY s.opened_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+      return result.rows.map(mapDrawerSessionRow);
+    } catch (error) {
+      logger.error('Error listing drawer sessions:', error);
+      throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
 }

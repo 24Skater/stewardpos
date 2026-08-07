@@ -75,6 +75,28 @@ export function mapOrderRow(order: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
+export function mapDrawerSessionRow(row: DbRow): DbRow {
+  const money = (value: unknown) => (value == null ? null : Number(value));
+
+  return {
+    id: row.id,
+    openedBy: row.opened_by,
+    openedByName: row.opened_by_name ?? null,
+    closedBy: row.closed_by,
+    closedByName: row.closed_by_name ?? null,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at ?? null,
+    openingFloat: money(row.opening_float),
+    expectedCash: money(row.expected_cash),
+    countedCash: money(row.counted_cash),
+    variance: money(row.variance),
+    notes: row.notes ?? null,
+    status: row.status,
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -3391,4 +3413,117 @@ export class SQLiteAdapter {
       throw new DatabaseError('Failed to update terminal transaction');
     }
   }
+
+  // ===== Cash drawer sessions =====
+
+  async getOpenDrawerSession(): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT s.*, o.name AS opened_by_name
+           FROM cash_drawer_sessions s
+           LEFT JOIN users o ON s.opened_by = o.id
+           WHERE s.status = 'open' LIMIT 1`
+        )
+        .get() as DbRow | undefined;
+      return row ? mapDrawerSessionRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting open drawer session:', error);
+      throw new DatabaseError('Failed to get drawer session');
+    }
+  }
+
+  /** See the Postgres adapter: the unique index is what enforces exclusivity. */
+  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+    try {
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO cash_drawer_sessions (id, opened_by, opened_at, opening_float, status)
+           VALUES (?, ?, ?, ?, 'open')`
+        )
+        .run(id, userId ?? null, Date.now(), openingFloat);
+
+      return mapDrawerSessionRow(
+        this.db.prepare('SELECT * FROM cash_drawer_sessions WHERE id = ?').get(id) as DbRow
+      );
+    } catch (error) {
+      if (String((error as Error).message).includes('UNIQUE')) {
+        throw new ValidationError('A drawer session is already open');
+      }
+      logger.error('Error opening drawer session:', error);
+      throw new DatabaseError('Failed to open drawer session');
+    }
+  }
+
+  /** Float, plus cash taken in, less change given out, for this session. */
+  async getExpectedDrawerCash(sessionId: string): Promise<number> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT
+             s.opening_float
+               + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+               AS expected
+           FROM cash_drawer_sessions s
+           LEFT JOIN orders o
+             ON LOWER(o.payment_method) = 'cash'
+            AND o.created_at >= s.opened_at
+            AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+           WHERE s.id = ?
+           GROUP BY s.opening_float`
+        )
+        .get(sessionId) as DbRow | undefined;
+      return row ? Number(row.expected) : 0;
+    } catch (error) {
+      logger.error('Error computing expected drawer cash:', error);
+      throw new DatabaseError('Failed to compute expected cash');
+    }
+  }
+
+  async closeDrawerSession(
+    sessionId: string,
+    countedCash: number,
+    expectedCash: number,
+    userId?: string,
+    notes?: string
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE cash_drawer_sessions
+           SET status = 'closed', closed_at = ?, closed_by = ?,
+               counted_cash = ?, expected_cash = ?, variance = ? - ?, notes = ?
+           WHERE id = ? AND status = 'open'`
+        )
+        .run(Date.now(), userId ?? null, countedCash, expectedCash, countedCash, expectedCash, notes ?? null, sessionId);
+
+      if (result.changes === 0) return null;
+      return mapDrawerSessionRow(
+        this.db.prepare('SELECT * FROM cash_drawer_sessions WHERE id = ?').get(sessionId) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error closing drawer session:', error);
+      throw new DatabaseError('Failed to close drawer session');
+    }
+  }
+
+  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+           FROM cash_drawer_sessions s
+           LEFT JOIN users o ON s.opened_by = o.id
+           LEFT JOIN users c ON s.closed_by = c.id
+           ORDER BY s.opened_at DESC LIMIT ?`
+        )
+        .all(limit) as DbRow[];
+      return rows.map(mapDrawerSessionRow);
+    } catch (error) {
+      logger.error('Error listing drawer sessions:', error);
+      throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
 }
