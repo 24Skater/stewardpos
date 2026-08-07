@@ -1,6 +1,6 @@
 import { apiClient } from '../api-client';
 
-export type UploadKind = 'logo' | 'icon' | 'favicon';
+export type UploadKind = 'logo' | 'icon' | 'favicon' | 'product';
 
 export interface UploadedFile {
   /** Relative URL (`/uploads/...`), so it survives being served behind a proxy. */
@@ -14,7 +14,12 @@ export interface UploadedFile {
 /**
  * File uploads (`backend/src/api/routes/upload.ts`).
  *
- * Admin/manager only, 5 MB per file, enforced server-side.
+ * 5 MB per file and images only, both enforced server-side.
+ *
+ * Permission depends on the kind: `product` needs `inventory.write`, the rest
+ * need `settings.write`. A product photo is catalog work, and requiring the
+ * settings permission would mean nobody could add one without also being able
+ * to change the store's payment credentials.
  */
 export const uploadApi = {
   upload: (kind: UploadKind, file: File) => {

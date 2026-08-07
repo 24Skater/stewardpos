@@ -180,6 +180,36 @@ they have no id and nothing can act on them directly. The admin picker offers
 them anyway, and always includes the edited product's own value, so saving an
 unrelated change cannot silently reassign it.
 
-**Still open for this phase:** product images through MinIO. The register still filters its loaded catalog
+**Product images work (P4-T3), on disk rather than MinIO.**
+
+The admin image picker did not upload anything. It base64-encoded the file into
+`products.image` and reported success — so a 5MB photo became ~6.7MB of text in
+the product row, sent to every client on every catalog load. The register got
+slower with each picture a shop added, and nothing said why.
+
+`POST /api/upload/product` now stores the file and the product keeps a path.
+Uploads land in the `backend_uploads` named volume and are served through the
+nginx `/uploads/` location, so they survive a container being replaced.
+
+Two things changed on the way:
+
+- **Permission is per upload kind.** It was `settings.write` for everything,
+  which is right for a logo and wrong for a product photo: nobody could add one
+  without also being able to change the store's payment credentials. `product`
+  now needs `inventory.write`. The check runs before multer, so an unauthorised
+  request never writes a file that a later check has to clean up.
+- The served subdirectory comes from the same table multer wrote to. It was
+  re-derived as `type === 'logo' ? 'logos' : 'icons'`, which would have pointed
+  every product image at the icons path.
+
+**MinIO is still unwired**, and the choice is deliberate rather than deferred
+work that was forgotten. The disk path is already hardened — server-chosen
+filenames and extensions, no SVG, traversal-proof deletes — and volume-backed,
+so it is correct for a single-backend deployment, which is what Compose runs. A
+local volume stops being correct behind more than one backend replica, and that
+is the point at which MinIO earns its place. The `minio` dependency and the
+Compose service are present for it; `config.storage.s3` is where it plugs in.
+
+**Phase 4 is otherwise complete.** The register still filters its loaded catalog
 client-side rather than using the search endpoint — fine while a catalog fits in
 a page, and the endpoint is there when it does not.
