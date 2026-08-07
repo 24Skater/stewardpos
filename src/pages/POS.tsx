@@ -5,14 +5,16 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import { discountsApi, ordersApi, terminalApi } from "@/lib/api";
+import { discountsApi, ordersApi, storeCreditsApi, terminalApi } from "@/lib/api";
 import type {
   CartItem,
   CreateOrderRequest,
   DiscountType as ApiDiscountType,
   Order,
   PaymentMethodsConfig,
+  PaymentRequest,
   Product,
+  StoreCredit,
   ValidatedPromo,
 } from "@/lib/api";
 import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
@@ -159,6 +161,13 @@ export default function POS() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
   const [cashTendered, setCashTendered] = useState('');
 
+  // A store credit applied to this sale. It is a *tender*, not a discount: it
+  // reduces what is owed, not what the sale was worth, so it never touches the
+  // totals - only how they are paid.
+  const [appliedCredit, setAppliedCredit] = useState<StoreCredit | null>(null);
+  const [creditCodeInput, setCreditCodeInput] = useState('');
+  const [creditLoading, setCreditLoading] = useState(false);
+
   // Terminal payment state
   const [terminalState, setTerminalState] = useState<TerminalState>({ phase: 'idle' });
   const terminalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -301,6 +310,50 @@ export default function POS() {
   };
 
   /**
+   * How much of the sale the applied credit can cover.
+   *
+   * Capped at the total: a $50 credit against a $12 sale spends $12 and leaves
+   * the rest on the card. The remainder stays as change on the credit, not as
+   * cash back.
+   */
+  const creditApplied = useMemo(() => {
+    if (!appliedCredit) return 0;
+    const total = Math.round(calculateTotals().total * 100);
+    return Math.min(Math.round(appliedCredit.remainingAmount * 100), total) / 100;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedCredit, cart, appliedDiscounts, taxRate]);
+
+  /** What is still owed after the credit, and therefore due on the chosen tender. */
+  const amountDue = useMemo(
+    () => Math.round((calculateTotals().total - creditApplied) * 100) / 100,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [creditApplied, cart, appliedDiscounts, taxRate]
+  );
+
+  /**
+   * The tender breakdown to send, or `undefined` when there is nothing to split.
+   *
+   * Omitting it lets `paymentMethod` describe the whole sale, which is what
+   * every sale without a credit is.
+   */
+  const buildPayments = (method: string): PaymentRequest[] | undefined => {
+    if (!appliedCredit || creditApplied <= 0) return undefined;
+
+    const payments: PaymentRequest[] = [
+      { method: 'store_credit', amount: creditApplied, reference: appliedCredit.code },
+    ];
+
+    if (amountDue > 0) {
+      payments.push({
+        method: method.toLowerCase() === 'card' ? 'card' : method.toLowerCase() === 'zelle' ? 'zelle' : 'cash',
+        amount: amountDue,
+      });
+    }
+
+    return payments;
+  };
+
+  /**
    * Change owed, or `null` when the tender does not cover the sale.
    *
    * A preview only - the server recomputes it against its own total and refuses
@@ -312,13 +365,14 @@ export default function POS() {
     const tendered = parseFloat(cashTendered);
     if (Number.isNaN(tendered)) return null;
 
-    const owed = Math.round(calculateTotals().total * 100);
+    // Against what is *due* - a credit may already have covered part of it.
+    const owed = Math.round(amountDue * 100);
     const given = Math.round(tendered * 100);
     return given < owed ? null : (given - owed) / 100;
     // `calculateTotals` is redefined every render, so depending on it would
     // defeat the memo entirely. Its inputs are listed instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cashTendered, cart, appliedDiscounts, taxRate]);
+  }, [cashTendered, amountDue, cart, appliedDiscounts, taxRate]);
 
   /**
    * Note denominations a customer is likely to hand over.
@@ -327,13 +381,12 @@ export default function POS() {
    * amounts that cannot cover it.
    */
   const quickCashOptions = useMemo(() => {
-    const total = calculateTotals().total;
     const notes = [5, 10, 20, 50, 100];
-    const above = notes.filter(note => note >= total);
+    const above = notes.filter(note => note >= amountDue);
 
-    return [Math.ceil(total), ...above].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+    return [Math.ceil(amountDue), ...above].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, appliedDiscounts, taxRate]);
+  }, [amountDue, cart, appliedDiscounts, taxRate]);
 
   const applyQuickDiscount = (discount: PosDiscountType) => {
     // Check if already applied
@@ -415,6 +468,39 @@ export default function POS() {
       toast({ title: 'Promo code not applied', description: getErrorMessage(error, 'Invalid promo code'), variant: 'destructive' });
     } finally {
       setPromoLoading(false);
+    }
+  };
+
+  const applyStoreCredit = async () => {
+    if (!creditCodeInput.trim()) return;
+
+    setCreditLoading(true);
+    try {
+      const credit = await storeCreditsApi.get(creditCodeInput.trim());
+
+      if (credit.status !== 'active' || credit.remainingAmount <= 0) {
+        toast({
+          title: 'That credit cannot be used',
+          description: `It is ${credit.status} with $${credit.remainingAmount.toFixed(2)} left.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setAppliedCredit(credit);
+      setCreditCodeInput('');
+      toast({
+        title: 'Store credit applied',
+        description: `$${credit.remainingAmount.toFixed(2)} available.`,
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Store credit not applied',
+        description: getErrorMessage(error, 'No credit with that code'),
+        variant: 'destructive',
+      });
+    } finally {
+      setCreditLoading(false);
     }
   };
 
@@ -638,6 +724,7 @@ export default function POS() {
         // The server recomputes the amounts; this says which discounts to honour.
         appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: selectedPaymentMethod,
+        ...(buildPayments(selectedPaymentMethod) ? { payments: buildPayments(selectedPaymentMethod) } : {}),
         ...(selectedPaymentMethod === 'Cash' && cashTendered !== ''
           ? { cashTendered: parseFloat(cashTendered) }
           : {}),
@@ -668,6 +755,7 @@ export default function POS() {
       setLastOrderAuthCode(undefined);
       setCart([]);
       setCashTendered('');
+      setAppliedCredit(null);
       setCustomerEmail("");
       setAppliedDiscounts([]);
       // Reset to first enabled payment method for next sale
@@ -722,8 +810,23 @@ export default function POS() {
         appliedDiscounts: toDiscountRequests(appliedDiscounts),
       });
 
+      // The card covers what a store credit has not. Charging the full total
+      // here would take the credit's share twice - once off the credit and once
+      // off the card - and the server would then reject the order for
+      // overpayment, after the customer's card was already authorised.
+      const creditShare = appliedCredit
+        ? Math.min(Math.round(appliedCredit.remainingAmount * 100), Math.round(quote.total * 100))
+        : 0;
+
       // Card processors bill in minor units, so this is the one figure sent in cents.
-      const amountCents = Math.round(quote.total * 100);
+      const amountCents = Math.round(quote.total * 100) - creditShare;
+
+      if (amountCents <= 0) {
+        // The credit covers everything; there is nothing to put on a card.
+        setTerminalState({ phase: 'idle' });
+        await completeCardOrder('', undefined);
+        return;
+      }
 
       const { chargeId } = await terminalApi.charge({
         amount: amountCents,
@@ -810,6 +913,7 @@ export default function POS() {
         total,
         appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: 'Card',
+        ...(buildPayments('Card') ? { payments: buildPayments('Card') } : {}),
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
         cardTransactionId: chargeId,
         cardAuthCode: authCode,
@@ -838,6 +942,7 @@ export default function POS() {
       setLastOrderAuthCode(authCode);
       setCart([]);
       setCashTendered('');
+      setAppliedCredit(null);
       setCustomerEmail('');
       setAppliedDiscounts([]);
       if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
@@ -1289,8 +1394,61 @@ export default function POS() {
             </div>
           </div>
 
+          {/* Store credit — a tender, applied before the rest is paid */}
+          <div className="border-t pt-4">
+            <Label htmlFor="storeCredit" className="text-sm font-medium mb-3 block">
+              Store Credit
+            </Label>
+
+            {appliedCredit ? (
+              <div className="flex items-center justify-between rounded-md bg-accent/10 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{appliedCredit.code}</p>
+                  <p className="text-xs text-muted-foreground">
+                    ${creditApplied.toFixed(2)} applied
+                    {creditApplied < appliedCredit.remainingAmount &&
+                      ` — $${(appliedCredit.remainingAmount - creditApplied).toFixed(2)} stays on the credit`}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  id="storeCredit"
+                  placeholder="Credit code"
+                  value={creditCodeInput}
+                  onChange={(e) => setCreditCodeInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && applyStoreCredit()}
+                />
+                <Button
+                  data-testid="apply-store-credit"
+                  variant="outline"
+                  onClick={applyStoreCredit}
+                  disabled={creditLoading}
+                >
+                  {creditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                </Button>
+              </div>
+            )}
+
+            {appliedCredit && amountDue > 0 && (
+              <p className="mt-2 text-sm">
+                <span className="text-muted-foreground">Still due: </span>
+                <span className="font-semibold tabular-nums">${amountDue.toFixed(2)}</span>
+              </p>
+            )}
+            {appliedCredit && amountDue === 0 && (
+              <p className="mt-2 text-sm font-medium text-accent-foreground">
+                The credit covers this sale in full.
+              </p>
+            )}
+          </div>
+
           {/* Cash tendered */}
-          {selectedPaymentMethod === 'Cash' && (
+          {selectedPaymentMethod === 'Cash' && amountDue > 0 && (
             <div className="border-t pt-4">
               <Label htmlFor="cashTendered" className="text-sm font-medium mb-3 block">
                 Cash Received
@@ -1489,7 +1647,10 @@ export default function POS() {
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={terminalState.phase === 'charging' || terminalState.phase === 'waiting' || terminalState.phase === 'approved'}
             >
-              Complete Sale - ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
+              {/* What the customer actually pays now: the priced total less any
+                  store credit. The old label showed subtotal minus discount,
+                  which ignored tax and, once credits arrived, the credit too. */}
+              Complete Sale - ${amountDue.toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>

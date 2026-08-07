@@ -177,7 +177,12 @@ export interface Order {
   customerPhone?: string;
   cardTransactionId?: string;
   cardAuthCode?: string;
+  /** Cash handed over, and what was given back. Null on non-cash tenders. */
+  amountTendered?: number | null;
+  changeGiven?: number | null;
   items?: OrderItem[];
+  /** One row per tender. `paymentMethod` is the summary: a name, or 'Split'. */
+  payments?: Payment[];
 }
 
 /**
@@ -233,6 +238,26 @@ export interface QuotedCart {
   }>;
 }
 
+export type TenderMethod = 'cash' | 'card' | 'store_credit' | 'zelle' | 'other';
+
+/** One tender against a sale. Amounts must add up to the server's total. */
+export interface PaymentRequest {
+  method: TenderMethod;
+  /** The amount applied to the sale — for cash, its share, not what was handed over. */
+  amount: number;
+  /** A store credit code, a card transaction id, a Zelle confirmation. */
+  reference?: string;
+}
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  method: TenderMethod;
+  amount: number;
+  reference?: string | null;
+  createdAt: number;
+}
+
 export interface CreateOrderRequest {
   items: Array<{
     productId: string;
@@ -256,6 +281,13 @@ export interface CreateOrderRequest {
   total: number;
   appliedDiscounts?: AppliedDiscountRequest[];
   paymentMethod: string;
+  /** Cash handed over; the server computes the change against the cash portion. */
+  cashTendered?: number;
+  /**
+   * How the sale was paid, when split across tenders. Omit for a single tender
+   * and `paymentMethod` covers the whole sale.
+   */
+  payments?: PaymentRequest[];
   customerEmail?: string;
   customerPhone?: string;
   cardTransactionId?: string;

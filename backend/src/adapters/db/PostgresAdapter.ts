@@ -120,6 +120,19 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `payments` row into the camelCase DTO the API publishes. */
+export function mapPaymentRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    method: row.method,
+    amount: parseFloat(row.amount as string),
+    reference: row.reference ?? null,
+    createdAt: new Date(row.created_at as string).getTime(),
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -539,11 +552,52 @@ export class PostgresAdapter {
         }
       }
 
+      // Payments, and any store credit they spend, inside the same transaction as
+      // the order and its stock movements. Redeeming a credit in a separate step
+      // would mean a failure between the two either burns a credit for a sale
+      // that never happened, or records a sale paid with a credit still worth
+      // its full value.
+      const payments = [];
+      if (Array.isArray(order.payments)) {
+        for (const payment of order.payments as Array<Record<string, unknown>>) {
+          if (payment.method === 'store_credit') {
+            const redeemed = await client.query(
+              `UPDATE store_credits
+               SET remaining_amount = remaining_amount - $2,
+                   status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
+                   used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+                   used_order_id = $3
+               WHERE UPPER(code) = UPPER($1)
+                 AND status = 'active'
+                 AND remaining_amount >= $2
+                 AND (expires_at IS NULL OR expires_at > NOW())
+               RETURNING id`,
+              [payment.reference, payment.amount, newOrder.id]
+            );
+
+            if (redeemed.rowCount === 0) {
+              throw new ValidationError(
+                'That store credit is not available for the amount requested'
+              );
+            }
+          }
+
+          const inserted = await client.query(
+            `INSERT INTO payments (order_id, method, amount, reference)
+             VALUES ($1, $2, $3, $4)
+             RETURNING *`,
+            [newOrder.id, payment.method, payment.amount, payment.reference ?? null]
+          );
+          payments.push(mapPaymentRow(inserted.rows[0]));
+        }
+      }
+
       await client.query('COMMIT');
 
       return {
         ...mapOrderRow(newOrder),
         items: items.map(mapOrderItemRow),
+        payments,
       };
     } catch (error) {
       await client.query('ROLLBACK');
@@ -614,9 +668,17 @@ export class PostgresAdapter {
         [id]
       );
 
+      // Payments belong on the detail view: without them a receipt cannot show
+      // how a split sale was actually paid, only the 'Split' summary.
+      const paymentsResult = await this.pool.query(
+        'SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at',
+        [id]
+      );
+
       return {
         ...mapOrderRow(order),
         items: itemsResult.rows.map(mapOrderItemRow),
+        payments: paymentsResult.rows.map(mapPaymentRow),
       };
     } catch (error) {
       logger.error('Error getting order by ID:', error);
