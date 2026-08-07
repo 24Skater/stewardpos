@@ -5,7 +5,7 @@ import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import { discountsApi, terminalApi } from "@/lib/api";
+import { discountsApi, ordersApi, terminalApi } from "@/lib/api";
 import type {
   CartItem,
   CreateOrderRequest,
@@ -656,12 +656,30 @@ export default function POS() {
   };
 
   const handleChargeCard = async () => {
-    const { total } = calculateTotals();
-    // Card processors bill in minor units, so this is the one figure sent in cents.
-    const amountCents = Math.round(total * 100);
     setTerminalState({ phase: 'charging' });
 
     try {
+      // Ask the server what this cart costs before authorising anything. The
+      // register's own arithmetic is a preview; the server reprices, and if the
+      // two disagree - a price edited since the catalog was cached, a discount
+      // that has since expired - charging the client's figure would take one
+      // amount off the card and record another against the order.
+      //
+      // A rejected discount surfaces here as a thrown error, while the customer's
+      // card is still in their hand.
+      const quote = await ordersApi.quote({
+        items: cart.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId || undefined,
+          quantity: item.quantity,
+          notes: item.notes,
+        })),
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
+      });
+
+      // Card processors bill in minor units, so this is the one figure sent in cents.
+      const amountCents = Math.round(quote.total * 100);
+
       const { chargeId } = await terminalApi.charge({
         amount: amountCents,
         currency: 'USD',
@@ -699,9 +717,13 @@ export default function POS() {
         }
       }, 2_000);
     } catch (error: unknown) {
+      // Covers both the pricing call and the terminal. The server's message is
+      // the useful one - "Only 2 left in stock" or "that discount has expired" -
+      // so it wins over the generic fallback, which now only applies when there
+      // is no message at all.
       setTerminalState({
         phase: 'error',
-        errorMessage: error instanceof Error ? getErrorMessage(error) : 'Failed to reach terminal',
+        errorMessage: getErrorMessage(error, 'Could not start the card payment'),
       });
     }
   };

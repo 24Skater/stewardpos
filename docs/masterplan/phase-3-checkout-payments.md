@@ -202,19 +202,20 @@ decrements stock by two.
 - Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
   untouched.
 
-- **The card path charges before the server prices.** `handleChargeCard` sends
-  the terminal an amount computed on the client, and only afterwards posts the
-  order for the server to reprice. If the two disagree — a price edited since
-  the catalog was cached, or a discount the server declines — the customer's
-  card is charged one amount and the order records another, with the card
-  already authorised.
+- ~~The card path charges before the server prices~~ — **fixed.**
+  `POST /api/orders/quote` prices a cart without committing to it, sharing the
+  `priceCart` path with order creation so the quote is by construction what the
+  sale will charge. `handleChargeCard` calls it first and sends the terminal the
+  authoritative amount, and a discount the server declines now surfaces while
+  the customer's card is still in their hand rather than after it is authorised.
+  Tests assert quote and sale agree on all four totals; verified live too.
 
-  The receipt now displays the server's figures rather than the client's, so the
-  discrepancy is at least visible instead of hidden. The real fix is a "price
-  this cart" endpoint the register calls before charging, so the amount sent to
-  the terminal is the authoritative one; that also gives the cart a place to
-  surface a rejected discount before the customer is standing there. Worth doing
-  alongside P3-T2 (split tender), which needs the same endpoint.
+  Split tender (P3-T2) has the endpoint it needs.
+
+  Order creation also stopped *requiring* the money fields it discards
+  (`nameSnapshot`, `unitPrice`, `lineTotal`, `subtotal`, `total`). They are
+  still accepted for compatibility, but demanding a figure that is then ignored
+  forced every caller to compute something it is not trusted on.
 - ~~Atomicity is partial~~ — **fixed.** The decrement is now conditional
   (`UPDATE ... WHERE id = $2 AND stock >= $1`) and a no-op fails the
   transaction, so the pre-transaction stock check in `repriceOrder` is an early

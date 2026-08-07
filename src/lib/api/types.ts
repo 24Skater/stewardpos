@@ -196,6 +196,43 @@ export interface AppliedDiscountRequest {
   reason?: string;
 }
 
+/** A cart line as `POST /api/orders/quote` accepts it — identifiers only. */
+export interface QuoteCartLine {
+  productId: string;
+  variantId?: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface QuoteCartRequest {
+  items: QuoteCartLine[];
+  appliedDiscounts?: AppliedDiscountRequest[];
+}
+
+/**
+ * What the sale will cost, priced by the server.
+ *
+ * `appliedDiscounts` lists the discounts it actually honoured, which is not
+ * necessarily what was asked for — a discount that has expired or been
+ * deactivated since the cart was built is rejected outright.
+ */
+export interface QuotedCart {
+  items: OrderItem[];
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  total: number;
+  appliedDiscounts: Array<{
+    source: string;
+    id?: string;
+    code?: string;
+    name: string;
+    type: 'percentage' | 'fixed';
+    value: number;
+    amount: number;
+  }>;
+}
+
 export interface CreateOrderRequest {
   items: Array<{
     productId: string;
