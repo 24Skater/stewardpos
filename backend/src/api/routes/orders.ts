@@ -10,6 +10,7 @@ import { repriceOrder, toCents, toDollars, type PriceableProduct } from '../../s
 import {
   validateAppliedDiscounts,
   type AppliedDiscountRequest,
+  type ValidatedDiscount,
 } from '../../services/discountPricing';
 
 const router = Router();
@@ -277,6 +278,54 @@ router.post('/quote', requirePermission('orders', 'write'), async (req: AuthRequ
   }
 });
 
+
+/**
+ * Log each discount this sale used, and burn a promo code's redemption.
+ *
+ * Server-side, from the amounts the server itself computed. The register used to
+ * do both after checkout, which was wrong twice over: it logged its own figure
+ * rather than the one actually applied, and a client that simply skipped the
+ * call could redeem a single-use promo code indefinitely.
+ *
+ * Failures are logged, not thrown. The sale is already committed; losing a usage
+ * row is a reporting gap, while failing the request here would leave the caller
+ * believing a completed order did not happen.
+ */
+async function recordDiscountUsage(
+  req: AuthRequest,
+  orderId: string,
+  discounts: ValidatedDiscount[],
+  customerEmail?: string
+): Promise<void> {
+  const adapter = db.getAdapter();
+
+  for (const discount of discounts) {
+    try {
+      await adapter.logDiscountUsage({
+        orderId,
+        discountSource: discount.source,
+        discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
+        promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
+        employeeDiscountId: undefined,
+        discountCode: discount.code,
+        discountName: discount.name,
+        discountType: discount.type,
+        discountValue: discount.value,
+        discountAmount: discount.amount,
+        manualReason: discount.source === 'manual' ? discount.name : undefined,
+        customerEmail,
+        appliedBy: req.user?.id,
+      });
+
+      if (discount.source === 'promo_code' && discount.id) {
+        await adapter.incrementPromoCodeUsage(discount.id);
+      }
+    } catch (error) {
+      logger.error(`Failed to record discount usage for order ${orderId}:`, error);
+    }
+  }
+}
+
 /**
  * POST /api/orders
  * Create new order
@@ -301,6 +350,8 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
         authCode: orderData.cardAuthCode,
       });
     }
+
+    await recordDiscountUsage(req, String(order.id), priced.appliedDiscounts, orderData.customerEmail);
 
     logger.info(`Created order: ${order.id} - Total: $${order.total}`);
     // Orders are immutable, so one create row is the whole story for a sale.

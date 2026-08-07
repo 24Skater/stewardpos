@@ -604,30 +604,8 @@ export default function POS() {
 
       const response = await createOrder.mutateAsync(orderData);
       
-      // Log discount usage for each applied discount
-      for (const discount of appliedDiscounts) {
-        try {
-          await discountsApi.usage.record({
-            orderId: response.id,
-            discountSource: discount.source,
-            discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-            promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-            discountCode: discount.code,
-            discountName: discount.name,
-            discountType: discount.type,
-            discountValue: discount.value,
-            discountAmount: discount.amount,
-            customerEmail: customerEmail || undefined,
-          });
-
-          // Increment promo code usage if applicable
-          if (discount.source === 'promo_code' && discount.id) {
-            await discountsApi.promos.markUsed(discount.id);
-          }
-        } catch (error) {
-          logger.error('Failed to log discount usage', error);
-        }
-      }
+      // Discount usage and promo redemption are recorded by the server as part
+      // of creating the order, from the amounts it validated.
 
       toast({
         title: "Sale completed!",
@@ -795,29 +773,8 @@ export default function POS() {
 
       const response = await createOrder.mutateAsync(orderData);
 
-      // Log discount usage for each applied discount
-      for (const discount of appliedDiscounts) {
-        try {
-          await discountsApi.usage.record({
-            orderId: response.id,
-            discountSource: discount.source,
-            discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-            promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-            discountCode: discount.code,
-            discountName: discount.name,
-            discountType: discount.type,
-            discountValue: discount.value,
-            discountAmount: discount.amount,
-            customerEmail: customerEmail || undefined,
-          });
-
-          if (discount.source === 'promo_code' && discount.id) {
-            await discountsApi.promos.markUsed(discount.id);
-          }
-        } catch (error) {
-          logger.error('Failed to log discount usage', error);
-        }
-      }
+      // Discount usage and promo redemption are recorded by the server as part
+      // of creating the order, from the amounts it validated.
 
       toast({
         title: 'Sale completed!',
