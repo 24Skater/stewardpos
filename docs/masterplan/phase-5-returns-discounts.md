@@ -133,6 +133,13 @@ adapter was already idempotent: it only touches rows still flagged
 `restocked = false`, so a repeated call adds nothing. The gap was the missing
 status check, not double-counting.)
 
+Store credit is now redeemable: `GET /api/store-credits/:code` reports the
+balance and `POST /api/store-credits/:code/redeem` spends part or all of it,
+refusing in a single conditional UPDATE so two registers cannot spend the same
+code. Partial redemption leaves the credit active; spending the balance flips it
+to `used`. What remains is wiring it into checkout as a *tender* — it reduces
+what is owed rather than what is charged, so it belongs with split tender
+(P3-T2) and must not be modelled as a discount, which would understate revenue.
+
 Still open for this phase: exchanges (`returnType: 'exchange'`) are accepted but
-priced as a plain return, and store credit is created without any redemption
-path — a customer can be issued one and has no way to spend it.
+priced as a plain return.

@@ -21,6 +21,7 @@ export { quotesApi } from './quotes';
 export { receiptsApi } from './receipts';
 export { returnsApi } from './returns';
 export { servicesApi } from './services';
+export { storeCreditsApi } from './storeCredits';
 export { setupApi } from './setup';
 export { terminalApi } from './terminal';
 export { uploadApi } from './upload';
@@ -61,6 +62,7 @@ export type {
   ReturnReasonCode,
 } from './returns';
 export type { CreateServiceRequest, UpdateServiceRequest } from './services';
+export type { StoreCredit, StoreCreditStatus } from './storeCredits';
 export type { CreateQuoteRequest, QuoteItemInput, UpdateQuoteRequest } from './quotes';
 export type {
   AuthMethod,

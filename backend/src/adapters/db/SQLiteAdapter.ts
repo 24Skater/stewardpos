@@ -28,6 +28,25 @@ export interface TerminalTransactionUpdate {
   durationMs?: number;
 }
 
+
+/** Turn a `store_credits` row into the camelCase DTO the API publishes. */
+export function mapStoreCreditRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerEmail: row.customer_email,
+    returnId: row.return_id,
+    code: row.code,
+    originalAmount: Number(row.original_amount),
+    remainingAmount: Number(row.remaining_amount),
+    status: row.status,
+    expiresAt: row.expires_at ?? null,
+    createdAt: row.created_at,
+    usedAt: row.used_at ?? null,
+    usedOrderId: row.used_order_id,
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -2536,10 +2555,56 @@ export class SQLiteAdapter {
         Date.now()
       );
 
-      return this.db.prepare('SELECT * FROM store_credits WHERE id = ?').get(id);
+      return mapStoreCreditRow(
+        this.db.prepare('SELECT * FROM store_credits WHERE id = ?').get(id) as DbRow
+      );
     } catch (error) {
       logger.error('Error creating store credit:', error);
       throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async getStoreCreditByCode(code: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT * FROM store_credits WHERE UPPER(code) = UPPER(?)')
+        .get(code) as DbRow | undefined;
+      return row ? mapStoreCreditRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting store credit:', error);
+      throw new DatabaseError('Failed to get store credit');
+    }
+  }
+
+  /**
+   * Spend part or all of a store credit.
+   *
+   * The balance check is in the `WHERE` clause for the same reason as the
+   * Postgres adapter: checking first and updating after lets two registers
+   * spend the same code.
+   */
+  async redeemStoreCredit(code: string, amount: number, orderId?: string): Promise<DbRow | null> {
+    try {
+      const now = Date.now();
+      const result = this.db
+        .prepare(
+          `UPDATE store_credits
+           SET remaining_amount = remaining_amount - ?,
+               status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
+               used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+               used_order_id = COALESCE(?, used_order_id)
+           WHERE UPPER(code) = UPPER(?)
+             AND status = 'active'
+             AND remaining_amount >= ?
+             AND (expires_at IS NULL OR expires_at > ?)`
+        )
+        .run(amount, amount, amount, now, orderId ?? null, code, amount, now);
+
+      if (result.changes === 0) return null;
+      return this.getStoreCreditByCode(code);
+    } catch (error) {
+      logger.error('Error redeeming store credit:', error);
+      throw new DatabaseError('Failed to redeem store credit');
     }
   }
 
