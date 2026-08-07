@@ -84,3 +84,32 @@ violations on POS/checkout.
 tested restore procedure. Verify migrations are forward‑only and idempotent on restart.
 **Acceptance criteria.** A backup can be taken and restored into a fresh volume with no data loss.
 **Verification.** Backup a populated DB → restore into a fresh Compose volume → data intact.
+
+---
+
+## Note (2026-08-06): browser-level testing is the gap that matters most
+
+Ad-hoc Playwright probes during Phases 1–3 found two bugs that the 112 backend
+and 35 frontend tests could not, because both were browser-behaviour bugs:
+
+1. **Writes failed in dev while reads worked.** Browsers omit `Origin` on
+   same-origin GETs but attach it to same-origin POSTs; Vite's proxy forwarded
+   it and the backend refused. Every API-level test passed throughout — `curl`
+   sends no `Origin`, and `supertest` calls the app in-process.
+2. **A CORS refusal surfaced as a 500**, which only showed up as a real failed
+   request in a real browser.
+
+The flows worth covering, all exercised manually and passing as of this note:
+
+- every route renders for an authenticated admin with no console errors and no
+  4xx/5xx on any `/api` call (20 routes)
+- add to cart → apply a quick discount → complete sale, and the recorded order
+  carries the catalog's discount value, not the client's
+- Inventory: create a product from the form and see it in the catalog
+- Admin settings: save without the stored terminal credentials being visible in
+  the page or wiped by the save
+
+Standing these up as a real suite needs a decision about CI: `npx playwright
+install` fetches nothing in this environment, so the browser has to come from
+the runner image or a cached download. Until then the checks above are manual,
+which means they will rot.
