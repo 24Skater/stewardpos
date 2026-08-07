@@ -62,7 +62,8 @@ const admin = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getAllProducts.mockResolvedValue([]);
+  // The catalog list returns a page plus a total, not a bare array.
+  getAllProducts.mockResolvedValue({ products: [], total: 0 });
   getAllServices.mockResolvedValue([]);
   deleteProduct.mockResolvedValue(true);
   getAllOrders.mockResolvedValue([]);

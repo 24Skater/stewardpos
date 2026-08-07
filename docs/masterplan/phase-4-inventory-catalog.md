@@ -115,6 +115,23 @@ barcode, then the size/colour pair, since a CSV carries no variant id. Verified
 in a browser: re-importing took a product's stock from 3 to 99 and added a
 second variant.
 
-**Still open for this phase:** pagination and search on the product list,
-barcode lookup as an endpoint (the register filters loaded products
-client-side), product images through MinIO, and low-stock signals.
+**Search, filtering, paging, and barcode lookup are also done.**
+`GET /api/products` takes `q` (name, product barcode, and variant SKU/barcode,
+case-insensitively), `category`, `limit`, and `offset`, and always reports a
+`total` in `meta`. `data` stays a bare array so no existing caller changed.
+
+Paging is **opt-in with no default cap**, which is a deliberate choice rather
+than an oversight: capping by default would drop products off the end of the
+register with nothing to indicate it, so a truncated response would present as a
+missing product. A default belongs with a register that actually pages.
+
+`GET /api/products/barcode/:code` resolves a scan to a product *and the variant
+it names*, so scanning the large size adds the large size. It requires an exact
+match — the underlying search is a substring one, and `123` must not ring up an
+item barcoded `1234`. It is declared before `/:id` so a scan is not mistaken for
+a product id.
+
+**Still open for this phase:** categories CRUD (P4-T2), product images through
+MinIO, and low-stock signals. The register still filters its loaded catalog
+client-side rather than using the search endpoint — fine while a catalog fits in
+a page, and the endpoint is there when it does not.

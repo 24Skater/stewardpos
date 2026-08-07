@@ -52,7 +52,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   getApiKeyByPrefix.mockResolvedValue(keyRecord());
   updateApiKeyLastUsed.mockResolvedValue(undefined);
-  getAllProducts.mockResolvedValue([]);
+  // The catalog list returns a page plus a total, not a bare array.
+  getAllProducts.mockResolvedValue({ products: [], total: 0 });
   getAllApiKeys.mockResolvedValue([]);
   deleteProduct.mockResolvedValue(true);
   createProduct.mockResolvedValue({ id: 'p1', name: 'New' });

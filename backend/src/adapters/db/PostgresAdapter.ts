@@ -263,8 +263,66 @@ export class PostgresAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<DbRow[]> {
+
+  /**
+   * The catalog, optionally searched, filtered, and paged.
+   *
+   * `limit` is opt-in and there is deliberately **no default cap**. Quietly
+   * capping this would drop products off the end of the register with no
+   * indication — the page shows what it was given, so the failure looks like a
+   * missing product rather than a truncated response. A default belongs with a
+   * register that pages, not before it.
+   *
+   * Search covers name, barcode, and variant SKU/barcode, case-insensitively,
+   * because those are the three things someone types when hunting for an item.
+   */
+  async getAllProducts(query: {
+    q?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<{ products: DbRow[]; total: number }> {
     try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.q) {
+        params.push(`%${query.q}%`);
+        const like = `$${params.length}`;
+        // EXISTS rather than a join condition: a match on one variant's SKU
+        // should return the product with *all* its variants, not just that one.
+        conditions.push(`(
+          p.name ILIKE ${like}
+          OR p.barcode ILIKE ${like}
+          OR EXISTS (
+            SELECT 1 FROM product_variants v
+            WHERE v.product_id = p.id AND (v.sku ILIKE ${like} OR v.barcode ILIKE ${like})
+          )
+        )`);
+      }
+
+      if (query.category) {
+        params.push(query.category);
+        conditions.push(`p.category = $${params.length}`);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*)::int AS total FROM products p ${where}`,
+        params
+      );
+
+      let paging = '';
+      if (query.limit != null) {
+        params.push(query.limit);
+        paging += ` LIMIT $${params.length}`;
+      }
+      if (query.offset != null) {
+        params.push(query.offset);
+        paging += ` OFFSET $${params.length}`;
+      }
+
       const result = await this.pool.query(
         `SELECT p.*, 
                 json_agg(
@@ -282,11 +340,13 @@ export class PostgresAdapter {
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
          LEFT JOIN product_variants pv ON p.id = pv.product_id
+         ${where}
          GROUP BY p.id
-         ORDER BY p.name ASC`
+         ORDER BY p.name ASC${paging}`,
+        params
       );
 
-      return result.rows.map((row) => ({
+      const products = result.rows.map((row) => ({
         id: row.id,
         name: row.name,
         description: row.description,
@@ -298,6 +358,8 @@ export class PostgresAdapter {
         createdAt: new Date(row.created_at).getTime(),
         updatedAt: new Date(row.updated_at).getTime(),
       }));
+
+      return { products, total: countResult.rows[0].total };
     } catch (error) {
       logger.error('Error getting all products:', error);
       throw new DatabaseError('Failed to get products');
