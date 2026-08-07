@@ -18,6 +18,13 @@ const FIVE_OFF = {
   isActive: true,
 };
 
+const ENTITLEMENT = {
+  userId: 'u-staff',
+  userName: 'Sam',
+  discountPercentage: 20,
+  isActive: true,
+};
+
 let lookups: DiscountLookups;
 
 beforeEach(() => {
@@ -27,11 +34,14 @@ beforeEach(() => {
     getPromoCodeByCode: vi.fn(async (code) =>
       code.toUpperCase() === 'FIVER' ? { ...FIVE_OFF } : null
     ),
+    getEmployeeDiscountByUser: vi.fn(async (userId) =>
+      userId === 'u-staff' ? { ...ENTITLEMENT } : null
+    ),
   };
 });
 
-const cashier = { subtotalCents: 10_000, mayGrantManualDiscount: false };
-const supervisor = { subtotalCents: 10_000, mayGrantManualDiscount: true };
+const cashier = { subtotalCents: 10_000, mayGrantManualDiscount: false, actingUserId: 'u-staff' };
+const supervisor = { subtotalCents: 10_000, mayGrantManualDiscount: true, actingUserId: 'u-boss' };
 
 describe('validateAppliedDiscounts', () => {
   it('takes the value from the catalog, not the request', async () => {
@@ -195,10 +205,102 @@ describe('validateAppliedDiscounts', () => {
     });
   });
 
-  it('refuses an employee discount rather than honouring an unverified number', async () => {
-    await expect(
-      validateAppliedDiscounts([{ source: 'employee', value: 50 }], lookups, supervisor)
-    ).rejects.toThrow(/cannot be applied/);
+  describe('employee discounts', () => {
+    it('applies the stored entitlement, ignoring the value asked for', async () => {
+      const result = await validateAppliedDiscounts(
+        [{ source: 'employee', value: 90 }],
+        lookups,
+        cashier
+      );
+
+      expect(result.totalCents).toBe(2_000);
+      expect(result.discounts[0].name).toBe('Employee discount (Sam)');
+    });
+
+    it('defaults to the acting user when no employee is named', async () => {
+      await validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier);
+
+      expect(lookups.getEmployeeDiscountByUser).toHaveBeenCalledWith('u-staff');
+    });
+
+    it("refuses a cashier reaching for someone else's entitlement", async () => {
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee', id: 'u-other' }], lookups, cashier)
+      ).rejects.toThrow(/only apply your own/);
+    });
+
+    it("lets a supervisor apply it on an employee's behalf", async () => {
+      const result = await validateAppliedDiscounts(
+        [{ source: 'employee', id: 'u-staff' }],
+        lookups,
+        supervisor
+      );
+
+      expect(result.totalCents).toBe(2_000);
+    });
+
+    it('refuses when the employee has no entitlement', async () => {
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee', id: 'u-nobody' }], lookups, supervisor)
+      ).rejects.toThrow(/no discount entitlement/);
+    });
+
+    it('refuses an inactive entitlement', async () => {
+      lookups.getEmployeeDiscountByUser = vi.fn(async () => ({ ...ENTITLEMENT, isActive: false }));
+
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier)
+      ).rejects.toThrow(/not active/);
+    });
+
+    it('caps at what is left of the monthly allowance, not the whole cap', async () => {
+      lookups.getEmployeeDiscountByUser = vi.fn(async () => ({
+        ...ENTITLEMENT,
+        maxDiscountAmount: 50,
+        currentMonthUsage: 45,
+      }));
+
+      // 20% of 100.00 would be 20.00, but only 5.00 of the allowance remains.
+      const result = await validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier);
+
+      expect(result.totalCents).toBe(500);
+    });
+
+    it('refuses once the allowance is spent', async () => {
+      lookups.getEmployeeDiscountByUser = vi.fn(async () => ({
+        ...ENTITLEMENT,
+        maxDiscountAmount: 50,
+        currentMonthUsage: 50,
+      }));
+
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier)
+      ).rejects.toThrow(/allowance this month/);
+    });
+
+    it('refuses an amount that needs manager approval', async () => {
+      // No approval flow exists at the register, so granting it anyway would be
+      // signing off on the manager's behalf.
+      lookups.getEmployeeDiscountByUser = vi.fn(async () => ({
+        ...ENTITLEMENT,
+        requiresManagerApprovalAbove: 5,
+      }));
+
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier)
+      ).rejects.toThrow(/manager approval/);
+    });
+
+    it('refuses a category-restricted entitlement rather than over-discounting', async () => {
+      lookups.getEmployeeDiscountByUser = vi.fn(async () => ({
+        ...ENTITLEMENT,
+        allowedCategories: ['Drinks'],
+      }));
+
+      await expect(
+        validateAppliedDiscounts([{ source: 'employee' }], lookups, cashier)
+      ).rejects.toThrow(/Category-restricted/);
+    });
   });
 
   it('is a no-op when nothing was applied', async () => {

@@ -245,6 +245,7 @@ async function priceCart(
 
   const validated = await validateAppliedDiscounts(appliedDiscounts, adapter, {
     subtotalCents: toCents(undiscounted.subtotal),
+    actingUserId: req.user?.id,
     mayGrantManualDiscount: grantsManualDiscount(req),
   });
 
