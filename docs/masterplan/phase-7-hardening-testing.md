@@ -113,3 +113,37 @@ Standing these up as a real suite needs a decision about CI: `npx playwright
 install` fetches nothing in this environment, so the browser has to come from
 the runner image or a cached download. Until then the checks above are manual,
 which means they will rot.
+
+---
+
+## Two vulnerabilities in the upload endpoint (found 2026-08-07)
+
+Both required only `settings.write` — the permission needed to change a store
+logo — and both were verified as exploitable before being fixed.
+
+**Arbitrary file deletion.** `DELETE /api/upload/:type/:filename` built a path
+with `path.join(dir, filename)`. Express decodes route parameters, so
+`..%2F..%2F..%2Ftmp%2Ffile` arrived as a traversal sequence that `path.join`
+resolved happily. Confirmed by deleting a probe file in `/tmp` from outside the
+uploads directory. On a SQLite deployment the database file is in reach.
+
+**Stored XSS.** The stored extension came from the uploaded filename while only
+the client-supplied mimetype was checked. Uploading `payload.js` as
+`Content-Type: image/png` passed the filter, was written as `<uuid>.js`, and was
+served from `/uploads` as `application/javascript` — same origin as the app, and
+`script-src 'self'` in the CSP executes it.
+
+Fixed by deriving the extension from a server-side mimetype→extension table
+rather than the filename, refusing SVG outright (it is a document format that
+can carry script), constraining the upload kind to a known set instead of
+falling back to the uploads root, and requiring a bare basename plus a
+containment check on delete.
+
+A third, smaller issue fell out: multer's rejections were bare `Error`s, so
+"you sent the wrong kind of file" surfaced as a 500. They are `ValidationError`
+now, with a handler for multer's own `MulterError` (size limit) alongside.
+
+**The lesson worth generalising:** two of the three were the server trusting a
+client-supplied *name* — a filename in a URL, a filename in a multipart part.
+The money-path work established that the client is never believed about amounts;
+the same holds for anything that reaches the filesystem.
