@@ -76,6 +76,25 @@ export function mapOrderRow(order: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `store_credits` row into the camelCase DTO the API publishes. */
+export function mapStoreCreditRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerEmail: row.customer_email,
+    returnId: row.return_id,
+    code: row.code,
+    originalAmount: parseFloat(row.original_amount as string),
+    remainingAmount: parseFloat(row.remaining_amount as string),
+    status: row.status,
+    expiresAt: row.expires_at ? new Date(row.expires_at as string).getTime() : null,
+    createdAt: new Date(row.created_at as string).getTime(),
+    usedAt: row.used_at ? new Date(row.used_at as string).getTime() : null,
+    usedOrderId: row.used_order_id,
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -2505,10 +2524,58 @@ export class PostgresAdapter {
         ]
       );
 
-      return result.rows[0];
+      return mapStoreCreditRow(result.rows[0]);
     } catch (error) {
       logger.error('Error creating store credit:', error);
       throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async getStoreCreditByCode(code: string): Promise<Record<string, unknown> | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM store_credits WHERE UPPER(code) = UPPER($1)',
+        [code]
+      );
+      return result.rows[0] ? mapStoreCreditRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting store credit:', error);
+      throw new DatabaseError('Failed to get store credit');
+    }
+  }
+
+  /**
+   * Spend part or all of a store credit.
+   *
+   * The balance check lives in the `WHERE` clause, not in a read beforehand:
+   * two registers presented with the same code would both pass a prior read and
+   * both spend it. Here the row lock means only one matches, and the other gets
+   * `null` to report as insufficient.
+   */
+  async redeemStoreCredit(
+    code: string,
+    amount: number,
+    orderId?: string
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE store_credits
+         SET remaining_amount = remaining_amount - $2,
+             status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
+             used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+             used_order_id = COALESCE($3, used_order_id)
+         WHERE UPPER(code) = UPPER($1)
+           AND status = 'active'
+           AND remaining_amount >= $2
+           AND (expires_at IS NULL OR expires_at > NOW())
+         RETURNING *`,
+        [code, amount, orderId ?? null]
+      );
+
+      return result.rows[0] ? mapStoreCreditRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error redeeming store credit:', error);
+      throw new DatabaseError('Failed to redeem store credit');
     }
   }
 
