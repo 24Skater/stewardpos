@@ -90,3 +90,31 @@ imports (Phase 1 invariant). Follow the design‑quality rules (no default‑tem
 **Acceptance criteria.** Inventory management is usable end‑to‑end from the UI.
 **Verification.** Manual: create a product with two variants + image, edit price, delete — all reflect
 immediately without a full reload.
+
+
+---
+
+## Progress notes (2026-08-07)
+
+**P4-T1's variant sub-resources are done**, ahead of the rest of the phase,
+because their absence had a visible consequence: `POST /api/products` accepted
+nested variants but `PUT` accepted none, so a product's options were fixed at
+creation. A shop could not add a size or correct a stock count without
+recreating the product, and CSV re-import — the ordinary way a shop restocks —
+had to drop every variant row on anything already in the catalog and say so.
+
+`POST/PUT/DELETE /api/products/:id/variants[/:variantId]` now exist,
+`inventory`-permissioned with delete separated from write. The update path
+COALESCEs, so correcting a stock count does not blank the size or SKU. Deleting
+a product's **last** variant is refused: a product with no variants cannot be
+sold and there is no separate "unsellable" state, so it would be stranded —
+disable it instead.
+
+CSV import applies variant rows to existing products, matching on SKU, then
+barcode, then the size/colour pair, since a CSV carries no variant id. Verified
+in a browser: re-importing took a product's stock from 3 to 99 and added a
+second variant.
+
+**Still open for this phase:** pagination and search on the product list,
+barcode lookup as an endpoint (the register filters loaded products
+client-side), product images through MinIO, and low-stock signals.
