@@ -98,3 +98,34 @@ never computes the discounted total itself.
 **Acceptance criteria.** Cashier applies a code/quick discount; totals come back from the server.
 **Verification.** Manual: apply a 10% code at POS → server‑returned total reflects it; remove →
 reverts.
+
+
+---
+
+## Note (2026-08-07): returns were repriced ahead of this phase
+
+Found while auditing the money paths in Phase 3, and fixed there because it was
+the same class of hole in the more dangerous direction — a sale mispriced
+downwards costs margin, a refund mispriced upwards hands over cash.
+
+`POST /api/returns` fetched the original order only to check it existed, then
+stored whatever line prices and totals the request supplied. `process-refund`
+then used the client's `amount` with no upper bound. Verified end to end: a $1
+order produced a **$99,999 cash refund**, and would equally have minted a store
+credit for it.
+
+`repriceReturn` now prices a return from the order it came from:
+
+- line prices come from what the customer actually paid, not the request and not
+  today's catalog price
+- quantities are bounded by what was sold minus what earlier returns already
+  took; a pending return counts, so the same item cannot be submitted twice
+  while the first awaits approval, while a rejected one does not
+- tax is apportioned by share of the order's subtotal, so a partial return gets
+  back the tax that was actually charged rather than today's rate
+- a restocking fee cannot push a refund negative
+- `process-refund` caps `amount` at the return's total
+
+Still open for this phase: exchanges (`returnType: 'exchange'`) are accepted but
+priced as a plain return, and store credit is created without any redemption
+path — a customer can be issued one and has no way to spend it.

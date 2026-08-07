@@ -2287,9 +2287,14 @@ export class SQLiteAdapter {
         ).all(ret.id) as DbRow[];
         ret.items = items.map(item => ({
           id: item.id,
+          // See the Postgres adapter: needed to tell how much of a given order
+          // line has already been returned.
+          originalOrderItemId: item.original_order_item_id,
           productId: item.product_id,
+          variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,
           returnQuantity: item.return_quantity,
+          unitPrice: item.unit_price,
           lineTotal: item.line_total,
         }));
       }
