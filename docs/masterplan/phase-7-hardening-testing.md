@@ -147,3 +147,38 @@ now, with a handler for multer's own `MulterError` (size limit) alongside.
 client-supplied *name* — a filename in a URL, a filename in a multipart part.
 The money-path work established that the client is never believed about amounts;
 the same holds for anything that reaches the filesystem.
+
+## Remote code execution in the component updater (found 2026-08-07)
+
+`POST /api/admin/components/update` built its command by interpolating the
+client's package list into a string and running it through `exec`, which uses a
+shell:
+
+```ts
+const command = `npm update ${packages.join(' ')}`;
+await execAsync(command, { cwd: workDir });
+```
+
+A package named `; echo PWNED > /tmp/injected.txt; echo ` executed as the server
+user. Confirmed by writing and reading back the file inside the container.
+
+Admin-gated, but admin-to-RCE is a real escalation: it turns a stolen admin
+session, or any XSS reaching an admin's browser, into control of the host
+process — and the upload endpoint fixed in the same session provided exactly
+such an XSS.
+
+Fixed by switching every `exec` in that file to `execFile` with an argv array —
+no shell, so no argument can be read as syntax — and validating names against
+npm's package-name grammar first, which also stops a leading `-` being taken as
+a flag.
+
+A detail worth keeping: the rejection path originally interpolated the offending
+entries into its error message, which itself threw on
+`{ toString: 'nope' }` — a non-callable `toString` makes `String()` fail. The
+code that exists to reject bad input returned a 500 for it. Only string entries
+are echoed now. That was caught by a test written for the fix, not by review.
+
+**Known limitation, unrelated:** the updater cannot succeed in the Docker image
+regardless — `npm update` fails with EACCES against `/app/node_modules` as the
+`nodejs` user. The feature is safe now, but it is not functional in a container
+deployment, and the UI does not say so.
