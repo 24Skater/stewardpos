@@ -126,6 +126,13 @@ credit for it.
 - a restocking fee cannot push a refund negative
 - `process-refund` caps `amount` at the return's total
 
+Restocking was also gated on approval, matching the refund path. It had none, so
+a **pending** return put goods back into sellable stock on the say-so of whoever
+filed it — for an item that may never have physically come back. (The underlying
+adapter was already idempotent: it only touches rows still flagged
+`restocked = false`, so a repeated call adds nothing. The gap was the missing
+status check, not double-counting.)
+
 Still open for this phase: exchanges (`returnType: 'exchange'`) are accepted but
 priced as a plain return, and store credit is created without any redemption
 path — a customer can be issued one and has no way to spend it.
