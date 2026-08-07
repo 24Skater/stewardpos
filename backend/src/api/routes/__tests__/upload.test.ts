@@ -14,6 +14,20 @@ const { default: config } = await import('../../../config');
 const { default: app } = await import('../../../app');
 
 const logosDir = path.join(process.cwd(), 'uploads', 'logos');
+const productsDir = path.join(process.cwd(), 'uploads', 'products');
+
+function actor(permissions: Record<string, unknown>) {
+  return {
+    id: 'u1',
+    email: 'stock@example.com',
+    status: 'active',
+    roleIds: ['r1'],
+    roles: [{ id: 'r1', name: 'Stock', systemRole: 'standard', permissions }],
+  };
+}
+
+const png = () => Buffer.from('fake-png-bytes');
+const attachment = { filename: 'x.png', contentType: 'image/png' };
 
 function token(): string {
   return jwt.sign({ id: 'u1', email: 'admin@example.com', roleIds: ['r1'] }, config.jwt.secret, {
@@ -150,5 +164,66 @@ describe('DELETE /api/upload/:type/:filename', () => {
 
     expect(response.status).toBe(200);
     expect(fs.existsSync(path.join(logosDir, 'deletable.png'))).toBe(false);
+  });
+});
+
+describe('product images', () => {
+  it('accepts one and serves it from the products directory', async () => {
+    const response = await request(app)
+      .post('/api/upload/product')
+      .set('Authorization', `Bearer ${token()}`)
+      .attach('file', png(), attachment);
+
+    expect(response.status).toBe(200);
+    // The subdirectory comes from the same table multer wrote to. Re-deriving it
+    // from the type sent a product image to the icons path.
+    expect(response.body.data.url).toMatch(/^\/uploads\/products\//);
+    fs.unlinkSync(path.join(productsDir, response.body.data.filename));
+  });
+
+  it('needs inventory.write, not settings.write', async () => {
+    // A product photo is catalog work. Requiring settings.write would mean
+    // nobody could add one without also being able to change the store's
+    // payment credentials.
+    getUserByEmail.mockResolvedValue(actor({ inventory: { write: true }, settings: { write: false } }));
+
+    const response = await request(app)
+      .post('/api/upload/product')
+      .set('Authorization', `Bearer ${token()}`)
+      .attach('file', png(), attachment);
+
+    expect(response.status).toBe(200);
+    fs.unlinkSync(path.join(productsDir, response.body.data.filename));
+  });
+
+  it('refuses someone who can change settings but not the catalog', async () => {
+    getUserByEmail.mockResolvedValue(actor({ inventory: { write: false }, settings: { write: true } }));
+
+    expect(
+      (await request(app)
+        .post('/api/upload/product')
+        .set('Authorization', `Bearer ${token()}`)
+        .attach('file', png(), attachment)).status
+    ).toBe(403);
+  });
+
+  it('still guards the logo behind settings.write', async () => {
+    getUserByEmail.mockResolvedValue(actor({ inventory: { write: true }, settings: { write: false } }));
+
+    expect(
+      (await request(app)
+        .post('/api/upload/logo')
+        .set('Authorization', `Bearer ${token()}`)
+        .attach('file', png(), attachment)).status
+    ).toBe(403);
+  });
+
+  it('refuses an unknown upload type without writing anything', async () => {
+    const response = await request(app)
+      .post('/api/upload/whatever')
+      .set('Authorization', `Bearer ${token()}`)
+      .attach('file', png(), attachment);
+
+    expect(response.status).toBe(400);
   });
 });

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { adminApi, categoriesApi, productsApi } from '@/lib/api';
+import { adminApi, categoriesApi, productsApi, uploadApi } from '@/lib/api';
 import type {
   Category,
   CreateProductRequest,
@@ -37,6 +37,7 @@ export default function AdminInventory() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isNewProduct, setIsNewProduct] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
   const { toast } = useToast();
@@ -178,17 +179,30 @@ export default function AdminInventory() {
       return;
     }
 
-    // Convert to base64 for storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      setUploadedImage(base64String);
+    // This used to base64 the file into `products.image` and report success
+    // without anything having been uploaded. A 5MB photo became ~6.7MB of text
+    // in the product row, sent to every client on every catalog load - so the
+    // register got slower with each picture a shop added.
+    try {
+      setIsUploadingImage(true);
+      const uploaded = await uploadApi.upload('product', file);
+      setUploadedImage(uploaded.url);
       if (editingProduct) {
-        setEditingProduct({ ...editingProduct, image: base64String });
+        setEditingProduct({ ...editingProduct, image: uploaded.url });
       }
-      toast({ title: 'Image uploaded successfully' });
-    };
-    reader.readAsDataURL(file);
+      toast({ title: 'Image uploaded' });
+    } catch (error: unknown) {
+      // Silence here left the old preview showing, so the picture looked
+      // attached and then was not there after saving.
+      setUploadedImage(null);
+      toast({
+        title: 'Upload failed',
+        description: getErrorMessage(error, 'The image could not be uploaded'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -458,12 +472,16 @@ export default function AdminInventory() {
                             type="file"
                             accept="image/*"
                             onChange={handleImageUpload}
+                            disabled={isUploadingImage}
                             className="cursor-pointer"
                           />
-                          <Button type="button" variant="outline" size="icon">
+                          <Button type="button" variant="outline" size="icon" disabled={isUploadingImage}>
                             <ImagePlus className="w-4 h-4" />
                           </Button>
                         </div>
+                        {isUploadingImage && (
+                          <p className="text-xs text-muted-foreground">Uploading…</p>
+                        )}
                         {(uploadedImage || editingProduct.image) && (
                           <div className="mt-2 border rounded p-2">
                             <img 
