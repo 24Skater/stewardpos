@@ -7,6 +7,11 @@ import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import {
+  repriceReturn,
+  type OriginalOrder,
+  type PriorReturn,
+} from '../../services/returnPricing';
 
 const router = Router();
 
@@ -207,11 +212,28 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     const data = createReturnSchema.parse(req.body);
     const adapter = db.getAdapter();
 
-    // Verify the original order exists
     const originalOrder = await adapter.getOrderById(data.originalOrderId);
     if (!originalOrder) {
       throw new NotFoundError('Original order not found');
     }
+
+    // Reprice against the order. Line prices, quantities, and totals all come
+    // from what was actually sold and not already returned - the request only
+    // says which lines and how many. Storing the client's figures let a return
+    // against a $1 order claim $9,999 and be paid out in full.
+    const priorReturns = await adapter.getReturnsByOrder(data.originalOrderId);
+    const priced = repriceReturn(
+      originalOrder as unknown as OriginalOrder,
+      data.items.map((item) => ({
+        originalOrderItemId: item.originalOrderItemId,
+        productId: item.productId,
+        returnQuantity: item.returnQuantity,
+        condition: item.condition,
+        notes: item.notes,
+      })),
+      priorReturns as unknown as PriorReturn[],
+      { restockingFee: data.restockingFee }
+    );
 
     // Generate return number
     const returnNumber = generateReturnNumber();
@@ -219,6 +241,7 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     // Create the return
     const returnData = await adapter.createReturn({
       ...data,
+      ...priced,
       returnNumber,
       status: 'pending',
       refundStatus: 'pending',
@@ -303,7 +326,16 @@ router.post('/:id/process-refund', requirePermission('returns', 'write'), async 
       throw new ValidationError('Refund already processed for this return');
     }
 
-    const refundAmount = data.amount || returnData.total;
+    // The return's total is the ceiling. `amount` exists for partial refunds, and
+    // was previously used unbounded - a caller could refund any sum they liked,
+    // or mint a store credit for it.
+    const returnTotal = Number(returnData.total ?? 0);
+    if (data.amount !== undefined && data.amount > returnTotal) {
+      throw new ValidationError(
+        `A refund cannot exceed the return's total of $${returnTotal.toFixed(2)}`
+      );
+    }
+    const refundAmount = data.amount ?? returnTotal;
 
     // Process based on refund method
     let storeCreditCode = null;

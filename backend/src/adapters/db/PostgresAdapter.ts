@@ -2240,9 +2240,14 @@ export class PostgresAdapter {
         );
         ret.items = itemsResult.rows.map(item => ({
           id: item.id,
+          // Needed to tell how much of a specific order line has already been
+          // returned, which is what stops the same item being refunded twice.
+          originalOrderItemId: item.original_order_item_id,
           productId: item.product_id,
+          variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,
           returnQuantity: item.return_quantity,
+          unitPrice: parseFloat(item.unit_price),
           lineTotal: parseFloat(item.line_total),
         }));
       }
