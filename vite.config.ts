@@ -24,6 +24,17 @@ export default defineConfig(({ mode }) => ({
         target: BACKEND_ORIGIN,
         changeOrigin: true,
         secure: false,
+        // Drop the browser's Origin header on the way through.
+        //
+        // From the browser this *is* a same-origin request — it asks
+        // localhost:5174 and the proxy is transparent infrastructure. But
+        // browsers still attach Origin to same-origin POSTs (not to GETs), and
+        // `changeOrigin` only rewrites Host, so the backend saw the dev server's
+        // origin, found it absent from CORS_ORIGIN, and refused. The symptom was
+        // specific and confusing: reads worked, writes failed.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => proxyReq.removeHeader("origin"));
+        },
       },
       // Uploaded logos and icons are stored as relative `/uploads/...` URLs, so
       // they need the same treatment or they 404 against the dev server.
