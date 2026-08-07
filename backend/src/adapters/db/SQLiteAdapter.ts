@@ -97,6 +97,19 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `payments` row into the camelCase DTO the API publishes. */
+export function mapPaymentRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    method: row.method,
+    amount: Number(row.amount),
+    reference: row.reference ?? null,
+    createdAt: row.created_at,
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -515,9 +528,54 @@ export class SQLiteAdapter {
         }
       }
 
+      // See the Postgres adapter: payments and any store credit they spend belong
+      // in the same transaction as the order and its stock movements.
+      const payments: DbRow[] = [];
+      if (Array.isArray(order.payments)) {
+        for (const payment of order.payments as Array<Record<string, unknown>>) {
+          if (payment.method === 'store_credit') {
+            const redeemed = this.db
+              .prepare(
+                `UPDATE store_credits
+                 SET remaining_amount = remaining_amount - ?,
+                     status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
+                     used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+                     used_order_id = ?
+                 WHERE UPPER(code) = UPPER(?)
+                   AND status = 'active'
+                   AND remaining_amount >= ?
+                   AND (expires_at IS NULL OR expires_at > ?)`
+              )
+              .run(
+                payment.amount, payment.amount, payment.amount, now,
+                createdOrder.id, payment.reference, payment.amount, now
+              );
+
+            if (redeemed.changes === 0) {
+              throw new ValidationError(
+                'That store credit is not available for the amount requested'
+              );
+            }
+          }
+
+          const paymentId = crypto.randomUUID();
+          this.db
+            .prepare(
+              `INSERT INTO payments (id, order_id, method, amount, reference, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`
+            )
+            .run(paymentId, createdOrder.id, payment.method, payment.amount, payment.reference ?? null, now);
+
+          payments.push(
+            mapPaymentRow(this.db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId) as DbRow)
+          );
+        }
+      }
+
       return {
         ...mapOrderRow(createdOrder),
         items,
+        payments,
       };
     });
 
@@ -595,6 +653,12 @@ export class SQLiteAdapter {
         .prepare('SELECT * FROM order_items WHERE order_id = ?')
         .all(id) as DbRow[];
 
+      // See the Postgres adapter: a receipt needs the tender breakdown, not just
+      // the 'Split' summary.
+      const payments = this.db
+        .prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY created_at')
+        .all(id) as DbRow[];
+
       return {
         ...mapOrderRow(order),
         items: items.map((item) => ({
@@ -611,6 +675,7 @@ export class SQLiteAdapter {
           lineTotal: item.line_total,
           notes: item.notes,
         })),
+        payments: payments.map(mapPaymentRow),
       };
     } catch (error) {
       logger.error('Error getting order by ID:', error);

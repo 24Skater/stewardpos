@@ -226,9 +226,31 @@ decrements stock by two.
   shortfall preview, so a discrepancy is visible while there is still time to
   recount.
 
-- Split tender (P3-T2): untouched. Store credit waits on it too, since a credit
-  is a tender rather than a discount and modelling it as one would understate
-  revenue.
+- **Split tender is done.** Migration 012 adds a `payments` table — an order had
+  one `payment_method` varchar, so it could only ever have been paid one way.
+  `POST /api/orders` accepts a `payments` array whose amounts must add up to the
+  repriced total; a single `paymentMethod` still becomes one payment covering
+  the sale, so existing callers are unchanged. `orders.payment_method` survives
+  as a denormalised summary holding the method name, or `'Split'`.
+
+  Store credit is now spendable, which is what made it a real refund option:
+  redemption happens **inside the order's transaction**, so a failure cannot
+  burn a credit for a sale that never happened, nor record a sale paid with a
+  credit still worth its full value. Verified by claiming more credit than the
+  balance — the order rolls back, the credit is untouched, and stock does not
+  move.
+
+  Change is computed against the *cash portion* of a tender rather than the
+  total, since only cash can produce change; giving change against the whole
+  total would hand back money the card already covered. The card path likewise
+  charges the total less any credit — charging the full amount would take the
+  credit's share twice and be rejected for overpayment after the card was
+  already authorised.
+
+  The register gained a store-credit field showing what is applied, what stays
+  on the credit, and what is still due. The Complete Sale button previously
+  showed `subtotal - discount`, which ignored tax; it now shows what is actually
+  due.
 
 - ~~The card path charges before the server prices~~ — **fixed.**
   `POST /api/orders/quote` prices a cart without committing to it, sharing the

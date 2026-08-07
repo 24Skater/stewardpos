@@ -18,6 +18,7 @@ import {
   type AppliedDiscountRequest,
   type ValidatedDiscount,
 } from '../../services/discountPricing';
+import { cashPortion, singleTender, validateTender } from '../../services/tender';
 
 const router = Router();
 
@@ -127,6 +128,19 @@ const createOrderSchema = z.object({
   paymentMethod: z.string(),
   /** Cash handed over. The server computes the change and rejects a shortfall. */
   cashTendered: z.number().min(0).optional(),
+  /**
+   * How the sale was paid, when it was split across tenders. Omit for a single
+   * tender and `paymentMethod` covers it.
+   */
+  payments: z
+    .array(
+      z.object({
+        method: z.enum(['cash', 'card', 'store_credit', 'zelle', 'other']),
+        amount: z.number(),
+        reference: z.string().optional(),
+      })
+    )
+    .optional(),
   // Customer information is optional - can be omitted, empty string, or valid email
   customerEmail: z.preprocess(
     (val) => (val === '' || val === null || val === undefined ? undefined : val),
@@ -345,21 +359,30 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
 
     const priced = await priceCart(req, orderData.items, orderData.appliedDiscounts);
 
-    // Change is computed here, against the repriced total - not the total the
-    // client believed. Quoting one figure and giving change against another is
-    // how a till comes up short.
+    // The tender has to add up to the repriced total, whether it is one payment
+    // or five. A single `paymentMethod` becomes one payment covering the sale,
+    // so existing callers are unchanged.
+    const tender = orderData.payments
+      ? validateTender(orderData.payments, priced.total)
+      : singleTender(orderData.paymentMethod, priced.total);
+
+    // Change is computed against the *cash portion*, not the whole total - on a
+    // split, only the cash part can produce change, and giving change against
+    // the full total would hand back money the card already covered.
     const cash =
       orderData.cashTendered === undefined
         ? {}
         : {
             amountTendered: orderData.cashTendered,
-            changeGiven: calculateChange(priced.total, orderData.cashTendered),
+            changeGiven: calculateChange(cashPortion(tender.payments), orderData.cashTendered),
           };
 
     const order = await adapter.createOrder({
       ...orderData,
       ...priced,
       ...cash,
+      paymentMethod: tender.summaryMethod,
+      payments: tender.payments,
     });
 
     // If this was a card payment, link the terminal transaction to the order
