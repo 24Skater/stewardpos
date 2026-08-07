@@ -159,7 +159,29 @@ to mint a second admin. (The plan specifies `{ completed: boolean }`; the
 implementation returns the richer `isInitialized`/`hasAdminUser`/`needsSetup`,
 which is what the client consumes. Left as-is.)
 
-**Not done:** P2-T6 (nullable `org_id` — untouched).
+**P2-T6 is done as a foundation, and stops deliberately short of query
+scoping.** There is an `organizations` table with a default org on a fixed id, a
+nullable indexed `org_id` on 20 tenant-scoped tables, an `orgId` claim in the
+JWT, and `req.orgId` on every authenticated request — resolved from the user's
+stored org, then the token claim, then the default, and always populated so no
+consumer has to decide what an absent tenant means. The stored value wins over
+the claim for the same reason roles are reloaded per request: a token outlives a
+change.
+
+**Nothing filters or sets `org_id` yet**, and that is the stopping point rather
+than an omission. On a single-org install a correctly scoped query and a
+completely unscoped one return identical results, so landing the filtering now
+would mean touching every read and write in both adapters with nothing to verify
+against, and a failure mode — one query missed, one tenant seeing another's
+orders — that stays invisible until the day it is catastrophic. The column is
+reversible and free; the filtering is neither.
+
+`docs/guides/multi-tenant.md` sets out what exists, why the scoping is deferred,
+and the order to add it in. Its first step is the one worth doing before any
+other: backfill `org_id` and make it `NOT NULL` while there is still one org, so
+a missed write fails loudly instead of leaking quietly.
+
+**Phase 2 is complete.**
 
 ### Defects found while doing the above
 

@@ -23,8 +23,26 @@ export interface AuthenticatedApiKey {
 
 export type ApiKeyScope = 'read' | 'write' | 'delete' | 'admin';
 
+/**
+ * The organization every existing row implicitly belongs to.
+ *
+ * A fixed id, matching migration 014, so the fallback needs no lookup on the
+ * request path and a token minted before orgs existed still resolves to a real
+ * organization rather than to `undefined`.
+ */
+export const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 export interface AuthRequest extends Request {
   apiKey?: AuthenticatedApiKey;
+  /**
+   * The tenant this request belongs to.
+   *
+   * Always set on an authenticated request — the default org when the user has
+   * none — so a consumer never has to decide what a missing value means. It is
+   * not yet used to scope queries; see docs/guides/multi-tenant.md for why the
+   * column and the filtering land separately.
+   */
+  orgId?: string;
   user?: {
     id: string;
     email: string;
@@ -43,6 +61,8 @@ interface TokenClaims {
   id: string;
   email: string;
   roleIds: string[];
+  /** Absent in tokens minted before orgs existed; falls back to the default. */
+  orgId?: string;
 }
 
 /**
@@ -108,6 +128,8 @@ async function authenticateApiKey(req: AuthRequest): Promise<boolean> {
 
   const scopes = (record.scopes as ApiKeyScope[]) ?? ['read'];
   req.apiKey = { id: String(record.id), name: String(record.name), scopes };
+  // Keys are not org-scoped yet; they belong to the install, which is one org.
+  req.orgId = (record.orgId as string) ?? DEFAULT_ORG_ID;
   req.user = {
     id: `api-key:${record.id}`,
     email: `api-key:${record.name}`,
@@ -176,6 +198,10 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
       throw new AuthenticationError('Not authenticated');
     }
 
+    // The stored value wins over the token's, for the same reason roles are
+    // reloaded here: a token outlives a change, and moving a user between orgs
+    // should not wait for it to expire.
+    req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
     req.user = {
       id: String(user.id),
       email: String(user.email),
@@ -205,6 +231,7 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
     const user = await db.getAdapter().getUserByEmail(claims.email);
 
     if (user && user.status === 'active') {
+      req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
       req.user = {
         id: String(user.id),
         email: String(user.email),
