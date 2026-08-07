@@ -133,6 +133,22 @@ export function mapPaymentRow(row: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `product_variants` row into the camelCase DTO the API publishes. */
+export function mapVariantRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    size: row.size,
+    color: row.color,
+    priceOverride: row.price_override == null ? null : parseFloat(row.price_override as string),
+    priceDelta: row.price_delta == null ? null : parseFloat(row.price_delta as string),
+    sku: row.sku,
+    barcode: row.barcode,
+    stock: row.stock,
+    enabled: row.enabled,
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -3591,6 +3607,123 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error listing drawer sessions:', error);
       throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
+
+  // ===== Product variants =====
+
+  /**
+   * Add a variant to an existing product.
+   *
+   * There was no way to do this: `createProduct` takes nested variants, but
+   * `updateProduct` takes none, so a product's options were fixed at creation.
+   * CSV re-import could not update stock on anything already in the catalog,
+   * which is the ordinary case for a shop restocking.
+   */
+  async createVariant(productId: string, variant: Record<string, unknown>): Promise<DbRow | null> {
+    try {
+      const product = await this.pool.query('SELECT id FROM products WHERE id = $1', [productId]);
+      if (product.rows.length === 0) return null;
+
+      const result = await this.pool.query(
+        `INSERT INTO product_variants
+         (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          productId,
+          variant.size ?? null,
+          variant.color ?? null,
+          variant.priceOverride ?? null,
+          variant.priceDelta ?? null,
+          variant.sku ?? null,
+          variant.barcode ?? null,
+          variant.stock ?? 0,
+          variant.enabled !== false,
+        ]
+      );
+      return mapVariantRow(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating variant:', error);
+      throw new DatabaseError('Failed to create variant');
+    }
+  }
+
+  /**
+   * Update a variant.
+   *
+   * COALESCE throughout, for the same reason as `updateProduct`: every field is
+   * optional, and writing the parameters straight through would blank whatever
+   * the caller did not mention. `enabled` is handled separately because it is a
+   * boolean where `false` is a real value, not an absence.
+   */
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    variant: Record<string, unknown>
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE product_variants
+         SET size = COALESCE($3, size),
+             color = COALESCE($4, color),
+             price_override = COALESCE($5, price_override),
+             price_delta = COALESCE($6, price_delta),
+             sku = COALESCE($7, sku),
+             barcode = COALESCE($8, barcode),
+             stock = COALESCE($9, stock),
+             enabled = COALESCE($10, enabled)
+         WHERE id = $1 AND product_id = $2
+         RETURNING *`,
+        [
+          variantId,
+          productId,
+          variant.size ?? null,
+          variant.color ?? null,
+          variant.priceOverride ?? null,
+          variant.priceDelta ?? null,
+          variant.sku ?? null,
+          variant.barcode ?? null,
+          variant.stock ?? null,
+          variant.enabled ?? null,
+        ]
+      );
+      return result.rows[0] ? mapVariantRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error updating variant:', error);
+      throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  /**
+   * Remove a variant.
+   *
+   * Refuses the last one: a product with no variants cannot be sold, and the
+   * catalog has no separate notion of "unsellable". Disable it instead.
+   */
+  async deleteVariant(productId: string, variantId: string): Promise<'deleted' | 'not_found' | 'last'> {
+    try {
+      const remaining = await this.pool.query(
+        'SELECT COUNT(*)::int AS count FROM product_variants WHERE product_id = $1',
+        [productId]
+      );
+      if (remaining.rows[0].count <= 1) {
+        const exists = await this.pool.query(
+          'SELECT id FROM product_variants WHERE id = $1 AND product_id = $2',
+          [variantId, productId]
+        );
+        return exists.rows.length > 0 ? 'last' : 'not_found';
+      }
+
+      const result = await this.pool.query(
+        'DELETE FROM product_variants WHERE id = $1 AND product_id = $2',
+        [variantId, productId]
+      );
+      return (result.rowCount ?? 0) > 0 ? 'deleted' : 'not_found';
+    } catch (error) {
+      logger.error('Error deleting variant:', error);
+      throw new DatabaseError('Failed to delete variant');
     }
   }
 

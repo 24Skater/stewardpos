@@ -87,9 +87,8 @@ export default function ImportInventoryDialog({
    * that matches a live product updates it; anything else is created fresh under
    * a server-assigned ID, because the API does not let a client choose one.
    *
-   * The update path deliberately carries scalar fields only: `PUT /api/products/:id`
-   * has no variant payload, so variant edits on an existing product are reported
-   * back to the user rather than silently dropped.
+   * Variant rows are applied through the variant sub-resources, since
+   * `PUT /api/products/:id` carries no variant payload of its own.
    */
   const processImport = async (rows: Record<string, unknown>[]) => {
     const grouped = new Map<
@@ -118,21 +117,46 @@ export default function ImportInventoryDialog({
     }
 
     const existing = await productsApi.list();
-    const existingIds = new Set(existing.map((product) => product.id));
+    const byId = new Map(existing.map((product) => [product.id, product]));
 
     let imported = 0;
     let updated = 0;
-    let variantsSkipped = 0;
+    let variantsChanged = 0;
 
     for (const product of grouped.values()) {
-      if (existingIds.has(product.csvId)) {
+      const existing = byId.get(product.csvId);
+
+      if (existing) {
         await productsApi.update(product.csvId, {
           name: product.name,
           category: product.category,
           basePrice: product.basePrice,
         });
         updated++;
-        variantsSkipped += product.variants.length;
+
+        // Variant rows used to be dropped here, because there was no endpoint to
+        // apply them — which made a re-import unable to do the most ordinary
+        // thing a shop wants from one: correct stock counts.
+        //
+        // Matched on SKU, then barcode, then the size/colour pair, since a CSV
+        // carries no variant id. Anything unmatched is a new option.
+        for (const incoming of product.variants) {
+          const match = existing.variants.find(candidate =>
+            incoming.sku && candidate.sku
+              ? candidate.sku === incoming.sku
+              : incoming.barcode && candidate.barcode
+                ? candidate.barcode === incoming.barcode
+                : (candidate.size ?? '') === (incoming.size ?? '') &&
+                  (candidate.color ?? '') === (incoming.color ?? '')
+          );
+
+          if (match) {
+            await productsApi.variants.update(existing.id, match.id, incoming);
+          } else {
+            await productsApi.variants.create(existing.id, incoming);
+          }
+          variantsChanged++;
+        }
         continue;
       }
 
@@ -146,7 +170,7 @@ export default function ImportInventoryDialog({
       imported++;
     }
 
-    return { imported, updated, variantsSkipped };
+    return { imported, updated, variantsChanged };
   };
 
   const handleFileUpload = async (file: File) => {
@@ -163,15 +187,13 @@ export default function ImportInventoryDialog({
     try {
       const text = await file.text();
       const rows = parseCSV(text);
-      const { imported, updated, variantsSkipped } = await processImport(rows);
+      const { imported, updated, variantsChanged } = await processImport(rows);
 
       toast({
         title: 'Import successful',
         description:
-          `${imported} products imported, ${updated} products updated` +
-          (variantsSkipped > 0
-            ? `. ${variantsSkipped} variant rows on existing products were not applied - edit those in Inventory.`
-            : ''),
+          `${imported} products imported, ${updated} updated` +
+          (variantsChanged > 0 ? `, ${variantsChanged} variants applied` : ''),
       });
 
       onImportComplete();

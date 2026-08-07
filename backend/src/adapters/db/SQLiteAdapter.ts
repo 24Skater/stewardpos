@@ -110,6 +110,22 @@ export function mapPaymentRow(row: DbRow): DbRow {
   };
 }
 
+
+/** Turn a `product_variants` row into the camelCase DTO the API publishes. */
+export function mapVariantRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    size: row.size,
+    color: row.color,
+    priceOverride: row.price_override ?? null,
+    priceDelta: row.price_delta ?? null,
+    sku: row.sku,
+    barcode: row.barcode,
+    stock: row.stock,
+    enabled: Boolean(row.enabled),
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -3588,6 +3604,99 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error listing drawer sessions:', error);
       throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
+
+  // ===== Product variants =====
+
+  /** See the Postgres adapter for why these exist. */
+  async createVariant(productId: string, variant: Record<string, unknown>): Promise<DbRow | null> {
+    try {
+      const product = this.db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+      if (!product) return null;
+
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO product_variants
+           (id, product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id, productId, variant.size ?? null, variant.color ?? null,
+          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          variant.sku ?? null, variant.barcode ?? null,
+          variant.stock ?? 0, variant.enabled !== false ? 1 : 0
+        );
+
+      return mapVariantRow(
+        this.db.prepare('SELECT * FROM product_variants WHERE id = ?').get(id) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error creating variant:', error);
+      throw new DatabaseError('Failed to create variant');
+    }
+  }
+
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    variant: Record<string, unknown>
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE product_variants
+           SET size = COALESCE(?, size),
+               color = COALESCE(?, color),
+               price_override = COALESCE(?, price_override),
+               price_delta = COALESCE(?, price_delta),
+               sku = COALESCE(?, sku),
+               barcode = COALESCE(?, barcode),
+               stock = COALESCE(?, stock),
+               enabled = COALESCE(?, enabled)
+           WHERE id = ? AND product_id = ?`
+        )
+        .run(
+          variant.size ?? null, variant.color ?? null,
+          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          variant.sku ?? null, variant.barcode ?? null,
+          variant.stock ?? null,
+          variant.enabled === undefined ? null : variant.enabled ? 1 : 0,
+          variantId, productId
+        );
+
+      if (result.changes === 0) return null;
+      return mapVariantRow(
+        this.db.prepare('SELECT * FROM product_variants WHERE id = ?').get(variantId) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error updating variant:', error);
+      throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  async deleteVariant(productId: string, variantId: string): Promise<'deleted' | 'not_found' | 'last'> {
+    try {
+      const { count } = this.db
+        .prepare('SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ?')
+        .get(productId) as { count: number };
+
+      if (count <= 1) {
+        const exists = this.db
+          .prepare('SELECT id FROM product_variants WHERE id = ? AND product_id = ?')
+          .get(variantId, productId);
+        return exists ? 'last' : 'not_found';
+      }
+
+      const result = this.db
+        .prepare('DELETE FROM product_variants WHERE id = ? AND product_id = ?')
+        .run(variantId, productId);
+      return result.changes > 0 ? 'deleted' : 'not_found';
+    } catch (error) {
+      logger.error('Error deleting variant:', error);
+      throw new DatabaseError('Failed to delete variant');
     }
   }
 
