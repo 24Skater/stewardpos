@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -13,6 +13,22 @@ const router = Router();
 // All routes require admin authentication
 router.use(authenticate);
 router.use(authorize(['admin']));
+
+/**
+ * Key management is for people, not for keys.
+ *
+ * An `admin`-scoped key authenticates as an admin, which would otherwise let it
+ * mint further keys, give its successor wider scopes, and revoke the ones an
+ * operator is watching. Compromise of a single key should not become permanent,
+ * self-renewing access.
+ */
+router.use((req: AuthRequest, _res: Response, next: NextFunction) => {
+  if (req.apiKey) {
+    next(new ForbiddenError('API keys cannot manage API keys'));
+    return;
+  }
+  next();
+});
 
 /**
  * API Key Management Routes (Admin Only)

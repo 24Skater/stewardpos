@@ -197,3 +197,45 @@ Fixing it needs a backend-local flat config (Node globals, no react plugins, its
 own installed plugin versions) plus a corrected script and a CI step. The
 `config-protection` hook blocks writing ESLint config files, so this is left for
 a deliberate decision rather than worked around.
+
+---
+
+## API keys made real (2026-08-07)
+
+The API-key feature was inert in two separate ways, each hiding the other.
+
+**Creation had never succeeded.** `key_prefix` is `VARCHAR(8)` but
+`generateApiKey` emits `spk_` plus eight hex characters — twelve. Every attempt
+failed with `value too long for type character varying(8)`. Migration 009 widens
+the column to 32.
+
+**Nothing accepted a key as a credential.** Keys could be minted, listed,
+scoped, rate-limited, and revoked, and a documented endpoint described how to
+use them — but no middleware ever read `X-API-Key`. An operator would reasonably
+believe they had provisioned working access, and handled the returned secret as
+though it granted something.
+
+`authenticate` now takes either a bearer token or an `X-API-Key`. A key's scopes
+expand into the same per-resource permission shape a role carries, so
+`requirePermission` treats a key and a person identically rather than growing a
+second authorisation path that could drift: `read` grants read everywhere,
+`write` adds write, `delete` adds delete, and `admin` maps to the admin
+archetype. A key that is present but invalid rejects outright rather than
+falling through to anonymous.
+
+One guard rail: **an API key cannot manage API keys**, even with `admin` scope.
+Otherwise a single compromised key becomes self-renewing — mint a successor,
+widen its scopes, revoke the ones being watched.
+
+Verified live across nine cases: valid, unknown prefix, right prefix with wrong
+secret, revoked, expired, absent; read-cannot-write, write-cannot-delete, and
+admin-refused-on-key-management.
+
+### Also fixed
+
+`POST /api/products` accepted a request with no `category` — optional in the Zod
+schema, `NOT NULL` in the database — so a valid-per-schema request returned a
+500. It is now a 400 naming the field. Both Zod messages are set, since
+`required_error` covers an absent field and the `min` message covers a present
+but empty one; setting only one leaves the other as a bare "Required". The
+route's error mapping now includes the field path, matching the orders route.

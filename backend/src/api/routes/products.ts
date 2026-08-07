@@ -39,7 +39,16 @@ const variantSchema = z.object({
 const createProductSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  category: z.string().optional(),
+  // Required, because `products.category` is NOT NULL with no default. Marking
+  // it optional here meant a request the schema accepted hit a constraint
+  // violation and surfaced as a 500 - the caller was told the server broke when
+  // it had simply left out a mandatory field.
+  category: z
+    // Both messages, because Zod uses `required_error` when the field is absent
+    // and the `min` message only when it is present but empty. Setting one
+    // leaves the other as a bare "Required".
+    .string({ required_error: 'A product needs a category' })
+    .min(1, 'A product needs a category'),
   basePrice: z.number().min(0),
   image: z.string().optional(),
   barcode: z.string().optional(),
@@ -117,7 +126,11 @@ router.post('/', requirePermission('inventory', 'write'), async (req: AuthReques
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(
+        new ValidationError(
+          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+        )
+      );
     } else {
       next(error);
     }
@@ -150,7 +163,11 @@ router.put('/:id', requirePermission('inventory', 'write'), async (req: AuthRequ
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(
+        new ValidationError(
+          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+        )
+      );
     } else {
       next(error);
     }
