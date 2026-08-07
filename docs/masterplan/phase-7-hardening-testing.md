@@ -99,6 +99,13 @@ and 35 frontend tests could not, because both were browser-behaviour bugs:
 2. **A CORS refusal surfaced as a 500**, which only showed up as a real failed
    request in a real browser.
 
+A third case (2026-08-07): the cash-tender memos were placed above the
+`calculateTotals` they call. Both are `const`, so the first render hit the
+temporal dead zone and the whole register replaced itself with an error
+boundary. Typecheck passed, the production build passed, and all 241 unit tests
+passed — the crash exists only at runtime, on first paint. One browser load
+found it immediately.
+
 The flows worth covering, all exercised manually and passing as of this note:
 
 - every route renders for an authenticated admin with no console errors and no
