@@ -411,7 +411,15 @@ router.post('/:id/restock', requirePermission('returns', 'write'), async (req: A
       throw new NotFoundError('Return not found');
     }
 
-    // Restock items
+    // Same gate as processing the refund. Restocking puts goods back on the
+    // shelf as sellable, so doing it on a pending return means whoever filed it
+    // decides inventory on their own - and the item may never have come back.
+    if (returnData.status !== 'approved' && returnData.status !== 'completed') {
+      throw new ValidationError('Return must be approved before restocking');
+    }
+
+    // Restock items. Idempotent: the adapter only touches rows still flagged
+    // `restocked = false`, so a repeated call adds nothing.
     const restockedItems = await adapter.restockReturnItems(id, itemIds);
 
     logger.info(`Restocked ${restockedItems.length} items from return ${id}`);
