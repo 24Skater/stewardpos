@@ -34,9 +34,35 @@ const configSchema = z.object({
   }),
 
   // Rate Limiting
+  /**
+   * How many reverse proxies sit in front of this app.
+   *
+   * Express only reads `X-Forwarded-For` when told to, and rate limiting keys on
+   * the resulting client IP. Left at 0 behind the shipped nginx, every request
+   * appears to come from the proxy - so the whole internet shares one bucket and
+   * a single abusive client can lock out every store, including on the sign-in
+   * limiter.
+   *
+   * Defaults to 0 because the opposite mistake is worse: trusting the header
+   * when nothing sets it lets any client spoof its address and bypass the limits
+   * entirely. Set it to the number of proxies you actually run.
+   */
+  trustProxy: z.coerce.number().int().min(0).default(0),
+
   rateLimit: z.object({
     windowMs: z.coerce.number().default(15 * 60 * 1000), // 15 minutes
-    maxRequests: z.coerce.number().default(100),
+    /**
+     * Requests per window per IP, across the whole API.
+     *
+     * Measured against the real app: opening the register costs ~24 calls and
+     * each sale adds ~3. The previous default of 100 therefore allowed roughly
+     * 25 sales per quarter-hour for an entire store - every terminal shares one
+     * public IP - so a normal Saturday would start returning 429s mid-shift.
+     * This bounds abuse without bounding the business.
+     */
+    maxRequests: z.coerce.number().default(3000),
+    /** Failed sign-in attempts per window per IP. Successes do not count. */
+    maxLoginAttempts: z.coerce.number().default(10),
   }),
 
   // Email
@@ -115,9 +141,12 @@ function buildConfig(): AppConfig {
       origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
     },
 
+    trustProxy: parseInt(process.env.TRUST_PROXY || '0', 10),
+
     rateLimit: {
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-      maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+      maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '3000', 10),
+      maxLoginAttempts: parseInt(process.env.RATE_LIMIT_MAX_LOGIN_ATTEMPTS || '10', 10),
     },
 
     email: {

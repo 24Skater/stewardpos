@@ -32,7 +32,11 @@ services:
       AUTO_SEED: "true"
       CORS_ORIGIN: http://localhost:8081,http://localhost:5174,http://localhost:3002,http://frontend:80
       RATE_LIMIT_WINDOW_MS: 600000  # 10 minutes
-      RATE_LIMIT_MAX_REQUESTS: 1000  # More lenient for dev
+      # One nginx sits in front; without this every client shares one
+      # rate-limit bucket because they all appear to come from the proxy.
+      TRUST_PROXY: 1
+      RATE_LIMIT_MAX_REQUESTS: 5000  # More lenient for dev
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: 50
       DB_NAME: ${DB_NAME:-stewardpos_dev}
       DB_USER: ${DB_USER:-stewardpos_dev}
       DB_PASSWORD: ${DB_PASSWORD:-dev_password_change_me}

@@ -65,6 +65,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// Only when configured: see the note on `trustProxy` in config. Rate limiting
+// depends on this to see the real client, and it is unsafe to assume.
+if (config.trustProxy > 0) {
+  app.set('trust proxy', config.trustProxy);
+}
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
@@ -74,6 +80,27 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/', limiter);
+
+/**
+ * Brute-force protection for sign-in.
+ *
+ * The global limiter is sized for a busy shop, which makes it useless against
+ * password guessing - thousands of attempts would fit inside it. This is a
+ * separate, much smaller budget in front of `/api/auth/login` only.
+ *
+ * `skipSuccessfulRequests` is what makes a tight limit safe: only failures
+ * count, so a shift change where six cashiers sign in one after another spends
+ * nothing, while an attacker gets ten guesses a quarter-hour.
+ */
+const loginLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxLoginAttempts,
+  skipSuccessfulRequests: true,
+  message: 'Too many sign-in attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/login', loginLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
