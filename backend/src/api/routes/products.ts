@@ -201,4 +201,116 @@ router.delete('/:id', requirePermission('inventory', 'delete'), async (req: Auth
   }
 });
 
+/**
+ * Variant sub-resources.
+ *
+ * `POST /api/products` accepts nested variants but `PUT` accepts none, so a
+ * product's options were fixed at creation — a shop could not add a size or
+ * correct a stock count without recreating the product, and CSV re-import had to
+ * skip variant rows on anything already in the catalog.
+ */
+
+const createVariantSchema = z.object({
+  size: z.string().optional(),
+  color: z.string().optional(),
+  priceOverride: z.number().min(0).optional(),
+  priceDelta: z.number().optional(),
+  sku: z.string().optional(),
+  barcode: z.string().optional(),
+  stock: z.number().int().min(0).default(0),
+  enabled: z.boolean().default(true),
+});
+
+const updateVariantSchema = createVariantSchema.partial();
+
+/**
+ * POST /api/products/:id/variants
+ */
+router.post('/:id/variants', requirePermission('inventory', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const data = createVariantSchema.parse(req.body);
+    const variant = await db.getAdapter().createVariant(id, data);
+
+    if (!variant) {
+      throw new NotFoundError('Product not found');
+    }
+
+    logger.info(`Added variant ${variant.id} to product ${id}`);
+    await audit(req, {
+      action: 'update',
+      entity: 'product',
+      entityId: id,
+      after: { addedVariant: variant },
+    });
+
+    res.status(201).json({ success: true, data: variant });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
+    } else {
+      next(error);
+    }
+  }
+});
+
+/**
+ * PUT /api/products/:id/variants/:variantId
+ */
+router.put('/:id/variants/:variantId', requirePermission('inventory', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id, variantId } = req.params;
+    const data = updateVariantSchema.parse(req.body);
+    const variant = await db.getAdapter().updateVariant(id, variantId, data);
+
+    if (!variant) {
+      throw new NotFoundError('Variant not found on that product');
+    }
+
+    logger.info(`Updated variant ${variantId}`);
+    await audit(req, {
+      action: 'update',
+      entity: 'product',
+      entityId: id,
+      after: { updatedVariant: variant },
+    });
+
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
+    } else {
+      next(error);
+    }
+  }
+});
+
+/**
+ * DELETE /api/products/:id/variants/:variantId
+ */
+router.delete('/:id/variants/:variantId', requirePermission('inventory', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id, variantId } = req.params;
+    const outcome = await db.getAdapter().deleteVariant(id, variantId);
+
+    if (outcome === 'not_found') {
+      throw new NotFoundError('Variant not found on that product');
+    }
+    if (outcome === 'last') {
+      // A product with no variants cannot be sold, and there is no separate
+      // "unsellable" state, so removing the last one would strand it.
+      throw new ValidationError(
+        'A product needs at least one variant. Disable it instead of removing it.'
+      );
+    }
+
+    logger.info(`Deleted variant ${variantId} from product ${id}`);
+    await audit(req, { action: 'update', entity: 'product', entityId: id, before: { removedVariant: variantId } });
+
+    res.json({ success: true, message: 'Variant deleted' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
