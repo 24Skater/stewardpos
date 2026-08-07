@@ -85,3 +85,34 @@ require given the nullable `org_id` foundation (P2‑T6): org‑scoped login/sub
 API, per‑org settings/branding, billing, and data‑isolation tests. Mark as a future major version.
 **Acceptance criteria.** A clear, honest upgrade path exists; no false promise that v1 is multi‑tenant.
 **Verification.** Doc review against the actual schema (org_id present on the listed tables).
+
+---
+
+## Rate limiting was unusable in production (found 2026-08-07)
+
+Two defects, both operational rather than theoretical.
+
+**The global limit would have stopped a shop trading.** 100 requests per
+15 minutes per IP. Measured against the running app, opening the register costs
+~24 API calls and each sale adds ~3 — and every terminal in a store shares one
+public IP. That is roughly **25 sales per quarter-hour for the whole shop**
+before 429s begin, and the prod compose file set exactly that value, labelled
+"Stricter limits". Raised to 3000 across every environment, with the arithmetic
+recorded next to it.
+
+**Nothing was actually per-IP.** `nginx.conf` proxies `/api/` to the backend and
+sets `X-Forwarded-For`, but Express never had `trust proxy` configured, so
+`express-rate-limit` keyed every request by the nginx container's address. The
+entire internet shared one bucket: one abusive client could lock out every
+store, and the new sign-in limiter would have been globally shared too.
+
+`TRUST_PROXY` now controls this, defaulting to `0`. The default is deliberately
+the cautious one — trusting the header when nothing sets it lets any client
+spoof its address and escape the limits altogether — and each compose file that
+ships an nginx sets it to `1`.
+
+**Brute force had no specific protection.** Sign-in shared the global bucket,
+which is sized for a busy shop and therefore useless against password guessing.
+There is now a separate 10-per-window budget in front of `/api/auth/login` with
+`skipSuccessfulRequests`, so only failures count and a shift change costs
+nothing. Verified live: ten wrong passwords, then 429.
