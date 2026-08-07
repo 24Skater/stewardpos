@@ -243,6 +243,9 @@ export class PostgresAdapter {
         name: user.name,
         roleIds: user.role_ids || [],
         status: user.status,
+        // Null until a second organization exists; `authenticate` falls back to
+        // the default org so consumers never see an absent tenant.
+        orgId: user.org_id ?? null,
         lastLoginAt: user.last_login_at ? new Date(user.last_login_at).getTime() : undefined,
         createdAt: new Date(user.created_at).getTime(),
         roles: roles,

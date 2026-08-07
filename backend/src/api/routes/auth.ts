@@ -5,7 +5,7 @@ import { z } from 'zod';
 import config from '../../config';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import db from '../../services/database';
 
 const router = Router();
@@ -61,6 +61,9 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         id: user.id,
         email: user.email,
         roleIds: user.roleIds,
+        // Carried so a consumer can read the tenant without a lookup. The
+        // middleware still prefers the stored value; see there for why.
+        orgId: user.orgId ?? DEFAULT_ORG_ID,
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }
@@ -162,6 +165,7 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response, ne
         id: req.user.id,
         email: req.user.email,
         roleIds: req.user.roleIds,
+        orgId: req.orgId ?? DEFAULT_ORG_ID,
       },
       config.jwt.secret,
       { expiresIn: config.jwt.expiresIn }

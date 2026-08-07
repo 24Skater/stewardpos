@@ -202,6 +202,8 @@ export class SQLiteAdapter {
         name: user.name,
         roleIds,
         status: user.status,
+        // See the Postgres adapter: null until a second organization exists.
+        orgId: user.org_id ?? null,
         lastLoginAt: user.last_login_at,
         createdAt: user.created_at,
         roles,
