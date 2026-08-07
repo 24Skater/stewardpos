@@ -224,11 +224,58 @@ export class SQLiteAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<DbRow[]> {
+  /** See the Postgres adapter: `limit` is opt-in, with no default cap. */
+  async getAllProducts(query: {
+    q?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<{ products: DbRow[]; total: number }> {
     try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.q) {
+        const like = `%${query.q}%`;
+        conditions.push(`(
+          p.name LIKE ? COLLATE NOCASE
+          OR p.barcode LIKE ? COLLATE NOCASE
+          OR EXISTS (
+            SELECT 1 FROM product_variants v
+            WHERE v.product_id = p.id
+              AND (v.sku LIKE ? COLLATE NOCASE OR v.barcode LIKE ? COLLATE NOCASE)
+          )
+        )`);
+        params.push(like, like, like, like);
+      }
+
+      if (query.category) {
+        conditions.push('p.category = ?');
+        params.push(query.category);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const { total } = this.db
+        .prepare(`SELECT COUNT(*) AS total FROM products p ${where}`)
+        .get(...params) as { total: number };
+
+      let paging = '';
+      const pagingParams: unknown[] = [];
+      if (query.limit != null) {
+        paging += ' LIMIT ?';
+        pagingParams.push(query.limit);
+      }
+      if (query.offset != null) {
+        // SQLite requires a LIMIT before OFFSET; -1 means "no limit".
+        if (query.limit == null) paging += ' LIMIT -1';
+        paging += ' OFFSET ?';
+        pagingParams.push(query.offset);
+      }
+
       const products = this.db
-        .prepare('SELECT * FROM products ORDER BY name ASC')
-        .all() as DbRow[];
+        .prepare(`SELECT p.* FROM products p ${where} ORDER BY p.name ASC${paging}`)
+        .all(...params, ...pagingParams) as DbRow[];
 
       // Get variants for each product
       const productsWithVariants = products.map((product) => {
@@ -260,7 +307,7 @@ export class SQLiteAdapter {
         };
       });
 
-      return productsWithVariants;
+      return { products: productsWithVariants, total };
     } catch (error) {
       logger.error('Error getting all products:', error);
       throw new DatabaseError('Failed to get products');

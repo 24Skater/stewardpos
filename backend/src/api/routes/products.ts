@@ -68,17 +68,77 @@ const updateProductSchema = z.object({
  * GET /api/products
  * List all products
  */
-router.get('/', requirePermission('inventory', 'read'), async (_req: Request, res: Response, next: NextFunction) => {
+const listQuerySchema = z.object({
+  /** Matches name, product barcode, and variant SKU/barcode, case-insensitively. */
+  q: z.string().optional(),
+  category: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+router.get('/', requirePermission('inventory', 'read'), async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const query = listQuerySchema.parse(req.query);
     const adapter = db.getAdapter();
-    const products = await adapter.getAllProducts();
+    const { products, total } = await adapter.getAllProducts(query);
 
-    logger.info(`Retrieved ${products.length} products`);
+    logger.info(`Retrieved ${products.length} of ${total} products`);
 
+    // `meta` is always present; `data` stays a bare array so every existing
+    // caller is unaffected. Paging is opt-in via `limit` precisely because a
+    // silent default would drop products off the end of the register.
     res.json({
       success: true,
       data: products,
+      meta: { total, limit: query.limit, offset: query.offset },
     });
+  } catch (error) {
+    // A bad `limit` or `offset` is the caller's mistake. Passing the ZodError
+    // straight to `next` made it an unclassified 500.
+    if (error instanceof z.ZodError) {
+      next(
+        new ValidationError(
+          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+        )
+      );
+    } else {
+      next(error);
+    }
+  }
+});
+
+
+/**
+ * GET /api/products/barcode/:code
+ * Resolve a scanned barcode to a product and the specific variant it names.
+ *
+ * The register currently filters its loaded catalog client-side, which works
+ * only while the whole catalog fits in the page. This resolves server-side, and
+ * — unlike a client-side scan — says *which* variant matched, so scanning the
+ * large size adds the large size rather than whatever came first.
+ *
+ * Declared before `/:id` so a scan is not mistaken for a product id.
+ */
+router.get('/barcode/:code', requirePermission('inventory', 'read'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code } = req.params;
+    const { products } = await db.getAdapter().getAllProducts({ q: code });
+
+    // The search is a substring match; a scan has to be exact, or scanning
+    // `123` would resolve to a product barcoded `1234`.
+    for (const product of products) {
+      const variants = (product.variants as Array<Record<string, unknown>>) ?? [];
+      const variant = variants.find((candidate) => candidate.barcode === code);
+
+      if (variant) {
+        return res.json({ success: true, data: { product, variant } });
+      }
+      if (product.barcode === code) {
+        return res.json({ success: true, data: { product, variant: variants[0] ?? null } });
+      }
+    }
+
+    throw new NotFoundError('Nothing found with that barcode');
   } catch (error) {
     next(error);
   }
