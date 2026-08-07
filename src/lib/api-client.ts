@@ -34,15 +34,15 @@ async function getToken(): Promise<string | null> {
 }
 
 /** The envelope every backend route responds with. */
-interface ApiEnvelope<T> {
+interface ApiEnvelope<T, M extends ResponseMeta = ResponseMeta> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
   errors?: Record<string, string[]>;
-  meta?: ResponseMeta;
+  meta?: M;
   /** Some routes name this `pagination` instead of `meta`; both are accepted. */
-  pagination?: ResponseMeta;
+  pagination?: M;
 }
 
 /**
@@ -89,10 +89,10 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * Read the envelope's `meta` alongside the payload, for paginated endpoints.
  * Most callers want {@link handleResponse}.
  */
-async function handleResponseWithMeta<T>(
+async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
   response: Response
-): Promise<{ data: T; meta?: ResponseMeta }> {
-  const body: ApiEnvelope<T> = await response.json().catch(() => ({ success: false }));
+): Promise<{ data: T; meta?: M }> {
+  const body: ApiEnvelope<T, M> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
     if (response.status === 401) {
@@ -194,8 +194,15 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
-  /** GET a list endpoint, keeping the envelope's pagination `meta`. */
-  async getList<T>(path: string): Promise<{ data: T; meta?: ResponseMeta }> {
+  /**
+   * GET a list endpoint, keeping the envelope's `meta`.
+   *
+   * `M` widens `meta` for endpoints that report more than paging — categories
+   * carry the unmanaged names there — while defaulting to the common shape.
+   */
+  async getList<T, M extends ResponseMeta = ResponseMeta>(
+    path: string
+  ): Promise<{ data: T; meta?: M }> {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'GET',
@@ -204,7 +211,7 @@ export const apiClient = {
         ...(token && { Authorization: `Bearer ${token}` }),
       },
     });
-    return handleResponseWithMeta<T>(response);
+    return handleResponseWithMeta<T, M>(response);
   },
 };
 

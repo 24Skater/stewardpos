@@ -3704,6 +3704,133 @@ export class SQLiteAdapter {
     }
   }
 
+  // ===== Categories =====
+  // See the Postgres adapter for why `products.category` holds the name rather
+  // than a foreign key, and what that costs on rename and delete.
+
+  async getAllCategories(): Promise<DbRow[]> {
+    try {
+      return this.db
+        .prepare(
+          `SELECT c.id, c.name, c.icon, COUNT(p.id) AS productCount
+           FROM categories c
+           LEFT JOIN products p ON p.category = c.name
+           GROUP BY c.id, c.name, c.icon
+           ORDER BY c.name ASC`
+        )
+        .all() as DbRow[];
+    } catch (error) {
+      logger.error('Error getting categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /** See the Postgres adapter: names products use that no category row defines. */
+  async getUnmanagedCategories(): Promise<DbRow[]> {
+    try {
+      return this.db
+        .prepare(
+          `SELECT p.category AS name, COUNT(*) AS productCount
+           FROM products p
+           LEFT JOIN categories c ON c.name = p.category
+           WHERE c.id IS NULL AND p.category IS NOT NULL AND p.category <> ''
+           GROUP BY p.category
+           ORDER BY p.category ASC`
+        )
+        .all() as DbRow[];
+    } catch (error) {
+      logger.error('Error getting unmanaged categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  async createCategory(name: string, icon: string | null): Promise<DbRow | null> {
+    try {
+      const clash = this.db
+        .prepare('SELECT id FROM categories WHERE LOWER(name) = LOWER(?)')
+        .get(name);
+      if (clash) return null;
+
+      const id = crypto.randomUUID();
+      this.db.prepare('INSERT INTO categories (id, name, icon) VALUES (?, ?, ?)').run(id, name, icon);
+      return { id, name, icon, productCount: 0 };
+    } catch (error) {
+      logger.error('Error creating category:', error);
+      throw new DatabaseError('Failed to create category');
+    }
+  }
+
+  async renameCategory(
+    id: string,
+    name: string,
+    icon: string | null | undefined
+  ): Promise<DbRow | null | 'duplicate'> {
+    try {
+      const run = this.db.transaction(() => {
+        const existing = this.db.prepare('SELECT name FROM categories WHERE id = ?').get(id) as
+          | { name: string }
+          | undefined;
+        if (!existing) return null;
+
+        const clash = this.db
+          .prepare('SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id <> ?')
+          .get(name, id);
+        if (clash) return 'duplicate' as const;
+
+        this.db
+          .prepare('UPDATE categories SET name = ?, icon = COALESCE(?, icon) WHERE id = ?')
+          .run(name, icon ?? null, id);
+        const moved = this.db
+          .prepare('UPDATE products SET category = ? WHERE category = ?')
+          .run(name, existing.name);
+
+        return { id, name, icon: icon ?? null, productCount: moved.changes } as DbRow;
+      });
+      return run();
+    } catch (error) {
+      logger.error('Error renaming category:', error);
+      throw new DatabaseError('Failed to rename category');
+    }
+  }
+
+  async deleteCategory(
+    id: string,
+    reassignTo?: string
+  ): Promise<'deleted' | 'not_found' | { inUse: number } | 'bad_target'> {
+    try {
+      const run = this.db.transaction(() => {
+        const existing = this.db.prepare('SELECT name FROM categories WHERE id = ?').get(id) as
+          | { name: string }
+          | undefined;
+        if (!existing) return 'not_found' as const;
+
+        const { count } = this.db
+          .prepare('SELECT COUNT(*) AS count FROM products WHERE category = ?')
+          .get(existing.name) as { count: number };
+
+        if (count > 0) {
+          if (!reassignTo) return { inUse: count };
+
+          const target = this.db
+            .prepare('SELECT name FROM categories WHERE LOWER(name) = LOWER(?) AND id <> ?')
+            .get(reassignTo, id) as { name: string } | undefined;
+          if (!target) return 'bad_target' as const;
+
+          this.db
+            .prepare('UPDATE products SET category = ? WHERE category = ?')
+            .run(target.name, existing.name);
+        }
+
+        this.db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+        return 'deleted' as const;
+      });
+      return run();
+    } catch (error) {
+      logger.error('Error deleting category:', error);
+      throw new DatabaseError('Failed to delete category');
+    }
+  }
+
   /** See the Postgres adapter for the reasoning behind the fallback and ordering. */
   async getLowStockVariants(defaultThreshold: number): Promise<DbRow[]> {
     try {

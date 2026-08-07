@@ -11,6 +11,7 @@ import logger from './utils/logger';
 // Import routes
 import authRoutes from './api/routes/auth';
 import productsRoutes from './api/routes/products';
+import categoriesRoutes from './api/routes/categories';
 import ordersRoutes from './api/routes/orders';
 import customersRoutes from './api/routes/customers';
 import servicesRoutes from './api/routes/services';
@@ -122,6 +123,7 @@ app.use('/api/setup', setupRoutes);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/categories', categoriesRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/services', servicesRoutes);

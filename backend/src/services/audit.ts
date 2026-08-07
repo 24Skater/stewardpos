@@ -10,6 +10,7 @@ export type AuditAction = 'create' | 'update' | 'delete' | 'archive' | 'refund' 
  */
 export type AuditEntity =
   | 'product'
+  | 'category'
   | 'order'
   | 'return'
   | 'customer'

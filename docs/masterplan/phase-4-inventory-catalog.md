@@ -150,7 +150,36 @@ Two admin screens had each decided for themselves that low meant under 10, by
 scanning the whole downloaded catalog. Both now ask the server, so they cannot
 disagree, and raising the store threshold moves both together.
 
-**Still open for this phase:** categories CRUD (P4-T2) and product images
-through MinIO. The register still filters its loaded catalog
+**Categories (P4-T2) are done.** `/api/categories` supports list, create,
+rename, and delete. The `categories` table already existed and was seeded, but
+nothing could reach it — there was no endpoint, and the admin category field was
+free text, so a shop could only "create" a category by typing it and a typo
+silently produced a second one no product would ever share.
+
+`products.category` still stores the category **name**, not a foreign key. That
+was the existing schema, and converting it would mean backfilling every product
+whose category was typed rather than picked, then rewriting the catalog filter,
+the CSV import, and the exports. The cost of leaving it is that the two must be
+kept in step deliberately:
+
+- **Renaming carries the products with it**, in one transaction. Renaming the
+  row alone would leave every product in it naming something that no longer
+  exists — they would drop out of the category filter while still claiming
+  membership. The response reports how many moved.
+- **Deleting an in-use category is refused**, with the count in the message,
+  since moving two products is a different proposition from moving two hundred.
+  `?reassignTo=` moves them to another *existing* category first; an unknown
+  destination is refused, because it would strand them just as thoroughly.
+- Names are unique **case-insensitively**. "drinks" beside "Drinks" is a typo,
+  not two categories, and their products would never appear together.
+
+The list also reports `meta.unmanaged`: names products use that no category row
+defines. Without it a product stranded by an old import sits in a category the
+manager cannot see and therefore cannot fix. They stay out of `data` because
+they have no id and nothing can act on them directly. The admin picker offers
+them anyway, and always includes the edited product's own value, so saving an
+unrelated change cannot silently reassign it.
+
+**Still open for this phase:** product images through MinIO. The register still filters its loaded catalog
 client-side rather than using the search endpoint — fine while a catalog fits in
 a page, and the endpoint is there when it does not.

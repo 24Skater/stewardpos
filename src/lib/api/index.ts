@@ -18,6 +18,7 @@ export { discountsApi } from './discounts';
 export { drawerApi } from './drawer';
 export { ordersApi } from './orders';
 export { productsApi } from './products';
+export { categoriesApi } from './categories';
 export { quotesApi } from './quotes';
 export { receiptsApi } from './receipts';
 export { returnsApi } from './returns';
@@ -64,6 +65,7 @@ export type {
   ReturnReasonCode,
 } from './returns';
 export type { LowStockItem, ProductQuery, VariantInput } from './products';
+export type { Category, CategoryInput, UnmanagedCategory } from './categories';
 export type { CreateServiceRequest, UpdateServiceRequest } from './services';
 export type { StoreCredit, StoreCreditStatus } from './storeCredits';
 export type { CreateQuoteRequest, QuoteItemInput, UpdateQuoteRequest } from './quotes';
