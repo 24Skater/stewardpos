@@ -47,6 +47,34 @@ export function mapStoreCreditRow(row: DbRow): DbRow {
   };
 }
 
+
+/**
+ * Turn an `orders` row into the camelCase DTO the API publishes.
+ *
+ * The counterpart of `mapOrderRow` in the Postgres adapter, and extracted for
+ * the same reason: this shape was written out inline at five call sites, so a
+ * new column had to be remembered five times. The card fields were already
+ * missing from every read path here.
+ */
+export function mapOrderRow(order: DbRow): DbRow {
+  return {
+    id: order.id,
+    createdAt: order.created_at,
+    subtotal: order.subtotal,
+    discountTotal: order.discount_total,
+    taxTotal: order.tax_total,
+    total: order.total,
+    paymentMethod: order.payment_method,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    cardTransactionId: order.card_transaction_id ?? null,
+    cardAuthCode: order.card_auth_code ?? null,
+    // Null on card and other tenders, and on orders predating the columns.
+    amountTendered: order.amount_tendered ?? null,
+    changeGiven: order.change_given ?? null,
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -392,8 +420,8 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
@@ -405,7 +433,9 @@ export class SQLiteAdapter {
           order.customerEmail,
           order.customerPhone,
           order.cardTransactionId ?? null,
-          order.cardAuthCode ?? null
+          order.cardAuthCode ?? null,
+          order.amountTendered ?? null,
+          order.changeGiven ?? null
         );
 
       const createdOrder = this.db
@@ -464,15 +494,7 @@ export class SQLiteAdapter {
       }
 
       return {
-        id: createdOrder.id,
-        createdAt: createdOrder.created_at,
-        subtotal: createdOrder.subtotal,
-        discountTotal: createdOrder.discount_total,
-        taxTotal: createdOrder.tax_total,
-        total: createdOrder.total,
-        paymentMethod: createdOrder.payment_method,
-        customerEmail: createdOrder.customer_email,
-        customerPhone: createdOrder.customer_phone,
+        ...mapOrderRow(createdOrder),
         items,
       };
     });
@@ -528,15 +550,7 @@ export class SQLiteAdapter {
       }
 
       return orders.map((order) => ({
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -560,15 +574,7 @@ export class SQLiteAdapter {
         .all(id) as DbRow[];
 
       return {
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: items.map((item) => ({
           id: item.id,
           orderId: item.order_id,
@@ -1956,15 +1962,7 @@ export class SQLiteAdapter {
           .all(order.id) as DbRow[];
 
         return {
-          id: order.id,
-          createdAt: order.created_at,
-          subtotal: order.subtotal,
-          discountTotal: order.discount_total,
-          taxTotal: order.tax_total,
-          total: order.total,
-          paymentMethod: order.payment_method,
-          customerEmail: order.customer_email,
-          customerPhone: order.customer_phone,
+          ...mapOrderRow(order),
           items: items.map((item) => ({
             id: item.id,
             orderId: item.order_id,
@@ -2757,15 +2755,7 @@ export class SQLiteAdapter {
       const orders = this.db.prepare(query).all(...params) as any[];
 
       return orders.map(order => ({
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         itemCount: order.item_count,
       }));
     } catch (error) {

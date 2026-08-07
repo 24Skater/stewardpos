@@ -199,8 +199,20 @@ decrements stock by two.
   90% against a stored 10% discount takes 10%; an invented discount id is
   rejected; a cashier's manual 100%-off is refused while the same cashier can
   apply a configured discount.
-- Split tender, cash-drawer sessions, and change calculation (P3-T2/T4/T5):
-  untouched.
+- **Change calculation is done** (part of P3-T4). `POST /api/orders` accepts
+  `cashTendered`, computes the change against its own repriced total, and
+  refuses a shortfall as a 400 naming the amount still owed. Migration 010 adds
+  `amount_tendered` and `change_given` to `orders`, so the till's expected
+  contents can be reconstructed. The register shows a cash field with
+  note-denomination shortcuts and live change, and warns while the tender is
+  short.
+
+  Computing against the *repriced* total is the point: a request claiming a
+  $0.01 total while tendering $20 is charged $3 and given $17 back, not $19.99.
+
+- Split tender and cash-drawer sessions (P3-T2, and the drawer half of P3-T4/T5):
+  untouched. The drawer needs its own table and open/close flow; store credit
+  also waits on split tender, since a credit is a tender rather than a discount.
 
 - ~~The card path charges before the server prices~~ — **fixed.**
   `POST /api/orders/quote` prices a cart without committing to it, sharing the

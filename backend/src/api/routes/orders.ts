@@ -6,7 +6,13 @@ import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
-import { repriceOrder, toCents, toDollars, type PriceableProduct } from '../../services/pricing';
+import {
+  calculateChange,
+  repriceOrder,
+  toCents,
+  toDollars,
+  type PriceableProduct,
+} from '../../services/pricing';
 import {
   validateAppliedDiscounts,
   type AppliedDiscountRequest,
@@ -119,6 +125,8 @@ const createOrderSchema = z.object({
   total: z.number().min(0).optional(),
   appliedDiscounts: z.array(appliedDiscountSchema).default([]),
   paymentMethod: z.string(),
+  /** Cash handed over. The server computes the change and rejects a shortfall. */
+  cashTendered: z.number().min(0).optional(),
   // Customer information is optional - can be omitted, empty string, or valid email
   customerEmail: z.preprocess(
     (val) => (val === '' || val === null || val === undefined ? undefined : val),
@@ -337,9 +345,21 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
 
     const priced = await priceCart(req, orderData.items, orderData.appliedDiscounts);
 
+    // Change is computed here, against the repriced total - not the total the
+    // client believed. Quoting one figure and giving change against another is
+    // how a till comes up short.
+    const cash =
+      orderData.cashTendered === undefined
+        ? {}
+        : {
+            amountTendered: orderData.cashTendered,
+            changeGiven: calculateChange(priced.total, orderData.cashTendered),
+          };
+
     const order = await adapter.createOrder({
       ...orderData,
       ...priced,
+      ...cash,
     });
 
     // If this was a card payment, link the terminal transaction to the order
