@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize, requirePermission } from '../middleware/authorize';
 import { Seeder } from '../../services/seeder';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
@@ -481,7 +481,30 @@ router.post('/reset-database', authorize(['admin']), async (req: AuthRequest, re
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
-    logger.info('Database reset initiated by user:', req.user.email);
+    // Refuse outright in production.
+    //
+    // This truncates orders and order_items - a POS's sales ledger, which a shop
+    // is generally obliged to keep - then runs
+    // `DELETE FROM users WHERE email != 'admin@demo.local'`, removing every real
+    // staff account, and finally reseeds the demo admin whose password is
+    // published in this repository. On a live install one click would destroy
+    // the trading history and leave a single account with known credentials.
+    //
+    // It is a development affordance, and it is reachable from a button in the
+    // admin UI, so the gate belongs here rather than in the caller.
+    if (config.nodeEnv === 'production') {
+      throw new ForbiddenError('The database cannot be reset in production');
+    }
+
+    // A second, deliberate step: this is destructive and irreversible, and the
+    // button sits next to ordinary inventory actions.
+    if (req.body?.confirm !== 'RESET') {
+      throw new ValidationError(
+        'Resetting the database destroys all orders and staff accounts. Send { "confirm": "RESET" } to proceed.'
+      );
+    }
+
+    logger.warn(`Database reset initiated by ${req.user.email}`);
 
     // Initialize seeder (it initializes itself in constructor)
     const seeder = new Seeder();

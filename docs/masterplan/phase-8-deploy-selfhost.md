@@ -116,3 +116,31 @@ which is sized for a busy shop and therefore useless against password guessing.
 There is now a separate 10-per-window budget in front of `/api/auth/login` with
 `skipSuccessfulRequests`, so only failures count and a shift change costs
 nothing. Verified live: ten wrong passwords, then 429.
+
+## `POST /api/admin/reset-database` was a live-install destroyer
+
+Reachable from a button labelled "Reset Data" in the admin inventory screen, next
+to Export and Import, with the warning "This will delete all current data and
+load fresh inventory. Continue?".
+
+What it actually did:
+
+- `TRUNCATE orders`, `TRUNCATE order_items` — the sales ledger, which a shop is
+  generally obliged to retain
+- `DELETE FROM users WHERE email != 'admin@demo.local'` — every real staff
+  account, keeping only the demo one (and if that account does not exist,
+  which it will not on a properly-set-up install, *all* of them)
+- reseed, recreating `admin@demo.local` with the password published in this
+  repository
+
+So one click on a production install would destroy the trading history and leave
+a single account with known credentials.
+
+It now refuses when `NODE_ENV === 'production'`, and outside production requires
+`{ "confirm": "RESET" }` in the body so a misclick cannot trigger it. The button
+is relabelled "Reset Demo Data", styled as destructive, and its confirmation
+says what is actually deleted.
+
+The environment gate lives in the route rather than the caller, because the
+route is what has to be safe — a second UI, a script, or curl would otherwise
+bypass a client-side check.

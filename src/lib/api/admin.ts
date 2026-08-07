@@ -68,6 +68,12 @@ export const adminApi = {
    */
   audit: (query?: AuditQuery) => apiClient.get<AuditLog[]>(`/api/admin/audit${qs(query)}`),
 
-  /** Destructive: wipes and reseeds every table. Development affordance only. */
-  resetDatabase: () => apiClient.post<void>('/api/admin/reset-database'),
+  /**
+   * Wipe and reseed. **Development only** — the server refuses in production.
+   *
+   * This is not "reload sample products": it truncates orders and order items,
+   * deletes every staff account, and reseeds the demo admin. The confirmation
+   * string is required by the server so a misclick cannot trigger it.
+   */
+  resetDatabase: () => apiClient.post<void>('/api/admin/reset-database', { confirm: 'RESET' }),
 };

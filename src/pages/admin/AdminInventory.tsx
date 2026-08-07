@@ -70,7 +70,19 @@ export default function AdminInventory() {
   };
 
   const handleReset = async () => {
-    if (!confirm('This will delete all current data and load fresh inventory. Continue?')) {
+    // The old wording - "load fresh inventory" - undersold this considerably.
+    // It also deletes every order and every staff account.
+    const warning = [
+      'Reset the database?',
+      '',
+      'This permanently deletes ALL orders and sales history, ALL products, and',
+      'ALL staff accounts, then restores demo data with a default admin login.',
+      'It cannot be undone.',
+      '',
+      'The server refuses this in production.',
+    ].join('\n');
+
+    if (!confirm(warning)) {
       return;
     }
 
@@ -233,9 +245,13 @@ export default function AdminInventory() {
               </Button>
               {canWrite && (
                 <>
-                  <Button variant="outline" onClick={handleReset}>
+                  <Button
+                    variant="outline"
+                    onClick={handleReset}
+                    className="text-destructive hover:text-destructive"
+                  >
                     <RefreshCw className="w-4 h-4 mr-2" />
-                    Reset Data
+                    Reset Demo Data
                   </Button>
                   <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
                     <Upload className="w-4 h-4 mr-2" />
