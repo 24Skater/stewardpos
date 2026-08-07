@@ -153,6 +153,7 @@ export default function POS() {
   }, [settings]);
 
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
+  const [cashTendered, setCashTendered] = useState('');
 
   // Terminal payment state
   const [terminalState, setTerminalState] = useState<TerminalState>({ phase: 'idle' });
@@ -294,6 +295,41 @@ export default function POS() {
 
     return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal };
   };
+
+  /**
+   * Change owed, or `null` when the tender does not cover the sale.
+   *
+   * A preview only - the server recomputes it against its own total and refuses
+   * a shortfall, because the figure a cashier counts into someone's hand has to
+   * match what was actually charged.
+   */
+  const changeDue = useMemo(() => {
+    if (cashTendered === '') return null;
+    const tendered = parseFloat(cashTendered);
+    if (Number.isNaN(tendered)) return null;
+
+    const owed = Math.round(calculateTotals().total * 100);
+    const given = Math.round(tendered * 100);
+    return given < owed ? null : (given - owed) / 100;
+    // `calculateTotals` is redefined every render, so depending on it would
+    // defeat the memo entirely. Its inputs are listed instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashTendered, cart, appliedDiscounts, taxRate]);
+
+  /**
+   * Note denominations a customer is likely to hand over.
+   *
+   * Rounded up from the total, so a $17.42 sale offers $20 rather than a list of
+   * amounts that cannot cover it.
+   */
+  const quickCashOptions = useMemo(() => {
+    const total = calculateTotals().total;
+    const notes = [5, 10, 20, 50, 100];
+    const above = notes.filter(note => note >= total);
+
+    return [Math.ceil(total), ...above].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, appliedDiscounts, taxRate]);
 
   const applyQuickDiscount = (discount: PosDiscountType) => {
     // Check if already applied
@@ -598,6 +634,9 @@ export default function POS() {
         // The server recomputes the amounts; this says which discounts to honour.
         appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: selectedPaymentMethod,
+        ...(selectedPaymentMethod === 'Cash' && cashTendered !== ''
+          ? { cashTendered: parseFloat(cashTendered) }
+          : {}),
         // Customer information is optional - only include if provided and not empty
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
@@ -624,6 +663,7 @@ export default function POS() {
       setLastOrderItems(receiptLinesFrom(response));
       setLastOrderAuthCode(undefined);
       setCart([]);
+      setCashTendered('');
       setCustomerEmail("");
       setAppliedDiscounts([]);
       // Reset to first enabled payment method for next sale
@@ -793,6 +833,7 @@ export default function POS() {
       setLastOrderItems(receiptLinesFrom(response));
       setLastOrderAuthCode(authCode);
       setCart([]);
+      setCashTendered('');
       setCustomerEmail('');
       setAppliedDiscounts([]);
       if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
@@ -1234,6 +1275,60 @@ export default function POS() {
               )}
             </div>
           </div>
+
+          {/* Cash tendered */}
+          {selectedPaymentMethod === 'Cash' && (
+            <div className="border-t pt-4">
+              <Label htmlFor="cashTendered" className="text-sm font-medium mb-3 block">
+                Cash Received
+              </Label>
+
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {quickCashOptions.map(amount => (
+                  <Button
+                    key={amount}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCashTendered(amount.toFixed(2))}
+                  >
+                    ${amount}
+                  </Button>
+                ))}
+              </div>
+
+              <Input
+                id="cashTendered"
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                placeholder="Amount received"
+                value={cashTendered}
+                onChange={(e) => setCashTendered(e.target.value)}
+              />
+
+              {cashTendered !== '' && (
+                <div
+                  className={`mt-3 flex items-center justify-between rounded-md px-3 py-2 ${
+                    changeDue === null
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-accent/10 text-foreground'
+                  }`}
+                >
+                  {changeDue === null ? (
+                    <span className="text-sm font-medium">
+                      ${(calculateTotals().total - (parseFloat(cashTendered) || 0)).toFixed(2)} short
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-sm font-medium">Change due</span>
+                      <span className="text-lg font-bold tabular-nums">${changeDue.toFixed(2)}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Applied Discounts */}
           {appliedDiscounts.length > 0 && (

@@ -73,6 +73,9 @@ export function mapOrderRow(order: DbRow): DbRow {
     customerPhone: order.customer_phone,
     cardTransactionId: order.card_transaction_id ?? null,
     cardAuthCode: order.card_auth_code ?? null,
+    // Null on card and other tenders, and on orders predating the columns.
+    amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
+    changeGiven: order.change_given == null ? null : parseFloat(order.change_given as string),
   };
 }
 
@@ -441,8 +444,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           order.subtotal,
@@ -454,6 +457,8 @@ export class PostgresAdapter {
           order.customerPhone,
           order.cardTransactionId ?? null,
           order.cardAuthCode ?? null,
+          order.amountTendered ?? null,
+          order.changeGiven ?? null,
         ]
       );
 

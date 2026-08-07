@@ -212,3 +212,28 @@ export function repriceOrder(
     total: toDollars(taxableCents + taxCents),
   };
 }
+
+/**
+ * What a cash customer gets back.
+ *
+ * In cents, like everything else here: `19.99 - 19.99` is not reliably `0` in
+ * floating-point dollars, and "change" is the one figure a cashier counts into
+ * someone's hand, so a stray fraction of a penny is not academic.
+ *
+ * Throws when the tender is short. That is a 400, not a rounding decision — a
+ * sale that has not been paid for should not complete, and silently treating a
+ * shortfall as zero change would record the difference as revenue that never
+ * arrived.
+ */
+export function calculateChange(totalDollars: number, tenderedDollars: number): number {
+  const totalCents = toCents(totalDollars);
+  const tenderedCents = toCents(tenderedDollars);
+
+  if (tenderedCents < totalCents) {
+    throw new ValidationError(
+      `That is $${toDollars(totalCents - tenderedCents).toFixed(2)} short of the total`
+    );
+  }
+
+  return toDollars(tenderedCents - totalCents);
+}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  calculateChange,
   repriceOrder,
   toCents,
   toDollars,
@@ -176,5 +177,36 @@ describe('repriceOrder', () => {
 
   it('rejects an empty order', () => {
     expect(() => repriceOrder([], catalog, noTax)).toThrow(/at least one item/);
+  });
+});
+
+describe('calculateChange', () => {
+  it('gives back the difference', () => {
+    expect(calculateChange(17.42, 20)).toBe(2.58);
+  });
+
+  it('gives nothing back on exact payment', () => {
+    expect(calculateChange(19.99, 19.99)).toBe(0);
+  });
+
+  it('is exact where floating-point dollars are not', () => {
+    // 20 - 19.99 lands on 0.010000000000001563 in float dollars, which is not
+    // a coin anyone can hand over.
+    expect(calculateChange(19.99, 20)).toBe(0.01);
+    expect(calculateChange(0.3, 100)).toBe(99.7);
+  });
+
+  it('refuses a short tender rather than treating it as zero change', () => {
+    // Rounding a shortfall away would record the difference as revenue that
+    // never arrived.
+    expect(() => calculateChange(20, 19.99)).toThrow(/\$0\.01 short/);
+  });
+
+  it('names the shortfall so the cashier can ask for it', () => {
+    expect(() => calculateChange(50, 20)).toThrow(/\$30\.00 short/);
+  });
+
+  it('handles a large note against a small sale', () => {
+    expect(calculateChange(1.25, 100)).toBe(98.75);
   });
 });
