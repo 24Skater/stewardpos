@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
 /**
- * First-run setup.
+ * First-run setup, exercised through the HTTP routes.
+ *
+ * `setup.guard.test.ts` unit-tests `rejectIfAlreadySetUp` itself — including
+ * the cases where there is no admin yet, no schema at all, or no reachable
+ * database. This file covers the thing that test cannot: that the guard is
+ * actually **mounted** on the endpoints that need it. A guard that exists and
+ * is not wired up is worth nothing, and nothing else would notice.
  *
  * These endpoints are **unauthenticated** — they have to be, since there is no
  * account to sign in with before setup runs. That makes `rejectIfAlreadySetUp`
@@ -76,9 +82,10 @@ describe('GET /api/setup/status', () => {
 });
 
 describe('rejectIfAlreadySetUp', () => {
-  it('refuses to re-run setup on a provisioned instance', async () => {
-    // `/complete` creates an admin account and needs no credentials. Without
-    // this guard, anyone who can reach the port could mint themselves one.
+  it('is mounted on /complete, which creates an admin account', async () => {
+    // The endpoint needs no credentials — it cannot, on a fresh instance — so
+    // the guard being wired here is the only thing stopping anyone who can
+    // reach the port from minting themselves an admin on a live store.
     const response = await request(app)
       .post('/api/setup/complete')
       .send({ database: { adapter: 'sqlite' }, admin: { email: 'attacker@evil.test', password: 'Passw0rd!23' } });
@@ -87,7 +94,7 @@ describe('rejectIfAlreadySetUp', () => {
     expect(response.body.error).toMatch(/already been completed/i);
   });
 
-  it('refuses a database test on a provisioned instance', async () => {
+  it('is mounted on /test-database too', async () => {
     // Otherwise it is an unauthenticated port scanner: point it at any host and
     // the error message reports whether a database answered.
     const response = await request(app)
