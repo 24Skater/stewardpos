@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hasPermission, isAdmin, hasAnyRole, hasRole, type AuthSession } from '../auth';
+import { PERMISSION_RESOURCES, type RolePermissions } from '../permissions';
 
 /**
  * Client-side permission checks.
@@ -9,6 +10,28 @@ import { hasPermission, isAdmin, hasAnyRole, hasRole, type AuthSession } from '.
  * as a button that always 403s, or a feature a permitted user cannot find.
  * Both are the kind of thing nobody reports as a bug, they just stop using it.
  */
+/**
+ * A complete `RolePermissions`, denied throughout except where stated.
+ *
+ * The type requires every resource key, and building it from
+ * `PERMISSION_RESOURCES` means a resource added to the model later shows up
+ * here denied — which is what the real merge does — rather than being missing
+ * and failing to compile in a way that invites filling it in by hand.
+ */
+function permissions(granted: Partial<RolePermissions> = {}): RolePermissions {
+  return {
+    // `Object.fromEntries` widens the key type to `string`, which no longer
+    // overlaps `RolePermissions` enough for a direct assertion.
+    ...(Object.fromEntries(
+      PERMISSION_RESOURCES.map((resource) => [
+        resource,
+        { read: false, write: false, delete: false },
+      ])
+    ) as unknown as RolePermissions),
+    ...granted,
+  };
+}
+
 function session(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
     user: {
@@ -16,22 +39,22 @@ function session(overrides: Partial<AuthSession> = {}): AuthSession {
       email: 'cashier@example.com',
       name: 'Cashier',
       roleIds: ['r1'],
-      roles: [{ id: 'r1', name: 'Cashier', systemRole: 'standard', permissions: {} }],
+      roles: [{ id: 'r1', name: 'Cashier', systemRole: 'standard', permissions: permissions() }],
     },
-    permissions: {},
+    permissions: permissions(),
     ...overrides,
   } as AuthSession;
 }
 
 describe('hasPermission', () => {
   it('grants what the permissions say', () => {
-    const actor = session({ permissions: { orders: { read: true, write: false, delete: false } } });
+    const actor = session({ permissions: permissions({ orders: { read: true, write: false, delete: false } }) });
 
     expect(hasPermission(actor, 'orders', 'read')).toBe(true);
   });
 
   it('denies what they do not', () => {
-    const actor = session({ permissions: { orders: { read: true, write: false, delete: false } } });
+    const actor = session({ permissions: permissions({ orders: { read: true, write: false, delete: false } }) });
 
     expect(hasPermission(actor, 'orders', 'write')).toBe(false);
   });
@@ -52,7 +75,7 @@ describe('hasPermission', () => {
     const admin = session({
       user: {
         ...session().user,
-        roles: [{ id: 'r1', name: 'Owner', systemRole: 'admin', permissions: {} }],
+        roles: [{ id: 'r1', name: 'Owner', systemRole: 'admin', permissions: permissions() }],
       },
     });
 
@@ -63,7 +86,9 @@ describe('hasPermission', () => {
     // Only an explicit `true` grants. Anything else — a truthy string from a
     // malformed payload — must not become access.
     const actor = session({
-      permissions: { orders: { read: 'yes' as unknown as boolean, write: false, delete: false } },
+      permissions: permissions({
+        orders: { read: 'yes' as unknown as boolean, write: false, delete: false },
+      }),
     });
 
     expect(hasPermission(actor, 'orders', 'read')).toBe(false);
@@ -73,7 +98,7 @@ describe('hasPermission', () => {
 describe('isAdmin', () => {
   it('recognises the admin system role', () => {
     const admin = session({
-      user: { ...session().user, roles: [{ id: 'r1', name: 'X', systemRole: 'admin', permissions: {} }] },
+      user: { ...session().user, roles: [{ id: 'r1', name: 'X', systemRole: 'admin', permissions: permissions() }] },
     });
 
     expect(isAdmin(admin)).toBe(true);
@@ -85,7 +110,7 @@ describe('isAdmin', () => {
     const impostor = session({
       user: {
         ...session().user,
-        roles: [{ id: 'r1', name: 'admin', systemRole: 'standard', permissions: {} }],
+        roles: [{ id: 'r1', name: 'admin', systemRole: 'standard', permissions: permissions() }],
       },
     });
 
@@ -110,7 +135,7 @@ describe('hasAnyRole', () => {
 
   it('falls back to the display name when there is no system role', () => {
     const actor = session({
-      user: { ...session().user, roles: [{ id: 'r1', name: 'Bench Tech', permissions: {} }] },
+      user: { ...session().user, roles: [{ id: 'r1', name: 'Bench Tech', permissions: permissions() }] },
     });
 
     expect(hasAnyRole(actor, ['Bench Tech'])).toBe(true);
