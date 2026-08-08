@@ -9,17 +9,30 @@ import { UnauthorizedError, ForbiddenError } from '../../utils/errors';
  * misspelled resource in a route is a compile error rather than a permission
  * check that silently never passes.
  */
-export type PermissionResource =
-  | 'inventory'
-  | 'reports'
-  | 'exports'
-  | 'settings'
-  | 'users'
-  | 'services'
-  | 'customers'
-  | 'orders'
-  | 'returns'
-  | 'discounts';
+/**
+ * Every resource a role can carry permissions for.
+ *
+ * A runtime list, not only a type, because the role-creation schema has to
+ * enumerate these and a hand-written second copy drifted: it listed seven and
+ * omitted `orders`, `returns`, and `discounts`. Zod strips unknown keys, so a
+ * role created granting those had them **silently dropped** — a cashier role
+ * saved through the admin UI could not take orders, which is the one thing a
+ * till exists to do, and nothing on screen said why.
+ */
+export const PERMISSION_RESOURCES = [
+  'inventory',
+  'reports',
+  'exports',
+  'settings',
+  'users',
+  'services',
+  'customers',
+  'orders',
+  'returns',
+  'discounts',
+] as const;
+
+export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
 
 export type PermissionAction = 'read' | 'write' | 'delete';
 
