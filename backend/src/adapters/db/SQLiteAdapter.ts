@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError, ValidationError } from '../../utils/errors';
+import { escapeLike } from './like';
 import { DbRow, asRows } from './types';
 
 export interface SQLiteConfig {
@@ -239,14 +240,19 @@ export class SQLiteAdapter {
       const params: unknown[] = [];
 
       if (query.q) {
-        const like = `%${query.q}%`;
+        // See the Postgres adapter: unescaped, a search for `%` matched the
+        // whole catalog. SQLite additionally needs the ESCAPE clause spelled
+        // out — unlike Postgres it has no default escape character, so the
+        // backslashes would otherwise be matched as literal backslashes.
+        const like = `%${escapeLike(query.q)}%`;
         conditions.push(`(
-          p.name LIKE ? COLLATE NOCASE
-          OR p.barcode LIKE ? COLLATE NOCASE
+          p.name LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR p.barcode LIKE ? ESCAPE '\\' COLLATE NOCASE
           OR EXISTS (
             SELECT 1 FROM product_variants v
             WHERE v.product_id = p.id
-              AND (v.sku LIKE ? COLLATE NOCASE OR v.barcode LIKE ? COLLATE NOCASE)
+              AND (v.sku LIKE ? ESCAPE '\\' COLLATE NOCASE
+                   OR v.barcode LIKE ? ESCAPE '\\' COLLATE NOCASE)
           )
         )`);
         params.push(like, like, like, like);

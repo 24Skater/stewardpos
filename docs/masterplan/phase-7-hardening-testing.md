@@ -189,3 +189,88 @@ are echoed now. That was caught by a test written for the fix, not by review.
 regardless — `npm update` fails with EACCES against `/app/node_modules` as the
 `nodejs` user. The feature is safe now, but it is not functional in a container
 deployment, and the UI does not say so.
+
+---
+
+## Status (2026-08-07): adapter integration tests and a real e2e gate
+
+**Adapter integration tests now exist**, in
+`backend/src/adapters/db/__tests__/integration/`, running against a real
+Postgres. The adapters were the least-covered code in the repository — roughly
+7,900 lines at **0.17%** — because every route test mocks the adapter. A mock
+proves the route calls it; it proves nothing about the query, and transactions,
+COALESCE semantics, conditional updates, and join shapes are exactly what the
+adapters are made of.
+
+CI already provisioned a migrated `stewardpos_test` Postgres for the backend job
+and had never used it for anything.
+
+**The first integration test written found a real bug.** The catalog search fed
+its term into a LIKE without escaping, so a search for `%` returned the entire
+catalog and `_` matched any single character — a search for "50% off" returned
+things that do not contain it. Parameterised, so not injection; simply wrong
+results. The mocked route tests could not see it because the LIKE never ran.
+
+What the suite covers: search/paging/wildcards, variant COALESCE and the
+threshold clear-on-null, low-stock ordering and exclusions, order writes across
+three tables, **stock decrements under concurrent sales**, category rename and
+delete as transactions including rollback, **store credit double-spend**, and
+drawer exclusivity. The concurrency cases are the ones a mock cannot express at
+all: they exist to show that two connections racing cannot both win.
+
+**A safety guard**: the harness refuses to run unless `DB_NAME` contains
+"test". These tests write and delete rows, and the backend reads the same
+environment variables, so a stale `.env` pointing at a development database is
+the ordinary accident. It fails loudly rather than skipping — a suite that
+skips silently reports green having tested nothing, which is how the adapters
+went uncovered while CI looked healthy.
+
+Scripts are split so both stay honest: `npm test` and `npm run test:coverage`
+exclude integration and work with no database; `npm run test:integration`
+requires one. CI runs both, and the integration step **blocks**.
+
+**E2E is in the merge gate** (P7-T2). It was `workflow_dispatch`-only because
+every spec failed in setup: `global-setup.ts` signs in as `admin@demo.local`,
+and the stack came up with `AUTO_SEED` unset, so the account did not exist. The
+entrypoint already migrates and seeds — it only needed asking. Before that it
+ran on every PR with `continue-on-error: true`, which is worse than not running.
+
+Three new specs cover the register completing a cash sale, asserting on **what
+the server recorded** rather than only what the screen showed — a register that
+displays the right change and stores the wrong total is the failure that
+matters. `POS.tsx` is 1,669 lines at 0% unit coverage, and both browser-only
+defects this project has hit (a CORS failure on a same-origin POST, a TDZ crash
+that replaced the register with an error boundary) passed typecheck, build, and
+every unit test.
+
+### Running them locally
+
+```
+createdb stewardpos_test && DB_NAME=stewardpos_test npm run migrate
+DB_NAME=stewardpos_test npm run test:integration
+```
+
+### Where coverage actually stands
+
+| Area | Before | After |
+|---|---|---|
+| Backend overall | 32.6% | **37.8%** |
+| `src/adapters/db` | 0.17% | **15.4%** |
+| Frontend overall | 2.5% | 2.5% (unchanged; covered by e2e instead) |
+
+**Still well short of the 80% the repo's standards set.** The adapters are the
+bulk of what remains: ~25 domain areas, of which catalog, orders, categories,
+store credit, and drawer are now covered and customers, services, quotes,
+returns, discounts, users/roles, audit, and receipts are not. That is mechanical
+work following the pattern the existing files establish.
+
+`src/terminal` at 18.8% is deliberate — most of it is the live Stripe path,
+which needs real hardware to exercise (P3-T5).
+
+**Backend lint still does not run.** `npm run lint` fails: ESLint 8.57 finds the
+root flat config, which is browser/React-oriented and built against
+typescript-eslint v8 (requiring ESLint 9), so the backend both crashes and
+refuses `--ext`. The fix is a `backend/eslint.config.js` with node globals. It
+is blocked by the repository's `config-protection` hook, which refuses to create
+or modify any ESLint config; it needs a human to disable that hook briefly.
+Backend code has never been linted.

@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import logger from '../../utils/logger';
+import { escapeLike } from './like';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
 
@@ -132,6 +133,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     createdAt: new Date(row.created_at as string).getTime(),
   };
 }
+
 
 
 /** Turn a `product_variants` row into the camelCase DTO the API publishes. */
@@ -293,7 +295,7 @@ export class PostgresAdapter {
       const params: unknown[] = [];
 
       if (query.q) {
-        params.push(`%${query.q}%`);
+        params.push(`%${escapeLike(query.q)}%`);
         const like = `$${params.length}`;
         // EXISTS rather than a join condition: a match on one variant's SKU
         // should return the product with *all* its variants, not just that one.
