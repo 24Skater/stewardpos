@@ -2,7 +2,12 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize, requirePermission } from '../middleware/authorize';
+import {
+  authorize,
+  requirePermission,
+  PERMISSION_RESOURCES,
+  type PermissionResource,
+} from '../middleware/authorize';
 import { Seeder } from '../../services/seeder';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import db from '../../services/database';
@@ -160,15 +165,22 @@ router.delete('/users/:id', requirePermission('users', 'delete'), async (req: Au
 const createRoleSchema = z.object({
   name: z.string().min(1),
   systemRole: z.enum(['admin', 'supervisor', 'reporter', 'standard']).optional(),
-  permissions: z.object({
-    inventory: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    reports: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    exports: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    settings: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    users: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    services: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-    customers: z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
-  }),
+  // Built from PERMISSION_RESOURCES rather than listed by hand. The hand-written
+  // version had drifted: it named seven resources and omitted `orders`,
+  // `returns`, and `discounts`, and because Zod strips unknown keys those were
+  // silently discarded. A cashier role created through the admin UI came out
+  // unable to take orders, with nothing to say why.
+  permissions: z.object(
+    Object.fromEntries(
+      PERMISSION_RESOURCES.map((resource) => [
+        resource,
+        z.object({ read: z.boolean(), write: z.boolean(), delete: z.boolean() }),
+      ])
+    ) as Record<
+      PermissionResource,
+      z.ZodObject<{ read: z.ZodBoolean; write: z.ZodBoolean; delete: z.ZodBoolean }>
+    >
+  ),
 });
 
 const updateRoleSchema = createRoleSchema.partial();
