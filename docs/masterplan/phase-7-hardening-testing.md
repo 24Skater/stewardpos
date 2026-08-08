@@ -254,9 +254,10 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **55.7%** |
+| Backend overall | 32.6% | **56.2%** |
 | `src/adapters/db` | 0.17% | **35.3%** |
 | `src/services` (backend) | 59.2% | **81.3%** |
+| `src/terminal` | 18.8% | **36.1%** |
 | `src/api/routes` | 44.3% | **63.0%** |
 | `src/utils` | 57.6% | **69.7%** |
 | Frontend overall | 2.5% | **3.4%** — see the note below |
@@ -269,7 +270,13 @@ fixed:
    `_` matched any single character, so "50% off" returned things that do not
    contain it. Parameterised, so not injection — simply wrong answers. Invisible
    to the route tests, which mock the adapter, so the LIKE never ran.
-2. **A role schema that had drifted from `PermissionResource`.** It enumerated
+2. **A provider selected without credentials crashed the request.** The Stripe
+   SDK throws from its own constructor, and `/api/terminal/charge` builds the
+   adapter from settings on every call — so a shop that picked Stripe before
+   saving a key got a **500 on every card charge**, reading as a broken server
+   rather than a thirty-second fix. Now a 502 naming the provider, what is
+   missing, and where to set it.
+3. **A role schema that had drifted from `PermissionResource`.** It enumerated
    seven resources and omitted `orders`, `returns`, and `discounts`; Zod strips
    unknown keys, so a role created granting those had them silently dropped. A
    cashier role created through the admin UI came out unable to take orders —
@@ -286,8 +293,9 @@ covered, and services, quotes, loyalty, receipts, and terminal transactions are
 not. That is mechanical
 work following the pattern the existing files establish.
 
-`src/terminal` at 18.8% is deliberate — most of it is the live Stripe path,
-which needs real hardware to exercise (P3-T5).
+`src/terminal` remains partial by design — the provider *selection* and
+credential handling are covered, but the live Stripe/Square/Clover request paths
+need real hardware to exercise (P3-T5).
 
 **Backend lint still does not run.** `npm run lint` fails: ESLint 8.57 finds the
 root flat config, which is browser/React-oriented and built against
