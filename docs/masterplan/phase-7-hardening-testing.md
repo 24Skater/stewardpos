@@ -254,9 +254,9 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **47.3%** |
+| Backend overall | 32.6% | **48.4%** |
 | `src/adapters/db` | 0.17% | **27.5%** |
-| `src/api/routes` | 44.3% | **55.9%** |
+| `src/api/routes` | 44.3% | **58.0%** |
 | Frontend overall | 2.5% | 2.5% (unchanged; covered by e2e instead) |
 
 **Still well short of the 80% the repo's standards set.** The adapters are the
