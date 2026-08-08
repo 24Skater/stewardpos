@@ -254,8 +254,8 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **50.8%** |
-| `src/adapters/db` | 0.17% | **27.5%** |
+| Backend overall | 32.6% | **53.3%** |
+| `src/adapters/db` | 0.17% | **35.3%** |
 | `src/api/routes` | 44.3% | **63.0%** |
 | `src/utils` | 57.6% | **69.7%** |
 | Frontend overall | 2.5% | **3.4%** — see the note below |
