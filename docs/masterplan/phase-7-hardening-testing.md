@@ -255,9 +255,11 @@ DB_NAME=stewardpos_test npm run test:integration
 | Area | Before | After |
 |---|---|---|
 | Backend overall | 32.6% | **48.4%** |
+| `src/services` (backend) | 59.2% | **68.5%** |
 | `src/adapters/db` | 0.17% | **27.5%** |
 | `src/api/routes` | 44.3% | **58.0%** |
-| Frontend overall | 2.5% | 2.5% (unchanged; covered by e2e instead) |
+| Frontend overall | 2.5% | **3.4%** — see the note below |
+| Frontend `src/lib` | 20.4% | **31.8%** |
 
 **Still well short of the 80% the repo's standards set.** The adapters are the
 bulk of what remains: ~25 domain areas, of which catalog, orders, categories,
@@ -276,3 +278,20 @@ refuses `--ext`. The fix is a `backend/eslint.config.js` with node globals. It
 is blocked by the repository's `config-protection` hook, which refuses to create
 or modify any ESLint config; it needs a human to disable that hook briefly.
 Backend code has never been linted.
+
+### A note on the frontend percentage
+
+3.4% understates what is covered, and the reason is worth stating rather than
+hiding. The denominator is dominated by ~50 vendored shadcn primitives in
+`src/components/ui` and 20 page components, all at 0%. The primitives are
+third-party code with no logic of ours in them; the pages are covered by e2e
+instead, which is the better tool for them — both browser-only defects this
+project has hit passed every unit test.
+
+What has been unit-tested is the logic that is worth unit-testing:
+`src/lib/permissions` and `api-client` at 100%, the API SDK at 83%, and now the
+session/permission helpers and the report generators — the numbers a shop takes
+to its accountant, where a double-counted aggregation or a CSV that breaks on a
+comma is a real problem.
+
+The remaining honest gap is `src/hooks` and the page components' own logic.
