@@ -276,7 +276,15 @@ fixed:
    saving a key got a **500 on every card charge**, reading as a broken server
    rather than a thirty-second fix. Now a 502 naming the provider, what is
    missing, and where to set it.
-3. **A role schema that had drifted from `PermissionResource`.** It enumerated
+3. **Archiving a customer had never worked.** `archiveCustomer` selected
+   `FROM orders WHERE customer_id` — `orders` has no such column, it records
+   `customer_email` as a snapshot — so the query raised "column customer_id
+   does not exist" and archiving **any** customer returned a 500. The same
+   transaction also read `quote.tax` and `quote.valid_until`, whose real names
+   are `tax_total` and `expires_at`, so the archive was blanking the two fields
+   it exists to preserve. And it *deleted* the matched orders, which would have
+   erased the sales ledger had it ever run.
+4. **A role schema that had drifted from `PermissionResource`.** It enumerated
    seven resources and omitted `orders`, `returns`, and `discounts`; Zod strips
    unknown keys, so a role created granting those had them silently dropped. A
    cashier role created through the admin UI came out unable to take orders —
