@@ -982,49 +982,61 @@ export class PostgresAdapter {
         ]
       );
 
-      // Archive associated quotes
-      const quotesResult = await client.query(
-        'SELECT * FROM quotes WHERE customer_id = $1',
-        [id]
-      );
+      // Archive associated quotes.
+      //
+      // They have to move: `quotes.customer_id` is a foreign key with NO ACTION,
+      // so deleting the customer while a quote points at them simply fails.
+      //
+      // The column names differ between the live table and the archive, and the
+      // previous version read `quote.tax` and `quote.valid_until` — neither of
+      // which exists. `SELECT *` yields undefined for those, which reaches
+      // Postgres as NULL, so an archive whose entire purpose is preserving the
+      // record was storing it with the tax and the expiry blanked.
+      const quotesResult = await client.query('SELECT * FROM quotes WHERE customer_id = $1', [id]);
 
       for (const quote of quotesResult.rows) {
+        // Line items live in their own table; folded into the archive's `items`
+        // JSON so they survive the quote row being deleted.
+        const itemsResult = await client.query(
+          'SELECT * FROM quote_items WHERE quote_id = $1',
+          [quote.id]
+        );
+
         await client.query(
-          `INSERT INTO archived_quotes 
-           (id, customer_id, quote_number, status, items, subtotal, tax, total, notes, 
-            valid_until, created_at, updated_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          `INSERT INTO archived_quotes
+           (id, customer_id, status, items, subtotal, tax, total, notes, valid_until, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
-            quote.id, quote.customer_id, quote.quote_number, quote.status, quote.items,
-            quote.subtotal, quote.tax, quote.total, quote.notes, quote.valid_until,
-            quote.created_at, quote.updated_at, quote.created_by
+            quote.id,
+            quote.customer_id,
+            quote.status,
+            JSON.stringify(itemsResult.rows),
+            quote.subtotal,
+            quote.tax_total,
+            quote.total,
+            quote.notes,
+            quote.expires_at,
+            quote.created_at,
           ]
         );
       }
 
-      // Archive associated orders
-      const ordersResult = await client.query(
-        'SELECT * FROM orders WHERE customer_id = $1',
-        [id]
-      );
+      // Orders are deliberately left alone.
+      //
+      // The previous version selected `FROM orders WHERE customer_id = $1` and
+      // then deleted the matches. `orders` has no `customer_id` — it records
+      // `customer_email` as a snapshot — so that query raised "column
+      // customer_id does not exist" and archiving **any** customer failed with
+      // a 500. The feature had never worked.
+      //
+      // Deleting them would have been worse than the crash: orders are the
+      // sales ledger, they are what returns and reporting read, and a customer
+      // asking to be archived is not a reason to erase the shop's record of
+      // what it sold. They carry the email as a snapshot, so they survive the
+      // customer row going away without any dangling reference.
 
-      for (const order of ordersResult.rows) {
-        await client.query(
-          `INSERT INTO archived_orders 
-           (id, customer_id, order_number, status, items, subtotal, tax, discount, total, 
-            payment_method, notes, created_at, updated_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          [
-            order.id, order.customer_id, order.order_number, order.status, order.items,
-            order.subtotal, order.tax, order.discount, order.total, order.payment_method,
-            order.notes, order.created_at, order.updated_at, order.created_by
-          ]
-        );
-      }
-
-      // Delete from original tables (order matters due to foreign keys)
+      await client.query('DELETE FROM quote_items WHERE quote_id IN (SELECT id FROM quotes WHERE customer_id = $1)', [id]);
       await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
-      await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
       await client.query('DELETE FROM customers WHERE id = $1', [id]);
 
       await client.query('COMMIT');

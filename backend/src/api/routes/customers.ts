@@ -194,8 +194,11 @@ const archiveCustomerSchema = z.object({
 
 /**
  * POST /api/customers/:id/archive
- * Archive customer and their related records (quotes, orders)
- * Moves data to archive tables for potential restoration later
+ *
+ * Moves the customer and their quotes into the archive tables, so the record
+ * survives without cluttering the live list. Orders are deliberately left where
+ * they are — they are the sales ledger, they carry the customer's email as a
+ * snapshot, and returns and reporting read them.
  */
 router.post('/:id/archive', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -220,7 +223,10 @@ router.post('/:id/archive', requirePermission('customers', 'write'), async (req:
 
     res.json({
       success: true,
-      message: `Customer "${customer.name}" has been archived along with their quotes and orders.`,
+      // Says what actually happens. Orders are deliberately not archived — they
+      // are the sales ledger, and claiming to have moved them would leave a
+      // shop believing its records had gone somewhere they had not.
+      message: `Customer "${customer.name}" has been archived, along with their quotes. Their orders remain in the sales records.`,
     });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
