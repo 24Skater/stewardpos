@@ -2,9 +2,18 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { ValidationError, UnauthorizedError, getErrorMessage } from '../../utils/errors';
+import {
+  ValidationError,
+  UnauthorizedError,
+  ServiceUnavailableError,
+  getErrorMessage,
+} from '../../utils/errors';
 import db from '../../services/database';
-import { createTerminalAdapter, TerminalConfig } from '../../terminal/TerminalAdapterFactory';
+import {
+  createTerminalAdapter,
+  TerminalNotConfiguredError,
+  type TerminalConfig,
+} from '../../terminal/TerminalAdapterFactory';
 import logger from '../../utils/logger';
 
 const router = Router();
@@ -25,10 +34,17 @@ async function getAdapter(dbAdapter: ReturnType<typeof db.getAdapter>) {
   const provider = (card?.provider as string) || 'generic';
   const creds = (config.terminalCredentials || {}) as Partial<TerminalConfig>;
 
-  return {
-    terminal: createTerminalAdapter({ provider, ...creds }),
-    provider,
-  };
+  try {
+    return { terminal: createTerminalAdapter({ provider, ...creds }), provider };
+  } catch (error) {
+    // A store that selected a provider and has not saved its credentials yet is
+    // misconfigured, not broken. 503 with the reason, rather than the 500 the
+    // vendor SDK's own constructor error produced.
+    if (error instanceof TerminalNotConfiguredError) {
+      throw new ServiceUnavailableError(error.message);
+    }
+    throw error;
+  }
 }
 
 router.post('/charge', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
