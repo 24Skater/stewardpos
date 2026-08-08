@@ -254,15 +254,15 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **41.0%** |
-| `src/adapters/db` | 0.17% | **25.5%** |
+| Backend overall | 32.6% | **41.6%** |
+| `src/adapters/db` | 0.17% | **27.5%** |
 | Frontend overall | 2.5% | 2.5% (unchanged; covered by e2e instead) |
 
 **Still well short of the 80% the repo's standards set.** The adapters are the
 bulk of what remains: ~25 domain areas, of which catalog, orders, categories,
 store credit, drawer, returns/restock, users/roles, customers, and audit are now
-covered, and services, quotes, discounts, promo codes, loyalty, receipts, and
-terminal transactions are not. That is mechanical
+covered, and services, quotes, loyalty, receipts, and terminal transactions are
+not. That is mechanical
 work following the pattern the existing files establish.
 
 `src/terminal` at 18.8% is deliberate — most of it is the live Stripe path,
