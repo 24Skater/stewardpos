@@ -254,12 +254,29 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **48.4%** |
-| `src/services` (backend) | 59.2% | **68.5%** |
+| Backend overall | 32.6% | **50.8%** |
 | `src/adapters/db` | 0.17% | **27.5%** |
-| `src/api/routes` | 44.3% | **58.0%** |
+| `src/api/routes` | 44.3% | **63.0%** |
+| `src/utils` | 57.6% | **69.7%** |
 | Frontend overall | 2.5% | **3.4%** — see the note below |
 | Frontend `src/lib` | 20.4% | **31.8%** |
+
+**Bugs this work found**, each verified against the running stack before being
+fixed:
+
+1. **An unescaped LIKE wildcard.** Searching `%` returned the entire catalog and
+   `_` matched any single character, so "50% off" returned things that do not
+   contain it. Parameterised, so not injection — simply wrong answers. Invisible
+   to the route tests, which mock the adapter, so the LIKE never ran.
+2. **A role schema that had drifted from `PermissionResource`.** It enumerated
+   seven resources and omitted `orders`, `returns`, and `discounts`; Zod strips
+   unknown keys, so a role created granting those had them silently dropped. A
+   cashier role created through the admin UI came out unable to take orders —
+   the one thing a till exists to do — with nothing on screen to say why. The
+   list now lives once and the schema is built from it.
+
+Both were found by writing a test that asserted the real behaviour rather than
+the assumed one, which is the argument for this work in one line.
 
 **Still well short of the 80% the repo's standards set.** The adapters are the
 bulk of what remains: ~25 domain areas, of which catalog, orders, categories,
