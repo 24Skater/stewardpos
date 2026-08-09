@@ -117,10 +117,13 @@ describeSqlite('catalog search on SQLite', () => {
   });
 
   it('treats a wildcard as a literal', async () => {
-    // "50%" is a realistic product name, which makes this more than theoretical.
+    // Searching `%` must match only products whose name actually contains one —
+    // here the sampler — rather than every row in the catalog. My first version
+    // of this expected zero results, which was wrong: "50% Off Sampler" is a
+    // genuine match, and the escaping working is precisely why.
     const { products } = await adapter.getAllProducts({ q: '%' });
 
-    expect(products).toHaveLength(0);
+    expect(products.map((p) => p.name)).toEqual(['50% Off Sampler']);
   });
 
   it('matches a literal percent sign in a name', async () => {
