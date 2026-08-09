@@ -110,6 +110,11 @@ jobs:
       #
       # The harness refuses to run unless DB_NAME contains "test", so a stray
       # environment cannot point these at real data.
+      #
+      # `test:integration` runs with --no-file-parallelism: these share one
+      # database and several touch global state (the settings singleton, the
+      # one-open-drawer index), so running the files concurrently makes them
+      # collide with each other rather than test anything.
       - name: Adapter integration tests
         working-directory: ./backend
         run: npm run test:integration
