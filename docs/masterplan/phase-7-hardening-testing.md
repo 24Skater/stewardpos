@@ -254,13 +254,15 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **60.9%** |
-| `src/adapters/db` | 0.17% | **45.4%** |
+| Backend overall | 32.6% | **74.2%** |
+| `src/adapters/db` | 0.17% | **69.7%** (96.3% of functions) |
+| `src/config` | 54.5% | **100%** |
+| `src/services` | 59.2% | **81.3%** |
 | `src/services` (backend) | 59.2% | **81.3%** |
 | `src/terminal` | 18.8% | **36.1%** |
-| `src/api/routes` | 44.3% | **66.1%** |
+| `src/api/routes` | 44.3% | **77.4%** |
 | `src/utils` | 57.6% | **69.7%** |
-| Frontend overall | 2.5% | **3.4%** — see the note below |
+| Frontend overall | 2.5% | **3.6%** — see the note below |
 | Frontend `src/lib` | 20.4% | **31.8%** |
 
 **Bugs this work found**, each verified against the running stack before being
@@ -358,3 +360,19 @@ were not testing the same thing.
 
 These skip where `better-sqlite3` has no native binding and **throw when `CI` is
 set**, so a skip there is a failure rather than silence.
+
+### Integration tests run sequentially, deliberately
+
+They share one database — that is the point of them — and several touch global
+state: the settings singleton, the one-open-drawer partial unique index,
+catalog-wide search counts. Run in parallel they collide with each other rather
+than test anything, which showed up as drawer tests failing intermittently
+against the money tests with "A drawer session is already open".
+
+`test:integration` and `test:all` pass `--no-file-parallelism`. Anyone adding a
+file here should assume it has the database to itself for the duration and
+clean up after itself, rather than assume isolation.
+
+Fixing this raised measured coverage from 60.9% to **74.2%** without adding a
+test: failed files contribute no coverage, so the collisions had been
+suppressing it.
