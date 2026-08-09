@@ -254,13 +254,13 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **74.7%** |
-| `src/adapters/db` | 0.17% | **69.7%** (96.3% of functions) |
+| Backend overall | 32.6% | **58.0%** — see the correction below |
+| `src/adapters/db` | 0.17% | **35.6%** (`PostgresAdapter` alone is 69.7%, 96.8% of its functions; `SQLiteAdapter` is 0% locally and covered only in CI) |
 | `src/config` | 54.5% | **100%** |
 | `src/services` | 59.2% | **81.3%** |
 | `src/services` (backend) | 59.2% | **81.3%** |
 | `src/terminal` | 18.8% | **36.1%** |
-| `src/api/routes` | 44.3% | **77.3%** |
+| `src/api/routes` | 44.3% | **80.0%** |
 | `src/terminal` | 18.8% | **45.9%** |
 | `src/utils` | 57.6% | **84.8%** |
 | Frontend overall | 2.5% | **3.6%** — see the note below |
@@ -389,3 +389,36 @@ clean up after itself, rather than assume isolation.
 Fixing this raised measured coverage from 60.9% to **74.2%** without adding a
 test: failed files contribute no coverage, so the collisions had been
 suppressing it.
+
+### Correction: the earlier numbers were measured on a moving denominator
+
+Coverage was configured without `all`, so only files a test happened to import
+were counted. Nothing ever loaded `SQLiteAdapter.ts` in a local run, so its
+3,891 lines were simply absent from the denominator — and the reported average
+was flattered accordingly.
+
+This surfaced when adding one test that imports `app`: adapter coverage appeared
+to fall from 69.7% to 35.6% overnight, with nothing regressed. `PostgresAdapter`
+had not moved at all; the SQLite adapter had merely joined the count.
+
+`coverage.all` is now on with `include: ['src/**/*.ts']`, so the denominator is
+every source file regardless of test selection. Under that honest measurement:
+
+| | Start | Now |
+|---|---|---|
+| Backend overall | 32.6% (also flattered) | **58.0%** |
+| `src/api/routes` | | **80.0%** |
+| `src/utils` | | **84.8%** |
+| `src/services` | | **79.9%** |
+| `src/config` | | **100%** |
+| `src/terminal` | | **45.9%** |
+| `src/adapters/db` | | **35.6%** |
+
+The adapter figure is dominated by `SQLiteAdapter.ts`, which reads 0% locally
+because `better-sqlite3` has no native binding on the development machine.
+`sqliteQueries.test.ts` and `migrator.test.ts` do exercise it **in CI**, so the
+CI figure is higher than the local one — a real gap in local measurement, not a
+gap in the tests.
+
+Every number above 58% quoted earlier in this document's history was measured
+the old way and should not be compared against these.
