@@ -21,6 +21,33 @@ vi.mock('../../../services/database', () => ({
   default: { getAdapter: () => ({ getUserByEmail }) },
 }));
 
+/**
+ * `/updates` shells out to `npm view <pkg> version` once per component — a real
+ * network round trip each, sequentially. Left unmocked the test hits the public
+ * registry and times out in CI, which is what happened on the first run of this
+ * file. Mocked here so the endpoint's own logic is what gets exercised.
+ *
+ * Worth noting separately: that design makes the endpoint slow and dependent on
+ * the registry being reachable, with no caching. It is admin-triggered, so it is
+ * a tolerable cost rather than an urgent one.
+ */
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFile: (
+      _cmd: string,
+      _args: string[],
+      _opts: unknown,
+      callback?: (error: Error | null, stdout: string, stderr: string) => void
+    ) => {
+      const done = typeof _opts === 'function' ? (_opts as typeof callback) : callback;
+      done?.(null, '99.0.0\n', '');
+      return undefined as never;
+    },
+  };
+});
+
 const { default: config } = await import('../../../config');
 const { default: app } = await import('../../../app');
 
@@ -101,6 +128,19 @@ describe('GET /api/admin/components/updates', () => {
     const response = await request(app).get(`${BASE}/updates`).set(auth());
 
     expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.data)).toBe(true);
+  });
+
+  it('reports a component whose published version is newer', async () => {
+    // The mocked registry always answers 99.0.0, so everything installed is
+    // behind — which is what makes this assert the comparison rather than the
+    // network.
+    const response = await request(app).get(`${BASE}/updates`).set(auth());
+
+    for (const update of response.body.data) {
+      expect(update.latestVersion).toBe('99.0.0');
+      expect(update.currentVersion).not.toBe('99.0.0');
+    }
   });
 
   it('is admin-only too', async () => {
