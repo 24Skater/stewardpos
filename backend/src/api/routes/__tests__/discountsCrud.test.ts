@@ -29,6 +29,11 @@ const deletePromoCode = vi.fn();
 const getAllEmployeeDiscounts = vi.fn();
 const upsertEmployeeDiscount = vi.fn();
 const getDiscountStats = vi.fn();
+const getDiscountUsage = vi.fn();
+const logDiscountUsage = vi.fn();
+const getEmployeeDiscountByUser = vi.fn();
+const deleteEmployeeDiscount = vi.fn();
+const incrementPromoCodeUsage = vi.fn();
 const createAuditLog = vi.fn();
 
 vi.mock('../../../services/database', () => ({
@@ -49,6 +54,11 @@ vi.mock('../../../services/database', () => ({
       getAllEmployeeDiscounts,
       upsertEmployeeDiscount,
       getDiscountStats,
+      getDiscountUsage,
+      logDiscountUsage,
+      getEmployeeDiscountByUser,
+      deleteEmployeeDiscount,
+      incrementPromoCodeUsage,
       createAuditLog,
     }),
   },
@@ -103,6 +113,11 @@ beforeEach(() => {
   getAllEmployeeDiscounts.mockResolvedValue([]);
   upsertEmployeeDiscount.mockResolvedValue({ userId: 'u2', discountPercentage: 15 });
   getDiscountStats.mockResolvedValue({ totalDiscounts: 3, totalDiscountAmount: 12.5 });
+  getDiscountUsage.mockResolvedValue([{ id: 'u1', discountAmount: 2.5 }]);
+  logDiscountUsage.mockResolvedValue({ id: 'u1' });
+  getEmployeeDiscountByUser.mockResolvedValue({ userId: 'u2', discountPercentage: 15 });
+  deleteEmployeeDiscount.mockResolvedValue(true);
+  incrementPromoCodeUsage.mockResolvedValue(undefined);
   createAuditLog.mockResolvedValue({});
 });
 
@@ -331,5 +346,112 @@ describe('GET /api/discounts/stats', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({ totalDiscountAmount: 12.5 });
+  });
+});
+
+describe('discount usage records', () => {
+  it('lists what has been given away', async () => {
+    const response = await request(app).get('/api/discounts/usage').set(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+  });
+
+  it('passes a date range through as numbers', async () => {
+    await request(app)
+      .get('/api/discounts/usage?startDate=1700000000000&endDate=1800000000000')
+      .set(auth());
+
+    expect(getDiscountUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ startDate: 1700000000000, endDate: 1800000000000 })
+    );
+  });
+
+  it('records a usage entry', async () => {
+    const response = await request(app)
+      .post('/api/discounts/usage')
+      .set(auth())
+      .send({
+        discountSource: 'manual',
+        discountName: 'Goodwill',
+        discountType: 'fixed',
+        discountValue: 5,
+        discountAmount: 5,
+      });
+
+    expect(response.status).toBeLessThan(400);
+    expect(logDiscountUsage).toHaveBeenCalled();
+  });
+
+  it('needs orders.write to record one, since it accompanies a sale', async () => {
+    getUserByEmail.mockResolvedValue(
+      actor({ discounts: { read: true }, orders: { write: false } }, 'standard')
+    );
+
+    const response = await request(app)
+      .post('/api/discounts/usage')
+      .set(auth())
+      .send({ discountSource: 'manual', discountName: 'x', discountType: 'fixed', discountValue: 1, discountAmount: 1 });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('is not read as a promo id', async () => {
+    // `/usage` sits alongside `/promos/:id`; the two must not collide.
+    await request(app).get('/api/discounts/usage').set(auth());
+
+    expect(getPromoCodeById).not.toHaveBeenCalled();
+  });
+});
+
+describe('employee discount for one person', () => {
+  it('reads theirs', async () => {
+    const response = await request(app).get('/api/discounts/employee/u2').set(auth());
+
+    expect(response.status).toBe(200);
+    expect(getEmployeeDiscountByUser).toHaveBeenCalledWith('u2');
+  });
+
+  it('answers with null when they have none, rather than 404ing', async () => {
+    // "This employee has no discount" is an answer, not a missing resource — a
+    // 404 would read as "no such employee" and send someone looking for a bug
+    // in the user list. Same reasoning as returns-by-order returning an empty
+    // list. My first version of this expected 404; the route is right.
+    getEmployeeDiscountByUser.mockResolvedValue(null);
+
+    const response = await request(app).get('/api/discounts/employee/u2').set(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toBeNull();
+  });
+
+  it('is admin-only to remove', async () => {
+    getUserByEmail.mockResolvedValue(
+      actor({ discounts: { read: true, write: true, delete: true } }, 'standard')
+    );
+
+    expect((await request(app).delete('/api/discounts/employee/u2').set(auth())).status).toBe(403);
+    expect(deleteEmployeeDiscount).not.toHaveBeenCalled();
+  });
+
+  it('removes it for an admin', async () => {
+    expect((await request(app).delete('/api/discounts/employee/u2').set(auth())).status).toBe(200);
+  });
+});
+
+describe('POST /api/discounts/promos/:id/use', () => {
+  it('burns a redemption', async () => {
+    const response = await request(app).post('/api/discounts/promos/p1/use').set(auth());
+
+    expect(response.status).toBe(200);
+    expect(incrementPromoCodeUsage).toHaveBeenCalledWith('p1');
+  });
+
+  it('needs orders.write, since redeeming happens during a sale', async () => {
+    getUserByEmail.mockResolvedValue(
+      actor({ discounts: { read: true }, orders: { write: false } }, 'standard')
+    );
+
+    expect((await request(app).post('/api/discounts/promos/p1/use').set(auth())).status).toBe(403);
   });
 });
