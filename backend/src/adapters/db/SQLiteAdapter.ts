@@ -2842,8 +2842,11 @@ export class SQLiteAdapter {
       const params: unknown[] = [];
 
       if (filters.query) {
-        query += ' AND (o.id LIKE ? OR o.customer_email LIKE ?)';
-        params.push(`%${filters.query}%`, `%${filters.query}%`);
+        // See the Postgres adapter. SQLite needs the ESCAPE clause spelled out,
+        // having no default escape character of its own.
+        query += " AND (o.id LIKE ? ESCAPE '\\' OR o.customer_email LIKE ? ESCAPE '\\')";
+        const like = `%${escapeLike(filters.query)}%`;
+        params.push(like, like);
       }
       if (filters.startDate) {
         query += ' AND o.created_at >= ?';
