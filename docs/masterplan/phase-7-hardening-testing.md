@@ -254,14 +254,15 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **74.2%** |
+| Backend overall | 32.6% | **74.7%** |
 | `src/adapters/db` | 0.17% | **69.7%** (96.3% of functions) |
 | `src/config` | 54.5% | **100%** |
 | `src/services` | 59.2% | **81.3%** |
 | `src/services` (backend) | 59.2% | **81.3%** |
 | `src/terminal` | 18.8% | **36.1%** |
-| `src/api/routes` | 44.3% | **77.4%** |
-| `src/utils` | 57.6% | **69.7%** |
+| `src/api/routes` | 44.3% | **77.3%** |
+| `src/terminal` | 18.8% | **45.9%** |
+| `src/utils` | 57.6% | **84.8%** |
 | Frontend overall | 2.5% | **3.6%** — see the note below |
 | Frontend `src/lib` | 20.4% | **31.8%** |
 
@@ -299,11 +300,23 @@ fixed:
 Both were found by writing a test that asserted the real behaviour rather than
 the assumed one, which is the argument for this work in one line.
 
-**Still well short of the 80% the repo's standards set.** The adapters are the
-bulk of what remains: ~25 domain areas, of which catalog, orders, categories,
-store credit, drawer, returns/restock, users/roles, customers, and audit are now
-covered, and services, quotes, loyalty, receipts, and terminal transactions are
-not. That is mechanical
+**Approaching the 80% the repo's standards set**, from 32.6%. What remains,
+in order of size:
+
+- **`setup.ts` at 27.6%** — the `/complete` provisioning flow. Its guard is
+  covered; the flow itself opens real database connections and mutates
+  `process.env`, so testing it means the scratch-database pattern plus careful
+  environment restoration.
+- **The five vendor terminal adapters at ~19% each.** Their status *mapping* is
+  now covered — the half that decides whether a sale completes — but the live
+  request paths need real hardware (P3-T5).
+- **`PostgresAdapter` at 69.6%**, with **96.3% of its functions executed**. The
+  statement gap is largely error branches: every method's `catch` that logs and
+  rethrows as a `DatabaseError`.
+- **The seeder at 60%**, whose remaining lines are the demo catalog data.
+
+Loyalty is *not* in this list: those three tables exist but no adapter method
+reads or writes them, so it is dead schema rather than untested code. That is mechanical
 work following the pattern the existing files establish.
 
 `src/terminal` remains partial by design — the provider *selection* and
