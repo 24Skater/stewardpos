@@ -310,7 +310,15 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
       }
 
       const migrator = new Migrator();
-      await migrator.runMigrations();
+      try {
+        await migrator.runMigrations();
+      } finally {
+        // Closed either way. The migrator opens its own pool, and leaving it
+        // open held connections against the freshly provisioned database for
+        // the life of the process — the seeder below already does this; the
+        // migrator was simply missed.
+        await migrator.close();
+      }
     } catch (error: unknown) {
       logger.error('Migration failed:', error);
       return res.status(500).json({
