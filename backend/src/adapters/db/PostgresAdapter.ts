@@ -2888,7 +2888,11 @@ export class PostgresAdapter {
 
       if (filters.query) {
         query += ` AND (o.id::text ILIKE $${paramIndex} OR o.customer_email ILIKE $${paramIndex})`;
-        params.push(`%${filters.query}%`);
+        // Escaped for the same reason as the catalog search: unescaped, a `%`
+        // matches every order, so a cashier looking up one receipt is handed
+        // the entire sales history. `_` is subtler — it matches any single
+        // character, so `a_a` quietly returns `ada`.
+        params.push(`%${escapeLike(filters.query)}%`);
         paramIndex++;
       }
       if (filters.startDate) {
