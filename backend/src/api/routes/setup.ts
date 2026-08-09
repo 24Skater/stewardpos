@@ -6,6 +6,7 @@ import logger from '../../utils/logger';
 import { Migrator } from '../../services/migrator';
 import { Seeder } from '../../services/seeder';
 import config from '../../config';
+import { PERMISSION_RESOURCES } from '../middleware/authorize';
 import { ValidationError, DatabaseError, getErrorMessage } from '../../utils/errors';
 
 const router = Router();
@@ -176,6 +177,26 @@ router.post('/test-database', rejectIfAlreadySetUp, async (req: Request, res: Re
 });
 
 // Complete setup
+/**
+ * Every resource, granted outright — the administrator's permission object.
+ *
+ * Built from `PERMISSION_RESOURCES` rather than listed by hand. The hand-written
+ * version here named seven resources and omitted `orders`, `returns`, and
+ * `discounts` — the same drift that made `createRoleSchema` silently drop them.
+ *
+ * Harmless in practice today, because `system_role: 'admin'` bypasses
+ * per-resource checks, so the incomplete object is never consulted. That is
+ * precisely why it could sit here unnoticed, and precisely why it should not:
+ * anything that ever reads these permissions directly, or any future removal of
+ * the archetype bypass, would leave the founding administrator unable to take
+ * orders or handle returns.
+ */
+function fullPermissions(): Record<string, { read: boolean; write: boolean; delete: boolean }> {
+  return Object.fromEntries(
+    PERMISSION_RESOURCES.map((resource) => [resource, { read: true, write: true, delete: true }])
+  );
+}
+
 const setupSchema = z.object({
   // Admin user
   adminUser: z.object({
@@ -301,15 +322,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
             [
               'Administrator',
               'admin',
-              JSON.stringify({
-                inventory: { read: true, write: true, delete: true },
-                reports: { read: true, write: true, delete: true },
-                exports: { read: true, write: true, delete: true },
-                settings: { read: true, write: true, delete: true },
-                users: { read: true, write: true, delete: true },
-                services: { read: true, write: true, delete: true },
-                customers: { read: true, write: true, delete: true },
-              }),
+              JSON.stringify(fullPermissions()),
             ]
           );
           const roleId = newRoleResult.rows[0].id;
@@ -371,15 +384,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
           ).run(
             'Administrator',
             'admin',
-            JSON.stringify({
-              inventory: { read: true, write: true, delete: true },
-              reports: { read: true, write: true, delete: true },
-              exports: { read: true, write: true, delete: true },
-              settings: { read: true, write: true, delete: true },
-              users: { read: true, write: true, delete: true },
-              services: { read: true, write: true, delete: true },
-              customers: { read: true, write: true, delete: true },
-            })
+            JSON.stringify(fullPermissions())
           );
           role = { id: roleResult.lastInsertRowid };
         }
