@@ -254,8 +254,8 @@ DB_NAME=stewardpos_test npm run test:integration
 
 | Area | Before | After |
 |---|---|---|
-| Backend overall | 32.6% | **59.1%** |
-| `src/adapters/db` | 0.17% | **39.6%** |
+| Backend overall | 32.6% | **60.9%** |
+| `src/adapters/db` | 0.17% | **45.4%** |
 | `src/services` (backend) | 59.2% | **81.3%** |
 | `src/terminal` | 18.8% | **36.1%** |
 | `src/api/routes` | 44.3% | **66.1%** |
@@ -266,10 +266,13 @@ DB_NAME=stewardpos_test npm run test:integration
 **Bugs this work found**, each verified against the running stack before being
 fixed:
 
-1. **An unescaped LIKE wildcard.** Searching `%` returned the entire catalog and
-   `_` matched any single character, so "50% off" returned things that do not
-   contain it. Parameterised, so not injection — simply wrong answers. Invisible
-   to the route tests, which mock the adapter, so the LIKE never ran.
+1. **Unescaped LIKE wildcards, in two places.** Searching `%` returned the
+   entire catalog and `_` matched any single character, so "50% off" returned
+   things that do not contain it. Parameterised, so not injection — simply wrong
+   answers. Found first in the catalog search, then again in the **receipt
+   search**, where it meant a cashier looking up one sale got the whole ledger.
+   After the second, the codebase was swept rather than waiting for a third: all
+   four LIKE sites across both adapters are now escaped and none remain.
 2. **A provider selected without credentials crashed the request.** The Stripe
    SDK throws from its own constructor, and `/api/terminal/charge` builds the
    adapter from settings on every call — so a shop that picked Stripe before
@@ -329,3 +332,29 @@ to its accountant, where a double-counted aggregation or a CSV that breaks on a
 comma is a real problem.
 
 The remaining honest gap is `src/hooks` and the page components' own logic.
+
+### The SQLite adapter now executes
+
+`sqliteQueries.test.ts` runs the SQLite adapter's catalog search, order search,
+variant COALESCE, and clear-on-null threshold against a migrated SQLite file.
+
+That code had never run anywhere. Every deployment uses Postgres and CI
+provisions Postgres only, so the SQLite adapter was written, typechecked, and
+never executed. The dialects diverge in exactly the places that break quietly:
+Postgres treats backslash as the default LIKE escape, SQLite has none and needs
+`ESCAPE` spelled out.
+
+Which caught a bug in the fix itself. The catalog's escape lives in a template
+literal, where `'\'` yields `ESCAPE ''`; the order search's was in a
+double-quoted string, where `''` is an escape for an apostrophe and yields
+**`ESCAPE ''`** — an empty escape character that SQLite rejects outright. Not
+visible by reading; visible by comparing the two lines' runtime output.
+
+It also caught a wrong *test*: searching `%` returns "50% Off Sampler", because
+that product genuinely contains a percent sign. The escaping working is why that
+is the only result rather than the whole catalog. The Postgres equivalent had
+passed only because its fixture contained no such product, so the two suites
+were not testing the same thing.
+
+These skip where `better-sqlite3` has no native binding and **throw when `CI` is
+set**, so a skip there is a failure rather than silence.
