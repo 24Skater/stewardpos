@@ -287,6 +287,26 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
         if (setupData.database.user) process.env.DB_USER = setupData.database.user;
         if (setupData.database.password) process.env.DB_PASSWORD = setupData.database.password;
         if (setupData.database.filename) process.env.DB_FILENAME = setupData.database.filename;
+
+        // Setting the environment is not enough. `config` is built once at
+        // import and the database adapter is a singleton cached from it, so
+        // everything after this point — the migrator, the seeder, the admin
+        // insert — would otherwise target whatever database the process was
+        // already pointed at, ignoring the one the operator just typed in.
+        //
+        // Verified before this was added: setup reported success and created
+        // the administrator in the wrong database entirely.
+        config.database.adapter = setupData.database.adapter;
+        if (setupData.database.host) config.database.host = setupData.database.host;
+        if (setupData.database.port) config.database.port = setupData.database.port;
+        if (setupData.database.name) config.database.name = setupData.database.name;
+        if (setupData.database.user) config.database.user = setupData.database.user;
+        if (setupData.database.password) config.database.password = setupData.database.password;
+        if (setupData.database.filename) config.database.filename = setupData.database.filename;
+
+        // Discard the adapter built against the old config; the next caller
+        // rebuilds it against the database being provisioned.
+        await db.reset();
       }
 
       const migrator = new Migrator();
