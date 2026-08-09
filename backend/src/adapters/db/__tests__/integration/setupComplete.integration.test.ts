@@ -26,7 +26,8 @@ const ENV_KEYS = ['DB_ADAPTER', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_
 const savedEnv: Record<string, string | undefined> = {};
 
 let admin: Pool;
-let db: Pool;
+/** A direct connection for reading what setup wrote; `db` is the app's own. */
+let db2: Pool;
 
 function connection(database: string): Pool {
   return new Pool({
@@ -68,21 +69,33 @@ beforeAll(async () => {
   await admin.query(`CREATE DATABASE ${scratch}`);
 
   app = (await import('../../../../app')).default;
-  db = connection(scratch);
+  db2 = connection(scratch);
 }, 120_000);
 
 afterAll(async () => {
-  await Promise.allSettled([db?.end()]);
+  // Setup pointed the application's own adapter at the scratch database and
+  // left it open. Closing it is what `db.reset()` is for — terminating the
+  // backend instead makes that pool raise an unhandled connection error, which
+  // vitest reports as a failed run even when every test passed.
+  const { default: db } = await import('../../../../services/database');
+  await db.reset();
+
+  await Promise.allSettled([db2?.end()]);
+
   for (const key of ENV_KEYS) {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key] as string;
   }
+  // Put `config` back too, since setup rewrote it in place.
+  const { default: config } = await import('../../../../config');
+  config.database.name = savedEnv.DB_NAME;
+  config.database.host = savedEnv.DB_HOST;
+  config.database.user = savedEnv.DB_USER;
+  config.database.password = savedEnv.DB_PASSWORD;
+  if (savedEnv.DB_PORT) config.database.port = Number(savedEnv.DB_PORT);
+  await db.reset();
+
   if (admin) {
-    await admin.query(
-      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-       WHERE datname = $1 AND pid <> pg_backend_pid()`,
-      [scratch]
-    );
     await admin.query(`DROP DATABASE IF EXISTS ${scratch}`);
     await admin.end();
   }
@@ -97,14 +110,14 @@ describe('POST /api/setup/complete', () => {
   }, 120_000);
 
   it('creates the administrator it was given', async () => {
-    const { rows } = await db.query('SELECT * FROM users WHERE email = $1', [ADMIN.email]);
+    const { rows } = await db2.query('SELECT * FROM users WHERE email = $1', [ADMIN.email]);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe('Founder');
   });
 
   it('stores that password hashed, and one that verifies', async () => {
-    const { rows } = await db.query('SELECT password_hash FROM users WHERE email = $1', [
+    const { rows } = await db2.query('SELECT password_hash FROM users WHERE email = $1', [
       ADMIN.email,
     ]);
 
@@ -115,7 +128,7 @@ describe('POST /api/setup/complete', () => {
   it('gives them the admin archetype, not merely a role called Administrator', async () => {
     // `isAdmin` keys on `system_role`. Seeded with the wrong one, the founding
     // account signs in and can do nothing — a new install that looks broken.
-    const { rows } = await db.query(
+    const { rows } = await db2.query(
       `SELECT r.system_role FROM users u
        JOIN user_roles ur ON ur.user_id = u.id
        JOIN roles r ON r.id = ur.role_id
@@ -130,7 +143,7 @@ describe('POST /api/setup/complete', () => {
     // The permission list here was hand-written and had drifted, omitting
     // orders, returns, and discounts. Harmless while the archetype bypass
     // exists, and exactly the kind of thing that stops being harmless quietly.
-    const { rows } = await db.query(
+    const { rows } = await db2.query(
       `SELECT r.permissions FROM roles r WHERE r.system_role = 'admin' LIMIT 1`
     );
 
@@ -144,7 +157,7 @@ describe('POST /api/setup/complete', () => {
   });
 
   it('applied the migrations', async () => {
-    const { rows } = await db.query('SELECT MAX(version) AS version FROM schema_migrations');
+    const { rows } = await db2.query('SELECT MAX(version) AS version FROM schema_migrations');
 
     expect(Number(rows[0].version)).toBeGreaterThanOrEqual(14);
   });
@@ -160,7 +173,7 @@ describe('POST /api/setup/complete', () => {
   });
 
   it('did not create the second account it refused', async () => {
-    const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [
+    const { rows } = await db2.query('SELECT id FROM users WHERE email = $1', [
       'attacker@evil.test',
     ]);
 
