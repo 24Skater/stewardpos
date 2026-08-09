@@ -243,6 +243,56 @@ describe('quotes', () => {
     ).toBe(404);
   });
 
+  it('returns one', async () => {
+    expect((await request(app).get('/api/quotes/q1').set(auth())).body.data.id).toBe('q1');
+  });
+
+  it('404s for a quote that does not exist', async () => {
+    getQuoteById.mockResolvedValue(null);
+
+    expect((await request(app).get('/api/quotes/nope').set(auth())).status).toBe(404);
+  });
+
+  it('updates one', async () => {
+    await request(app).put('/api/quotes/q1').set(auth()).send({ notes: 'revised' });
+
+    expect(updateQuote).toHaveBeenCalledWith('q1', expect.objectContaining({ notes: 'revised' }));
+  });
+
+  it('404s when updating one that does not exist', async () => {
+    updateQuote.mockResolvedValue(null);
+
+    expect((await request(app).put('/api/quotes/nope').set(auth()).send({ notes: 'x' })).status).toBe(
+      404
+    );
+  });
+
+  it('refuses an update that empties the quote', async () => {
+    // A quote with no lines has nothing to price and nothing to accept, and
+    // that is as true on an edit as it is on creation.
+    const response = await request(app).put('/api/quotes/q1').set(auth()).send({ items: [] });
+
+    expect(response.status).toBe(400);
+    expect(updateQuote).not.toHaveBeenCalled();
+  });
+
+  it('deletes one', async () => {
+    expect((await request(app).delete('/api/quotes/q1').set(auth())).status).toBe(200);
+  });
+
+  it('404s when deleting one that does not exist', async () => {
+    deleteQuote.mockResolvedValue(false);
+
+    expect((await request(app).delete('/api/quotes/nope').set(auth())).status).toBe(404);
+  });
+
+  it('needs services.delete to remove one, not merely write', async () => {
+    getUserByEmail.mockResolvedValue(actor({ services: { read: true, write: true, delete: false } }));
+
+    expect((await request(app).delete('/api/quotes/q1').set(auth())).status).toBe(403);
+    expect(deleteQuote).not.toHaveBeenCalled();
+  });
+
   it('needs the services permission, since a quote is priced service work', async () => {
     getUserByEmail.mockResolvedValue(actor({ services: { read: false } }));
 
