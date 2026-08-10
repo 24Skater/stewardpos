@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { apiClient } from '@/lib/api-client';
-import type { Customer } from '@/lib/api-types';
+import { customersApi, discountsApi, ordersApi, productsApi, quotesApi, servicesApi } from '@/lib/api';
+import type { Customer } from '@/lib/api';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -55,22 +55,24 @@ export default function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse] = await Promise.all([
-        apiClient.get<{ success: boolean; data: Order[] }>('/api/orders'),
-        apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
-        apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
-        apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
-        apiClient.get<{ success: boolean; data: { totalDiscounts: number; totalDiscountAmount: number } }>('/api/discounts/stats'),
+      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse, lowStockResponse] = await Promise.all([
+        ordersApi.list(),
+        productsApi.list(),
+        quotesApi.list(),
+        servicesApi.list(),
+        customersApi.list(),
+        discountsApi.stats(),
+        productsApi.lowStock(),
       ]);
 
-      const discountStats = discountStatsResponse.success ? discountStatsResponse.data : { totalDiscounts: 0, totalDiscountAmount: 0 };
+      const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };
 
-      const orders = ordersResponse.success ? ordersResponse.data : [];
-      const products = productsResponse.success ? productsResponse.data : [];
-      const quotes = quotesResponse.success ? quotesResponse.data : [];
-      const services = servicesResponse.success ? servicesResponse.data : [];
-      const customers = customersResponse.success ? customersResponse.data : [];
+      const orders = ordersResponse ? ordersResponse : [];
+      const products = productsResponse ? productsResponse : [];
+      const quotes = quotesResponse ? quotesResponse : [];
+      const services = servicesResponse ? servicesResponse : [];
+      const customers = customersResponse ? customersResponse : [];
+      const lowStockItems = lowStockResponse ? lowStockResponse : [];
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -80,11 +82,14 @@ export default function Dashboard() {
       const todayOrders = orders.filter(o => o.createdAt >= todayTimestamp);
       const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
 
-      // Low stock
-      const lowStock = products.reduce((count, p) => {
-        const hasLowStock = p.variants?.some(v => v.enabled && v.stock < 10);
-        return hasLowStock ? count + 1 : count;
-      }, 0);
+      // Low stock, counted by product rather than by variant, so a shirt that is
+      // low in three sizes reads as one thing to reorder.
+      //
+      // This used to apply its own `stock < 10` rule to the loaded catalog. The
+      // threshold is a store setting and can be overridden per variant, so the
+      // server is the only thing that knows it; deciding here meant this tile
+      // and the inventory screen could disagree.
+      const lowStock = new Set(lowStockItems.map(item => item.productId)).size;
 
       // Service stats
       const todayQuotes = quotes.filter(q => q.createdAt >= todayTimestamp && q.status === 'completed');

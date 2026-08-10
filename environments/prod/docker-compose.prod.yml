@@ -39,7 +39,14 @@ services:
       AUTO_SEED: "false"  # Never auto-seed in production
       CORS_ORIGIN: ${CORS_ORIGIN}  # MUST be set in .env.prod
       RATE_LIMIT_WINDOW_MS: 900000  # 15 minutes
-      RATE_LIMIT_MAX_REQUESTS: 100  # Stricter limits
+      # 3000, not 100: a shop's terminals share one IP, and 100 per quarter-hour
+      # is about 25 sales for the whole store. Brute force is bounded separately
+      # by RATE_LIMIT_MAX_LOGIN_ATTEMPTS, which is what "stricter" should mean.
+      # One nginx sits in front; without this every client shares one
+      # rate-limit bucket because they all appear to come from the proxy.
+      TRUST_PROXY: 1
+      RATE_LIMIT_MAX_REQUESTS: 3000
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: 10
       JWT_SECRET: ${JWT_SECRET}  # MUST be set in .env.prod (min 32 chars)
     ports:
       - "${BACKEND_PORT:-3001}:3001"

@@ -102,6 +102,23 @@ jobs:
         working-directory: ./backend
         run: npm run test:coverage
 
+      # Adapter SQL against the migrated Postgres above. These BLOCK: the
+      # adapters were the least-covered code in the repo (0.17%) because route
+      # tests mock them, and the very first integration test written found an
+      # unescaped LIKE wildcard that made a search for "%" return the whole
+      # catalog. A mocked adapter cannot see that.
+      #
+      # The harness refuses to run unless DB_NAME contains "test", so a stray
+      # environment cannot point these at real data.
+      #
+      # `test:integration` runs with --no-file-parallelism: these share one
+      # database and several touch global state (the settings singleton, the
+      # one-open-drawer index), so running the files concurrently makes them
+      # collide with each other rather than test anything.
+      - name: Adapter integration tests
+        working-directory: ./backend
+        run: npm run test:integration
+
       # `npm run build` is tsc. This is the step that was failing on 341 type errors
       # while CI reported green, which left the published image stale.
       - name: Build
@@ -154,16 +171,17 @@ jobs:
         run: npm audit --audit-level=moderate
 
   e2e:
-    name: E2E (manual)
-    # Manual only, and not part of the merge gate.
+    name: E2E
+    # Part of the merge gate.
     #
     # e2e/global-setup.ts signs in as admin@demo.local before any spec runs, which
-    # needs a migrated database seeded with that account. CI has no such fixture, so
-    # every spec fails in setup. Previously this ran on every PR with
-    # `continue-on-error: true` — a job that always failed and was always ignored.
+    # needs a migrated database seeded with that account. That was the whole reason
+    # this job could not run: the stack came up with AUTO_SEED unset, so the account
+    # did not exist and every spec failed in setup. The entrypoint already migrates
+    # and seeds — it just needed asking.
     #
-    # Phase 7 builds the seeded stack these specs need; wire this into the gate then.
-    if: github.event_name == 'workflow_dispatch'
+    # Previously ran on every PR with `continue-on-error: true`: a job that always
+    # failed and was always ignored, which is worse than not running it.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -178,9 +196,20 @@ jobs:
       - run: pnpm exec playwright install chromium --with-deps
 
       - name: Start stack
+        env:
+          # The fixture the specs need. Without it the stack comes up with an
+          # empty database and global-setup cannot sign in.
+          AUTO_SEED: 'true'
         run: |
           docker compose up -d --build
           timeout 120 sh -c 'until curl -fsS http://localhost:3002/api/health >/dev/null; do sleep 3; done'
+          # Health only means the server is listening. Wait for the seed to have
+          # landed, or global-setup races it and fails on a missing account.
+          timeout 120 sh -c 'until curl -fsS -X POST http://localhost:3002/api/auth/login             -H "Content-Type: application/json"             -d "{\"email\":\"admin@demo.local\",\"password\":\"DemoPass!1\"}"             | grep -q token; do sleep 3; done'
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: docker compose logs backend | tail -50
 
       - name: Run Playwright specs
         run: pnpm run test:e2e

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Product, ProductVariant, calculateVariantPrice } from "@/lib/db";
+import { calculateVariantPrice, type Product, type ProductVariant } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart } from "lucide-react";
 

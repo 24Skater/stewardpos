@@ -152,3 +152,156 @@ branding settings (Phase 6 provides the config UI; here consume it).
 **Acceptance criteria.** A completed sale yields a correct, branded receipt that prints and emails.
 **Verification.** Complete a sale → open its receipt (correct totals) → email it (console adapter logs
 the message in dev; SMTP delivers in a configured env).
+
+---
+
+## Status (2026-08-07): the money path is complete
+
+Against the phase's stated exit criteria:
+
+| Criterion | Result |
+|---|---|
+| `POST /api/orders` ignores client prices, reprices in cents, applies tax + discounts, one transaction, rejects on insufficient stock | ✅ |
+| Cash (with change) and split tender both complete a sale | ✅ card *terminal* is simulated — the live Stripe path (P3-T5) is not wired |
+| A cash-drawer session exists (open/close, expected vs counted) | ✅ |
+| A branded receipt can be printed and emailed | ⚠️ printing works; **no email is sent by anything yet** |
+| ≥80% coverage on checkout modules | ✅ pricing 100%, tender 100%, returnPricing 98%, storeCredits 100%, orders 91%, drawer 85% |
+
+**Receipt email is done.** `backend/src/services/email.ts` implements the three
+adapters `config.email.adapter` already named — `console`, `smtp` (nodemailer),
+and `resend` — none of which existed.
+
+The resend endpoint used to record `status: 'sent'` and reply "Receipt sent
+to …" without anything being sent. A shop reading its own resend history would
+see a customer had been emailed when they had not, which is the worst kind of
+wrong because it looks like evidence.
+
+It now sends, and reports what actually happened. `console`, the default,
+returns `logged` — deliberately not `sent`, since calling a log entry a delivery
+is the original bug. A refusal by the mail server is a **502**, not a 500: the
+request was fine and the server is fine, something downstream is not, and
+reporting it as a server fault sends whoever reads the logs to the wrong place.
+Every outcome is written to the history, failures included — a resend that did
+not arrive is exactly what someone reads that history to find out.
+
+**Still open:** the live Stripe Terminal path (P3-T5). It needs real credentials
+and hardware to verify, so it stays simulated rather than being written blind.
+
+## Progress notes (2026-08-06)
+
+**Partially done, ahead of the stated entry criteria.** Phase 2 was not yet
+fully green when this started (P2-T6 `org_id` was untouched; it has since
+landed), but the pricing hole was too serious to leave: `POST /api/orders` stored whatever totals it was handed, so a shaped
+request bought a $1 item for $0.01. Verified before the fix, on the live stack.
+
+**Landed** — `backend/src/services/pricing.ts` (`repriceOrder`) and its use in
+`POST /api/orders`:
+
+- Line prices come from the catalog. `unitPrice`, `lineTotal`, `subtotal`,
+  `taxTotal`, and `total` are read off the request and discarded; only product
+  and variant ids, quantities, and notes are believed.
+- `nameSnapshot`, size, and colour are snapshotted from the catalog too, so a
+  receipt names what was actually sold rather than what the caller claimed.
+- Tax comes from store settings.
+- All arithmetic is in integer cents, converting back to dollars only at the API
+  boundary.
+- Unknown products, unknown or disabled variants, fractional quantities, and
+  insufficient stock are rejected as 400s. Quantities are summed per variant
+  first, so two lines for the same variant cannot each pass a stock check that
+  the pair would fail.
+
+Verified live after the fix: a request asking to pay $0.01 for a $1 item is
+charged $1 and its forged item name is replaced; a request for 99,999 units is
+refused with the remaining stock; a normal two-unit sale prices correctly and
+decrements stock by two.
+
+**Not done, and why it matters:**
+
+- ~~Discounts are still client-supplied~~ — **fixed.** `POST /api/orders` now
+  takes an `appliedDiscounts` array naming *which* discounts were applied, and
+  resolves each against the catalog: it must exist, be active, be flagged
+  `showInPos` for a register discount, be inside its date window, be under its
+  usage cap, and meet its minimum purchase. The amount is computed from the
+  stored definition; a bare `discountTotal` is now worth nothing. Manual
+  discounts have no catalog entry to check, so they require `discounts.write` —
+  a cashier cannot grant one. Employee discounts are refused pending their own
+  entitlement checks, rather than honoured unverified.
+
+  Verified live: a bare `discountTotal: 9999` yields $0 off; a request claiming
+  90% against a stored 10% discount takes 10%; an invented discount id is
+  rejected; a cashier's manual 100%-off is refused while the same cashier can
+  apply a configured discount.
+- **Change calculation is done** (part of P3-T4). `POST /api/orders` accepts
+  `cashTendered`, computes the change against its own repriced total, and
+  refuses a shortfall as a 400 naming the amount still owed. Migration 010 adds
+  `amount_tendered` and `change_given` to `orders`, so the till's expected
+  contents can be reconstructed. The register shows a cash field with
+  note-denomination shortcuts and live change, and warns while the tender is
+  short.
+
+  Computing against the *repriced* total is the point: a request claiming a
+  $0.01 total while tendering $20 is charged $3 and given $17 back, not $19.99.
+
+- **Cash-drawer sessions are done** (the rest of P3-T4). Migration 011 adds
+  `cash_drawer_sessions`; `/api/drawer` opens, reports, closes, and lists them.
+  Expected cash is the opening float plus cash taken in less change given, over
+  sales rung while the session was open — card sales are excluded, since they
+  never touch the till. It is always computed server-side and never accepted
+  from the caller: a reconciliation means nothing if both sides come from the
+  counter.
+
+  One session at a time is enforced by a partial unique index rather than a
+  read-then-write, so two cashiers cannot both open a drawer and leave "which
+  till did this sale go into" unanswerable.
+
+  The register gains a Drawer button showing the open/close form with a live
+  shortfall preview, so a discrepancy is visible while there is still time to
+  recount.
+
+- **Split tender is done.** Migration 012 adds a `payments` table — an order had
+  one `payment_method` varchar, so it could only ever have been paid one way.
+  `POST /api/orders` accepts a `payments` array whose amounts must add up to the
+  repriced total; a single `paymentMethod` still becomes one payment covering
+  the sale, so existing callers are unchanged. `orders.payment_method` survives
+  as a denormalised summary holding the method name, or `'Split'`.
+
+  Store credit is now spendable, which is what made it a real refund option:
+  redemption happens **inside the order's transaction**, so a failure cannot
+  burn a credit for a sale that never happened, nor record a sale paid with a
+  credit still worth its full value. Verified by claiming more credit than the
+  balance — the order rolls back, the credit is untouched, and stock does not
+  move.
+
+  Change is computed against the *cash portion* of a tender rather than the
+  total, since only cash can produce change; giving change against the whole
+  total would hand back money the card already covered. The card path likewise
+  charges the total less any credit — charging the full amount would take the
+  credit's share twice and be rejected for overpayment after the card was
+  already authorised.
+
+  The register gained a store-credit field showing what is applied, what stays
+  on the credit, and what is still due. The Complete Sale button previously
+  showed `subtotal - discount`, which ignored tax; it now shows what is actually
+  due.
+
+- ~~The card path charges before the server prices~~ — **fixed.**
+  `POST /api/orders/quote` prices a cart without committing to it, sharing the
+  `priceCart` path with order creation so the quote is by construction what the
+  sale will charge. `handleChargeCard` calls it first and sends the terminal the
+  authoritative amount, and a discount the server declines now surfaces while
+  the customer's card is still in their hand rather than after it is authorised.
+  Tests assert quote and sale agree on all four totals; verified live too.
+
+  Split tender (P3-T2) has the endpoint it needs.
+
+  Order creation also stopped *requiring* the money fields it discards
+  (`nameSnapshot`, `unitPrice`, `lineTotal`, `subtotal`, `total`). They are
+  still accepted for compatibility, but demanding a figure that is then ignored
+  forced every caller to compute something it is not trusted on.
+- ~~Atomicity is partial~~ — **fixed.** The decrement is now conditional
+  (`UPDATE ... WHERE id = $2 AND stock >= $1`) and a no-op fails the
+  transaction, so the pre-transaction stock check in `repriceOrder` is an early
+  courtesy rather than the guarantee. Verified by firing two concurrent sales of
+  a variant with one unit left: one 201, one 400, final stock 0. The previous
+  `GREATEST(0, stock - $1)` clamped at zero and reported success, so both sales
+  were recorded against a single unit.

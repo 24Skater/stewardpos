@@ -98,3 +98,63 @@ never computes the discounted total itself.
 **Acceptance criteria.** Cashier applies a code/quick discount; totals come back from the server.
 **Verification.** Manual: apply a 10% code at POS → server‑returned total reflects it; remove →
 reverts.
+
+
+---
+
+## Note (2026-08-07): returns were repriced ahead of this phase
+
+Found while auditing the money paths in Phase 3, and fixed there because it was
+the same class of hole in the more dangerous direction — a sale mispriced
+downwards costs margin, a refund mispriced upwards hands over cash.
+
+`POST /api/returns` fetched the original order only to check it existed, then
+stored whatever line prices and totals the request supplied. `process-refund`
+then used the client's `amount` with no upper bound. Verified end to end: a $1
+order produced a **$99,999 cash refund**, and would equally have minted a store
+credit for it.
+
+`repriceReturn` now prices a return from the order it came from:
+
+- line prices come from what the customer actually paid, not the request and not
+  today's catalog price
+- quantities are bounded by what was sold minus what earlier returns already
+  took; a pending return counts, so the same item cannot be submitted twice
+  while the first awaits approval, while a rejected one does not
+- tax is apportioned by share of the order's subtotal, so a partial return gets
+  back the tax that was actually charged rather than today's rate
+- a restocking fee cannot push a refund negative
+- `process-refund` caps `amount` at the return's total
+
+Restocking was also gated on approval, matching the refund path. It had none, so
+a **pending** return put goods back into sellable stock on the say-so of whoever
+filed it — for an item that may never have physically come back. (The underlying
+adapter was already idempotent: it only touches rows still flagged
+`restocked = false`, so a repeated call adds nothing. The gap was the missing
+status check, not double-counting.)
+
+Store credit is now redeemable: `GET /api/store-credits/:code` reports the
+balance and `POST /api/store-credits/:code/redeem` spends part or all of it,
+refusing in a single conditional UPDATE so two registers cannot spend the same
+code. Partial redemption leaves the credit active; spending the balance flips it
+to `used`. What remains is wiring it into checkout as a *tender* — it reduces
+what is owed rather than what is charged, so it belongs with split tender
+(P3-T2) and must not be modelled as a discount, which would understate revenue.
+
+**Exchanges are now refused rather than mispriced.** `returnType: 'exchange'`
+was accepted and then priced as a plain return: the customer got a full refund
+and nothing was charged for the replacement, so they walked out with a new item
+*and* their money back. Verified against the live stack before the change.
+
+Nothing anywhere carries replacement items — not the request schema, not the
+DTOs, not the admin UI — so there was no exchange to price, only a refund
+wearing the wrong label. Refusing it costs nobody anything today (no interface
+offers it) and closes a money hole reachable by anyone who can record a return.
+The error says what to do instead: record a return, then ring the replacement up
+as a new sale, which is the same money and the correct records.
+
+Implementing exchanges properly means replacement line items, a price difference
+that can run in either direction, and stock moving both ways. That is a feature,
+and building it blind against no interface would be guesswork.
+
+**Phase 5 is otherwise complete.**

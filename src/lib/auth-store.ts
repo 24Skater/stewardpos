@@ -1,5 +1,4 @@
-import { apiClient } from './api-client';
-import type { LoginResponse } from './api-types';
+import { authApi } from './api/auth';
 
 interface AuthToken {
   token: string;
@@ -10,8 +9,19 @@ const TOKEN_KEY = 'auth_token';
 const TOKEN_EXPIRY_KEY = 'auth_token_expiry';
 const REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes before expiry
 
+/** Matches the backend's own default when JWT_EXPIRES_IN is unset. */
+const DEFAULT_EXPIRES_IN = '24h';
+
 export const authStore = {
-  setToken(token: string, expiresIn: string = '7d'): void {
+  /**
+   * Store a token and when it lapses.
+   *
+   * `expiresIn` should come from the server's response. The default is a
+   * fallback for a backend that does not report one, and is deliberately short:
+   * guessing too long leaves the client convinced a dead token is good and
+   * never refreshing, which is worse than an early, recoverable re-login.
+   */
+  setToken(token: string, expiresIn: string = DEFAULT_EXPIRES_IN): void {
     const expiresAt = Date.now() + parseExpiresIn(expiresIn);
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(TOKEN_EXPIRY_KEY, expiresAt.toString());
@@ -41,9 +51,9 @@ export const authStore = {
 
   async refreshToken(): Promise<boolean> {
     try {
-      const response = await apiClient.post<LoginResponse>('/api/auth/refresh');
-      if (response.success && response.data.token) {
-        this.setToken(response.data.token, '7d');
+      const response = await authApi.refresh();
+      if (response.token) {
+        this.setToken(response.token, response.expiresIn);
         return true;
       }
     } catch (error) {

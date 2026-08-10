@@ -74,7 +74,11 @@ services:
       
       # Rate Limiting
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      # One nginx sits in front; without this every client shares one
+      # rate-limit bucket because they all appear to come from the proxy.
+      TRUST_PROXY: 1
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-3000}
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: ${RATE_LIMIT_MAX_LOGIN_ATTEMPTS:-10}
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-info}

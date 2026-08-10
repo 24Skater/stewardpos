@@ -25,6 +25,31 @@ class DatabaseService {
     return this.adapter;
   }
 
+  /**
+   * Drop the cached adapter so the next call rebuilds it from current config.
+   *
+   * Needed by first-run setup, which is told at request time which database to
+   * use. Without this the adapter stays bound to whatever `config` held at
+   * import — so setup would report success while having provisioned the
+   * database the process was already pointed at, ignoring the one the operator
+   * typed in. Verified: it created the administrator in the wrong database.
+   *
+   * Nothing else should call this. Swapping the database under a running server
+   * is a first-run action, not an operational one.
+   */
+  async reset(): Promise<void> {
+    const previous = this.adapter;
+    this.adapter = null;
+    // Closed after clearing, so a failure to close cannot leave the stale
+    // adapter installed.
+    try {
+      await previous?.close?.();
+    } catch {
+      // A pool that will not close cleanly must not stop setup from continuing;
+      // the adapter has already been discarded either way.
+    }
+  }
+
   private createAdapter(): DatabaseAdapter {
     const adapterType = config.database.adapter;
 

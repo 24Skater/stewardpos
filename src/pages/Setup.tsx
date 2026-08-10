@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { apiClient } from '@/lib/api-client';
+import { setupApi, type AuthMethod } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Database, 
@@ -63,7 +63,7 @@ export default function Setup() {
   });
 
   const [auth, setAuth] = useState({
-    methods: ['local'] as string[],
+    methods: ['local'] as AuthMethod[],
     google: { clientId: '', clientSecret: '' },
     oidc: { issuer: '', clientId: '', clientSecret: '' },
   });
@@ -82,13 +82,11 @@ export default function Setup() {
 
   const checkSetupStatus = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: SetupStatus }>('/api/setup/status');
-      if (response.success) {
-        setSetupStatus(response.data);
-        if (!response.data.needsSetup) {
-          // Setup already complete, redirect to login
-          navigate('/login');
-        }
+      const response = await setupApi.status();
+      setSetupStatus(response);
+      if (!response.needsSetup) {
+        // Setup already complete, redirect to login
+        navigate('/login');
       }
     } catch (error: unknown) {
       // If setup endpoint doesn't exist or fails, assume setup is needed
@@ -99,25 +97,13 @@ export default function Setup() {
   const testDatabaseConnection = async () => {
     setTestingDb(true);
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string; error?: string }>(
-        '/api/setup/test-database',
-        database
-      );
+      await setupApi.testDatabase(database);
       
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: 'Database connection successful!',
-        });
-        return true;
-      } else {
-        toast({
-          title: 'Connection Failed',
-          description: response.error || 'Failed to connect to database',
-          variant: 'destructive',
-        });
-        return false;
-      }
+      toast({
+        title: 'Success',
+        description: 'Database connection successful!',
+      });
+      return true;
     } catch (error: unknown) {
       toast({
         title: 'Connection Failed',
@@ -178,32 +164,27 @@ export default function Setup() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string; data?: unknown }>(
-        '/api/setup/complete',
-        {
-          adminUser: {
-            name: adminUser.name,
-            email: adminUser.email,
-            password: adminUser.password,
-          },
-          database: dbConfig,
-          auth,
-          environment,
-          demoMode,
-          replication: replication.enabled ? replication : undefined,
-        }
-      );
+      const response = await setupApi.complete({
+        adminUser: {
+          name: adminUser.name,
+          email: adminUser.email,
+          password: adminUser.password,
+        },
+        database: dbConfig,
+        auth,
+        environment,
+        demoMode,
+        replication: replication.enabled ? replication : undefined,
+      });
 
-      if (response.success) {
-        toast({
-          title: 'Setup Complete!',
-          description: 'Your POS system is now configured. Redirecting to login...',
-        });
-        
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      }
+      toast({
+        title: 'Setup Complete!',
+        description: 'Your POS system is now configured. Redirecting to login...',
+      });
+      
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
     } catch (error: unknown) {
       toast({
         title: 'Setup Failed',

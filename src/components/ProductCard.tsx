@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { Product } from "@/lib/db";
+import type { Product } from "@/lib/api";
 import { ShoppingCart } from "lucide-react";
 
 interface ProductCardProps {

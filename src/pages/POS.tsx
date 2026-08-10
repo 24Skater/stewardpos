@@ -1,16 +1,28 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
-import { CartItem } from "@/lib/db";
-import { apiClient } from "@/lib/api-client";
-import type { Product, CreateOrderRequest, Order } from "@/lib/api-types";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard } from "lucide-react";
+import { discountsApi, ordersApi, storeCreditsApi, terminalApi } from "@/lib/api";
+import type {
+  CartItem,
+  CreateOrderRequest,
+  DiscountType as ApiDiscountType,
+  Order,
+  PaymentMethodsConfig,
+  PaymentRequest,
+  Product,
+  StoreCredit,
+  ValidatedPromo,
+} from "@/lib/api";
+import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
+import { logger } from "@/lib/logger";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
+import CashDrawerDialog from "@/components/CashDrawerDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,12 +30,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from '@/lib/errors';
-
-interface PaymentMethodsConfig {
-  cash?: { enabled: boolean };
-  zelle?: { enabled: boolean; destination?: string };
-  card?: { enabled: boolean; provider?: string };
-}
 
 const CARD_PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
@@ -35,16 +41,16 @@ const CARD_PROVIDER_LABELS: Record<string, string> = {
   generic: 'Card Reader',
 };
 
-interface DiscountType {
-  id: string;
-  name: string;
-  code?: string;
+/**
+ * A quick-discount chip the register can actually price.
+ *
+ * The catalog also supports `buy_x_get_y`, which needs line-level logic this
+ * screen does not have, so those are filtered out at load rather than rendered
+ * as a chip that would compute the wrong amount.
+ */
+type PosDiscountType = Omit<ApiDiscountType, 'discountType'> & {
   discountType: 'percentage' | 'fixed';
-  discountValue: number;
-  color: string;
-  icon?: string;
-  requiresApproval: boolean;
-}
+};
 
 interface AppliedDiscount {
   source: 'quick_discount' | 'promo_code' | 'manual' | 'employee';
@@ -54,16 +60,6 @@ interface AppliedDiscount {
   type: 'percentage' | 'fixed';
   value: number;
   amount: number;
-}
-
-/** A promo code accepted by /api/discounts/promos/validate. */
-interface PromoValidation {
-  id: string;
-  code: string;
-  name: string;
-  discountType: AppliedDiscount['type'];
-  discountValue: number;
-  discountAmount: number;
 }
 
 const iconMap: Record<string, LucideIcon> = {
@@ -102,9 +98,14 @@ interface TerminalState {
 }
 
 export default function POS() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const {
+    data: products = [],
+    isPending: productsPending,
+    isError: productsFailed,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts();
+  const createOrder = useCreateOrder();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -121,13 +122,12 @@ export default function POS() {
   const [lastOrderDiscount, setLastOrderDiscount] = useState(0);
   const [lastOrderPaymentMethod, setLastOrderPaymentMethod] = useState("");
   const [lastOrderItems, setLastOrderItems] = useState<CartItem[]>([]);
-  const [categories, setCategories] = useState<string[]>(["All"]);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   
   // Discount state
-  const [quickDiscounts, setQuickDiscounts] = useState<DiscountType[]>([]);
+  const [quickDiscounts, setQuickDiscounts] = useState<PosDiscountType[]>([]);
   const [appliedDiscounts, setAppliedDiscounts] = useState<AppliedDiscount[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -137,18 +137,36 @@ export default function POS() {
   
   // Return dialog state
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
-  
-  // Store branding
-  const [storeName, setStoreName] = useState("Steward · Register");
-  const [storeLogo, setStoreLogo] = useState<string | null>(null);
 
-  // Payment methods
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodsConfig>({
-    cash: { enabled: true },
-    zelle: { enabled: false },
-    card: { enabled: false, provider: 'square' },
-  });
+  // Cash drawer state
+  const [drawerDialogOpen, setDrawerDialogOpen] = useState(false);
+  
+  // Store branding and tax come from settings; the register keeps working on its
+  // defaults if that call fails, rather than blocking a sale.
+  const { data: settings } = useSettings();
+  const storeName = settings?.storeName || "Steward · Register";
+  const storeLogo = settings?.logoUrl || null;
+  const taxRate = settings?.taxRateDefault ?? 0;
+
+  const paymentMethods: PaymentMethodsConfig = useMemo(() => {
+    const configured = settings?.config?.paymentMethods;
+
+    return {
+      cash: { enabled: true, ...configured?.cash },
+      zelle: { enabled: false, ...configured?.zelle },
+      card: { enabled: false, provider: 'square', ...configured?.card },
+    };
+  }, [settings]);
+
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash');
+  const [cashTendered, setCashTendered] = useState('');
+
+  // A store credit applied to this sale. It is a *tender*, not a discount: it
+  // reduces what is owed, not what the sale was worth, so it never touches the
+  // totals - only how they are paid.
+  const [appliedCredit, setAppliedCredit] = useState<StoreCredit | null>(null);
+  const [creditCodeInput, setCreditCodeInput] = useState('');
+  const [creditLoading, setCreditLoading] = useState(false);
 
   // Terminal payment state
   const [terminalState, setTerminalState] = useState<TerminalState>({ phase: 'idle' });
@@ -157,15 +175,29 @@ export default function POS() {
   const [lastOrderAuthCode, setLastOrderAuthCode] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    loadProducts();
-    loadCategories();
     loadQuickDiscounts();
-    loadStoreName();
   }, []);
 
+  /**
+   * Keep the selected payment method on something the store actually accepts.
+   *
+   * Settings arrive after first paint, so the initial 'Cash' default can turn out
+   * to be disabled; this falls through to the first enabled method instead of
+   * leaving the cashier on an option that cannot complete.
+   */
   useEffect(() => {
-    filterProducts();
-  }, [products, searchQuery, selectedCategory]);
+    const enabled: Array<[string, boolean | undefined]> = [
+      ['Cash', paymentMethods.cash?.enabled !== false],
+      ['Zelle', paymentMethods.zelle?.enabled],
+      ['Card', paymentMethods.card?.enabled],
+    ];
+
+    const stillOffered = enabled.some(([label, on]) => label === selectedPaymentMethod && on);
+    if (stillOffered) return;
+
+    const fallback = enabled.find(([, on]) => on)?.[0];
+    if (fallback) setSelectedPaymentMethod(fallback);
+  }, [paymentMethods, selectedPaymentMethod]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -186,69 +218,24 @@ export default function POS() {
     };
   }, []);
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-        // Extract unique categories from products
-        const uniqueCategories = new Set(response.data.map(p => p.category).filter(Boolean));
-        setCategories(["All", ...Array.from(uniqueCategories)]);
-      }
-    } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: getErrorMessage(error, 'Failed to load products'),
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCategories = async () => {
-    // Categories are now derived from products in loadProducts
-    // This function is kept for compatibility but does nothing
-  };
-
-  const loadStoreName = async () => {
-    try {
-      const response = await apiClient.get<{ success: boolean; data: { storeName?: string; logoUrl?: string; config?: { paymentMethods?: PaymentMethodsConfig } } }>('/api/admin/settings');
-      if (response.success && response.data) {
-        if (response.data.storeName) {
-          setStoreName(response.data.storeName);
-        }
-        if (response.data.logoUrl) {
-          setStoreLogo(response.data.logoUrl);
-        }
-        if (response.data.config?.paymentMethods) {
-          const pm = response.data.config.paymentMethods;
-          setPaymentMethods({
-            cash: { enabled: true, ...pm.cash },
-            zelle: { enabled: false, ...pm.zelle },
-            card: { enabled: false, provider: 'square', ...pm.card },
-          });
-          // Default to first enabled method
-          if (pm.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-          else if (pm.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-          else if (pm.card?.enabled) setSelectedPaymentMethod('Card');
-        }
-      }
-    } catch (error) {
-      console.warn('Could not load store settings');
-    }
-  };
+  /** Category filter chips, derived from whatever the catalog actually contains. */
+  const categories = useMemo(
+    () => ["All", ...new Set(products.map(p => p.category).filter(Boolean))],
+    [products]
+  );
 
   const loadQuickDiscounts = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: DiscountType[] }>('/api/discounts/types/pos');
-      if (response.success) {
-        setQuickDiscounts(response.data);
-      }
+      const available = await discountsApi.types.listForPos();
+      setQuickDiscounts(
+        available.filter(
+          (discount): discount is PosDiscountType =>
+            discount.discountType === 'percentage' || discount.discountType === 'fixed'
+        )
+      );
     } catch (error) {
-      // Non-critical, silently fail
-      console.warn('Failed to load quick discounts:', error);
+      // Non-critical: the register still sells without quick-discount chips.
+      logger.warn('Failed to load quick discounts', error);
     }
   };
 
@@ -270,7 +257,138 @@ export default function POS() {
     }, 0);
   };
 
-  const applyQuickDiscount = (discount: DiscountType) => {
+  /**
+   * The money on the current cart.
+   *
+   * Single definition so cash checkout, card authorisation, and the order posted
+   * after a card approval cannot drift apart - they previously each recomputed
+   * this, and each hard-coded a 0% tax rate regardless of store settings.
+   *
+   * Phase 3 moves this arithmetic server-side; until then the client's figures
+   * are what the backend records.
+   */
+  /**
+   * The receipt's line items, taken from the created order.
+   *
+   * Not the local cart: the totals on the receipt come from the server now, and
+   * pairing those with client-side line prices would print a receipt whose lines
+   * do not add up to its own total whenever the server repriced something.
+   * Falls back to the cart only if the response carries no items.
+   */
+  const receiptLinesFrom = (order: Order): CartItem[] =>
+    (order.items ?? []).length > 0
+      ? order.items!.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          price: item.unitPrice,
+          nameSnapshot: item.nameSnapshot,
+          size: item.size,
+          color: item.color,
+          notes: item.notes,
+          lineDiscount: item.lineDiscount,
+        }))
+      : [...cart];
+
+  /** Strip an applied discount down to what the server needs to re-resolve it. */
+  const toDiscountRequests = (applied: AppliedDiscount[]) =>
+    applied.map((discount) => ({
+      source: discount.source,
+      id: discount.id,
+      code: discount.code,
+      type: discount.type,
+      value: discount.value,
+      reason: discount.source === 'manual' ? discount.name : undefined,
+    }));
+
+  const calculateTotals = () => {
+    const subtotal = calculateSubtotal();
+    const discountTotal = getTotalDiscount();
+    const taxTotal = (subtotal - discountTotal) * taxRate;
+
+    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal };
+  };
+
+  /**
+   * How much of the sale the applied credit can cover.
+   *
+   * Capped at the total: a $50 credit against a $12 sale spends $12 and leaves
+   * the rest on the card. The remainder stays as change on the credit, not as
+   * cash back.
+   */
+  const creditApplied = useMemo(() => {
+    if (!appliedCredit) return 0;
+    const total = Math.round(calculateTotals().total * 100);
+    return Math.min(Math.round(appliedCredit.remainingAmount * 100), total) / 100;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedCredit, cart, appliedDiscounts, taxRate]);
+
+  /** What is still owed after the credit, and therefore due on the chosen tender. */
+  const amountDue = useMemo(
+    () => Math.round((calculateTotals().total - creditApplied) * 100) / 100,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [creditApplied, cart, appliedDiscounts, taxRate]
+  );
+
+  /**
+   * The tender breakdown to send, or `undefined` when there is nothing to split.
+   *
+   * Omitting it lets `paymentMethod` describe the whole sale, which is what
+   * every sale without a credit is.
+   */
+  const buildPayments = (method: string): PaymentRequest[] | undefined => {
+    if (!appliedCredit || creditApplied <= 0) return undefined;
+
+    const payments: PaymentRequest[] = [
+      { method: 'store_credit', amount: creditApplied, reference: appliedCredit.code },
+    ];
+
+    if (amountDue > 0) {
+      payments.push({
+        method: method.toLowerCase() === 'card' ? 'card' : method.toLowerCase() === 'zelle' ? 'zelle' : 'cash',
+        amount: amountDue,
+      });
+    }
+
+    return payments;
+  };
+
+  /**
+   * Change owed, or `null` when the tender does not cover the sale.
+   *
+   * A preview only - the server recomputes it against its own total and refuses
+   * a shortfall, because the figure a cashier counts into someone's hand has to
+   * match what was actually charged.
+   */
+  const changeDue = useMemo(() => {
+    if (cashTendered === '') return null;
+    const tendered = parseFloat(cashTendered);
+    if (Number.isNaN(tendered)) return null;
+
+    // Against what is *due* - a credit may already have covered part of it.
+    const owed = Math.round(amountDue * 100);
+    const given = Math.round(tendered * 100);
+    return given < owed ? null : (given - owed) / 100;
+    // `calculateTotals` is redefined every render, so depending on it would
+    // defeat the memo entirely. Its inputs are listed instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashTendered, amountDue, cart, appliedDiscounts, taxRate]);
+
+  /**
+   * Note denominations a customer is likely to hand over.
+   *
+   * Rounded up from the total, so a $17.42 sale offers $20 rather than a list of
+   * amounts that cannot cover it.
+   */
+  const quickCashOptions = useMemo(() => {
+    const notes = [5, 10, 20, 50, 100];
+    const above = notes.filter(note => note >= amountDue);
+
+    return [Math.ceil(amountDue), ...above].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountDue, cart, appliedDiscounts, taxRate]);
+
+  const applyQuickDiscount = (discount: PosDiscountType) => {
     // Check if already applied
     if (appliedDiscounts.some(d => d.source === 'quick_discount' && d.id === discount.id)) {
       toast({ title: 'Discount already applied', variant: 'destructive' });
@@ -303,44 +421,86 @@ export default function POS() {
     setPromoLoading(true);
     try {
       const subtotal = calculateSubtotal();
-      const response = await apiClient.post<{ success: boolean; valid: boolean; message?: string; promo?: PromoValidation }>(
-        '/api/discounts/promos/validate',
-        {
-          code: promoCodeInput.trim().toUpperCase(),
-          cartTotal: subtotal,
-          itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
-        }
-      );
+      const { promo } = await discountsApi.promos.validate({
+        code: promoCodeInput.trim().toUpperCase(),
+        cartTotal: subtotal,
+        itemCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+      });
 
-      if (response.success && response.valid && response.promo) {
-        // Check if already applied
-        if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === response.promo.id)) {
-          toast({ title: 'Promo code already applied', variant: 'destructive' });
-          return;
-        }
+      // A rejected code comes back as success:false, which the client raises; the
+      // catch below surfaces the server's reason.
 
-        setAppliedDiscounts([...appliedDiscounts, {
-          source: 'promo_code',
-          id: response.promo.id,
-          code: response.promo.code,
-          name: response.promo.name,
-          type: response.promo.discountType,
-          value: response.promo.discountValue,
-          amount: response.promo.discountAmount,
-        }]);
-
-        setPromoCodeInput("");
-        toast({ 
-          title: 'Promo code applied!', 
-          description: `${response.promo.name} - $${response.promo.discountAmount.toFixed(2)} off` 
-        });
-      } else {
-        toast({ title: response.message || 'Invalid promo code', variant: 'destructive' });
+      // Check if already applied
+      if (appliedDiscounts.some(d => d.source === 'promo_code' && d.id === promo.id)) {
+        toast({ title: 'Promo code already applied', variant: 'destructive' });
+        return;
       }
+
+      // Only these two kinds carry a cart-level amount the register can subtract.
+      // `free_shipping`, `buy_x_get_y`, and `free_item` need line-level handling
+      // this screen does not have, and the server returns 0 for them - applying
+      // one anyway would take nothing off while telling the cashier it worked.
+      if (promo.discountType !== 'percentage' && promo.discountType !== 'fixed') {
+        toast({
+          title: 'Promo code not supported at the register',
+          description: `${promo.name} is a ${promo.discountType.replace(/_/g, ' ')} offer, which has to be applied another way.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setAppliedDiscounts([...appliedDiscounts, {
+        source: 'promo_code',
+        id: promo.id,
+        code: promo.code,
+        name: promo.name,
+        type: promo.discountType,
+        value: promo.discountValue,
+        amount: promo.discountAmount,
+      }]);
+
+      setPromoCodeInput("");
+      toast({
+        title: 'Promo code applied!',
+        description: `${promo.name} - $${promo.discountAmount.toFixed(2)} off`
+      });
     } catch (error: unknown) {
-      toast({ title: 'Failed to validate promo code', description: getErrorMessage(error), variant: 'destructive' });
+      toast({ title: 'Promo code not applied', description: getErrorMessage(error, 'Invalid promo code'), variant: 'destructive' });
     } finally {
       setPromoLoading(false);
+    }
+  };
+
+  const applyStoreCredit = async () => {
+    if (!creditCodeInput.trim()) return;
+
+    setCreditLoading(true);
+    try {
+      const credit = await storeCreditsApi.get(creditCodeInput.trim());
+
+      if (credit.status !== 'active' || credit.remainingAmount <= 0) {
+        toast({
+          title: 'That credit cannot be used',
+          description: `It is ${credit.status} with $${credit.remainingAmount.toFixed(2)} left.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setAppliedCredit(credit);
+      setCreditCodeInput('');
+      toast({
+        title: 'Store credit applied',
+        description: `$${credit.remainingAmount.toFixed(2)} available.`,
+      });
+    } catch (error: unknown) {
+      toast({
+        title: 'Store credit not applied',
+        description: getErrorMessage(error, 'No credit with that code'),
+        variant: 'destructive',
+      });
+    } finally {
+      setCreditLoading(false);
     }
   };
 
@@ -384,22 +544,19 @@ export default function POS() {
     setAppliedDiscounts([]);
   };
 
-  const filterProducts = () => {
-    let filtered = products;
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-    if (selectedCategory !== "All") {
-      filtered = filtered.filter(p => p.category === selectedCategory);
-    }
+    return products.filter(product => {
+      if (selectedCategory !== "All" && product.category !== selectedCategory) return false;
+      if (!query) return true;
 
-    if (searchQuery) {
-      filtered = filtered.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.barcode?.includes(searchQuery)
+      return (
+        product.name.toLowerCase().includes(query) ||
+        Boolean(product.barcode?.includes(query))
       );
-    }
-
-    setFilteredProducts(filtered);
-  };
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   const handleBarcodeSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -539,14 +696,8 @@ export default function POS() {
 
   const handleCompleteCheckout = async () => {
     try {
-      // TODO: Get settings from API when settings endpoint is available
-      const taxRate = 0; // Default to 0 for now
-      
-      const subtotal = calculateSubtotal();
-      const discountTotal = getTotalDiscount();
-      const taxTotal = (subtotal - discountTotal) * taxRate;
-      const total = subtotal - discountTotal + taxTotal;
-      
+      const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
+
       const orderData: CreateOrderRequest = {
         items: cart.map(item => {
           const orderItem: CreateOrderRequest['items'][number] = {
@@ -570,65 +721,51 @@ export default function POS() {
         discountTotal,
         taxTotal,
         total,
+        // The server recomputes the amounts; this says which discounts to honour.
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: selectedPaymentMethod,
+        ...(buildPayments(selectedPaymentMethod) ? { payments: buildPayments(selectedPaymentMethod) } : {}),
+        ...(selectedPaymentMethod === 'Cash' && cashTendered !== ''
+          ? { cashTendered: parseFloat(cashTendered) }
+          : {}),
         // Customer information is optional - only include if provided and not empty
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
 
-      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+      const response = await createOrder.mutateAsync(orderData);
       
-      if (response.success) {
-        // Log discount usage for each applied discount
-        for (const discount of appliedDiscounts) {
-          try {
-            await apiClient.post('/api/discounts/usage', {
-              orderId: response.data.id,
-              discountSource: discount.source,
-              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-              discountCode: discount.code,
-              discountName: discount.name,
-              discountType: discount.type,
-              discountValue: discount.value,
-              discountAmount: discount.amount,
-              customerEmail: customerEmail || undefined,
-            });
+      // Discount usage and promo redemption are recorded by the server as part
+      // of creating the order, from the amounts it validated.
 
-            // Increment promo code usage if applicable
-            if (discount.source === 'promo_code' && discount.id) {
-              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
-            }
-          } catch (error) {
-            console.error('Failed to log discount usage:', error);
-          }
-        }
+      toast({
+        title: "Sale completed!",
+        description: `Order ${response.id} saved successfully`,
+      });
 
-        toast({
-          title: "Sale completed!",
-          description: `Order ${response.data.id} saved successfully`,
-        });
-
-        setLastOrderId(response.data.id);
-        setLastOrderTotal(total);
-        setLastOrderSubtotal(subtotal);
-        setLastOrderTax(taxTotal);
-        setLastOrderDiscount(discountTotal);
-        setLastOrderPaymentMethod(selectedPaymentMethod);
-        setLastOrderItems([...cart]);
-        setLastOrderAuthCode(undefined);
-        setCart([]);
-        setCustomerEmail("");
-        setAppliedDiscounts([]);
-        // Reset to first enabled payment method for next sale
-        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
-        setCheckoutOpen(false);
-        setReceiptDialogOpen(true);
-        
-        // Reload products to update stock
-        await loadProducts();
-      }
+      // Show what the server actually recorded, not what this screen computed.
+      // The two can differ - a price edited since the catalog was cached, or a
+      // discount the server declined - and a receipt has to match the sale.
+      setLastOrderId(response.id);
+      setLastOrderTotal(response.total);
+      setLastOrderSubtotal(response.subtotal);
+      setLastOrderTax(response.taxTotal);
+      setLastOrderDiscount(response.discountTotal);
+      setLastOrderPaymentMethod(selectedPaymentMethod);
+      setLastOrderItems(receiptLinesFrom(response));
+      setLastOrderAuthCode(undefined);
+      setCart([]);
+      setCashTendered('');
+      setAppliedCredit(null);
+      setCustomerEmail("");
+      setAppliedDiscounts([]);
+      // Reset to first enabled payment method for next sale
+      if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+      else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+      else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
+      setCheckoutOpen(false);
+      setReceiptDialogOpen(true);
+      
+      // Stock moved server-side; the order mutation invalidates the catalog cache.
     } catch (error: unknown) {
       toast({
         title: "Error",
@@ -652,36 +789,62 @@ export default function POS() {
   };
 
   const handleChargeCard = async () => {
-    const subtotal = calculateSubtotal();
-    const discountTotal = getTotalDiscount();
-    const taxRate = 0;
-    const taxTotal = (subtotal - discountTotal) * taxRate;
-    const total = subtotal - discountTotal + taxTotal;
-    const amountCents = Math.round(total * 100);
     setTerminalState({ phase: 'charging' });
 
     try {
-      const chargeData = await apiClient.post<{ success: boolean; error?: string; data: { chargeId: string } }>('/api/terminal/charge', {
+      // Ask the server what this cart costs before authorising anything. The
+      // register's own arithmetic is a preview; the server reprices, and if the
+      // two disagree - a price edited since the catalog was cached, a discount
+      // that has since expired - charging the client's figure would take one
+      // amount off the card and record another against the order.
+      //
+      // A rejected discount surfaces here as a thrown error, while the customer's
+      // card is still in their hand.
+      const quote = await ordersApi.quote({
+        items: cart.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId || undefined,
+          quantity: item.quantity,
+          notes: item.notes,
+        })),
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
+      });
+
+      // The card covers what a store credit has not. Charging the full total
+      // here would take the credit's share twice - once off the credit and once
+      // off the card - and the server would then reject the order for
+      // overpayment, after the customer's card was already authorised.
+      const creditShare = appliedCredit
+        ? Math.min(Math.round(appliedCredit.remainingAmount * 100), Math.round(quote.total * 100))
+        : 0;
+
+      // Card processors bill in minor units, so this is the one figure sent in cents.
+      const amountCents = Math.round(quote.total * 100) - creditShare;
+
+      if (amountCents <= 0) {
+        // The credit covers everything; there is nothing to put on a card.
+        setTerminalState({ phase: 'idle' });
+        await completeCardOrder('', undefined);
+        return;
+      }
+
+      const { chargeId } = await terminalApi.charge({
         amount: amountCents,
         currency: 'USD',
         description: 'POS Checkout',
       });
 
-      if (!chargeData.success) throw new Error(chargeData.error || 'Failed to initiate charge');
-
-      const { chargeId } = chargeData.data;
       setTerminalState({ phase: 'waiting', chargeId });
 
       terminalTimeoutRef.current = setTimeout(async () => {
         stopTerminalPolling();
-        await apiClient.post(`/api/terminal/cancel/${chargeId}`, {});
+        await terminalApi.cancel(chargeId);
         setTerminalState({ phase: 'error', errorMessage: 'No response from terminal — charge cancelled' });
       }, 90_000);
 
       terminalPollRef.current = setInterval(async () => {
         try {
-          const statusData = await apiClient.get<{ success: boolean; data: { status: string; authCode?: string; errorMessage?: string } }>(`/api/terminal/status/${chargeId}`);
-          const { status, authCode, errorMessage } = statusData.data;
+          const { status, authCode, errorMessage } = await terminalApi.status(chargeId);
 
           if (status === 'approved') {
             stopTerminalPolling();
@@ -702,9 +865,13 @@ export default function POS() {
         }
       }, 2_000);
     } catch (error: unknown) {
+      // Covers both the pricing call and the terminal. The server's message is
+      // the useful one - "Only 2 left in stock" or "that discount has expired" -
+      // so it wins over the generic fallback, which now only applies when there
+      // is no message at all.
       setTerminalState({
         phase: 'error',
-        errorMessage: error instanceof Error ? getErrorMessage(error) : 'Failed to reach terminal',
+        errorMessage: getErrorMessage(error, 'Could not start the card payment'),
       });
     }
   };
@@ -713,18 +880,14 @@ export default function POS() {
     const { chargeId } = terminalState;
     stopTerminalPolling();
     if (chargeId) {
-      await apiClient.post(`/api/terminal/cancel/${chargeId}`, {}).catch(() => {});
+      await terminalApi.cancel(chargeId).catch(() => {});
     }
     setTerminalState({ phase: 'idle' });
   };
 
   const completeCardOrder = async (chargeId: string, authCode?: string) => {
     try {
-      const taxRate = 0;
-      const subtotal = calculateSubtotal();
-      const discountTotal = getTotalDiscount();
-      const taxTotal = (subtotal - discountTotal) * taxRate;
-      const total = subtotal - discountTotal + taxTotal;
+      const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
       const orderData: CreateOrderRequest & { cardTransactionId?: string; cardAuthCode?: string } = {
         items: cart.map(item => {
@@ -748,66 +911,46 @@ export default function POS() {
         discountTotal,
         taxTotal,
         total,
+        appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: 'Card',
+        ...(buildPayments('Card') ? { payments: buildPayments('Card') } : {}),
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
         cardTransactionId: chargeId,
         cardAuthCode: authCode,
       };
 
-      const response = await apiClient.post<{ success: boolean; data: Order }>('/api/orders', orderData);
+      const response = await createOrder.mutateAsync(orderData);
 
-      if (response.success) {
-        // Log discount usage for each applied discount
-        for (const discount of appliedDiscounts) {
-          try {
-            await apiClient.post('/api/discounts/usage', {
-              orderId: response.data.id,
-              discountSource: discount.source,
-              discountTypeId: discount.source === 'quick_discount' ? discount.id : undefined,
-              promoCodeId: discount.source === 'promo_code' ? discount.id : undefined,
-              discountCode: discount.code,
-              discountName: discount.name,
-              discountType: discount.type,
-              discountValue: discount.value,
-              discountAmount: discount.amount,
-              customerEmail: customerEmail || undefined,
-            });
+      // Discount usage and promo redemption are recorded by the server as part
+      // of creating the order, from the amounts it validated.
 
-            if (discount.source === 'promo_code' && discount.id) {
-              await apiClient.post(`/api/discounts/promos/${discount.id}/use`);
-            }
-          } catch (error) {
-            console.error('Failed to log discount usage:', error);
-          }
-        }
+      toast({
+        title: 'Sale completed!',
+        description: `Order ${response.id} saved successfully`,
+      });
 
-        toast({
-          title: 'Sale completed!',
-          description: `Order ${response.data.id} saved successfully`,
-        });
-
-        setLastOrderId(response.data.id);
-        setLastOrderTotal(total);
-        setLastOrderSubtotal(subtotal);
-        setLastOrderTax(taxTotal);
-        setLastOrderDiscount(discountTotal);
-        setLastOrderPaymentMethod('Card');
-        setLastOrderItems([...cart]);
-        setLastOrderAuthCode(authCode);
-        setCart([]);
-        setCustomerEmail('');
-        setAppliedDiscounts([]);
-        if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
-        else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
-        else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
-        setTerminalState({ phase: 'idle' });
-        setCheckoutOpen(false);
-        setReceiptDialogOpen(true);
-
-        await loadProducts();
-      } else {
-        throw new Error('Order save failed');
-      }
+      // Show what the server actually recorded, not what this screen computed.
+      // The two can differ - a price edited since the catalog was cached, or a
+      // discount the server declined - and a receipt has to match the sale.
+      setLastOrderId(response.id);
+      setLastOrderTotal(response.total);
+      setLastOrderSubtotal(response.subtotal);
+      setLastOrderTax(response.taxTotal);
+      setLastOrderDiscount(response.discountTotal);
+      setLastOrderPaymentMethod('Card');
+      setLastOrderItems(receiptLinesFrom(response));
+      setLastOrderAuthCode(authCode);
+      setCart([]);
+      setCashTendered('');
+      setAppliedCredit(null);
+      setCustomerEmail('');
+      setAppliedDiscounts([]);
+      if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
+      else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
+      else if (paymentMethods.card?.enabled) setSelectedPaymentMethod('Card');
+      setTerminalState({ phase: 'idle' });
+      setCheckoutOpen(false);
+      setReceiptDialogOpen(true);
     } catch (error: unknown) {
       toast({
         title: 'Order save failed',
@@ -847,6 +990,15 @@ export default function POS() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDrawerDialogOpen(true)}
+              className="border-border"
+              size="sm"
+            >
+              <Wallet className="w-4 h-4 mr-1" />
+              Drawer
+            </Button>
             <Button
               variant="outline"
               onClick={() => setReturnDialogOpen(true)}
@@ -961,19 +1113,43 @@ export default function POS() {
 
           {/* Products Grid */}
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onClick={() => handleProductClick(product)}
-                />
-              ))}
-            </div>
-            {filteredProducts.length === 0 && (
+            {productsPending ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Loader2 className="w-10 h-10 text-muted-foreground/50 mb-4 animate-spin" />
+                <p className="text-muted-foreground">Loading catalog…</p>
+              </div>
+            ) : productsFailed ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <AlertTriangle className="w-12 h-12 text-destructive/70 mb-4" />
+                <p className="font-medium text-foreground">Catalog unavailable</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  {getErrorMessage(productsError, 'Could not reach the product service.')}
+                </p>
+                <Button variant="outline" className="mt-4" onClick={() => refetchProducts()}>
+                  Try again
+                </Button>
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Package className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                <p className="text-muted-foreground">No products found</p>
+                <p className="text-muted-foreground">
+                  {products.length === 0 ? 'No products in the catalog yet' : 'No products found'}
+                </p>
+                {products.length > 0 && (
+                  <p className="text-sm text-muted-foreground/70 mt-1">
+                    Try a different search or category
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {filteredProducts.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onClick={() => handleProductClick(product)}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -1218,6 +1394,113 @@ export default function POS() {
             </div>
           </div>
 
+          {/* Store credit — a tender, applied before the rest is paid */}
+          <div className="border-t pt-4">
+            <Label htmlFor="storeCredit" className="text-sm font-medium mb-3 block">
+              Store Credit
+            </Label>
+
+            {appliedCredit ? (
+              <div className="flex items-center justify-between rounded-md bg-accent/10 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{appliedCredit.code}</p>
+                  <p className="text-xs text-muted-foreground">
+                    ${creditApplied.toFixed(2)} applied
+                    {creditApplied < appliedCredit.remainingAmount &&
+                      ` — $${(appliedCredit.remainingAmount - creditApplied).toFixed(2)} stays on the credit`}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Input
+                  id="storeCredit"
+                  placeholder="Credit code"
+                  value={creditCodeInput}
+                  onChange={(e) => setCreditCodeInput(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && applyStoreCredit()}
+                />
+                <Button
+                  data-testid="apply-store-credit"
+                  variant="outline"
+                  onClick={applyStoreCredit}
+                  disabled={creditLoading}
+                >
+                  {creditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+                </Button>
+              </div>
+            )}
+
+            {appliedCredit && amountDue > 0 && (
+              <p className="mt-2 text-sm">
+                <span className="text-muted-foreground">Still due: </span>
+                <span className="font-semibold tabular-nums">${amountDue.toFixed(2)}</span>
+              </p>
+            )}
+            {appliedCredit && amountDue === 0 && (
+              <p className="mt-2 text-sm font-medium text-accent-foreground">
+                The credit covers this sale in full.
+              </p>
+            )}
+          </div>
+
+          {/* Cash tendered */}
+          {selectedPaymentMethod === 'Cash' && amountDue > 0 && (
+            <div className="border-t pt-4">
+              <Label htmlFor="cashTendered" className="text-sm font-medium mb-3 block">
+                Cash Received
+              </Label>
+
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {quickCashOptions.map(amount => (
+                  <Button
+                    key={amount}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCashTendered(amount.toFixed(2))}
+                  >
+                    ${amount}
+                  </Button>
+                ))}
+              </div>
+
+              <Input
+                id="cashTendered"
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                placeholder="Amount received"
+                value={cashTendered}
+                onChange={(e) => setCashTendered(e.target.value)}
+              />
+
+              {cashTendered !== '' && (
+                <div
+                  className={`mt-3 flex items-center justify-between rounded-md px-3 py-2 ${
+                    changeDue === null
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-accent/10 text-foreground'
+                  }`}
+                >
+                  {changeDue === null ? (
+                    <span className="text-sm font-medium">
+                      ${(calculateTotals().total - (parseFloat(cashTendered) || 0)).toFixed(2)} short
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-sm font-medium">Change due</span>
+                      <span className="text-lg font-bold tabular-nums">${changeDue.toFixed(2)}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Applied Discounts */}
           {appliedDiscounts.length > 0 && (
             <div className="border-t pt-4">
@@ -1364,17 +1647,22 @@ export default function POS() {
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={terminalState.phase === 'charging' || terminalState.phase === 'waiting' || terminalState.phase === 'approved'}
             >
-              Complete Sale - ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
+              {/* What the customer actually pays now: the priced total less any
+                  store credit. The old label showed subtotal minus discount,
+                  which ignored tax and, once credits arrived, the credit too. */}
+              Complete Sale - ${amountDue.toFixed(2)}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Quick Return Dialog */}
+      <CashDrawerDialog open={drawerDialogOpen} onOpenChange={setDrawerDialogOpen} />
+
       <QuickReturnDialog
         open={returnDialogOpen}
         onClose={() => setReturnDialogOpen(false)}
-        onComplete={() => loadProducts()}
+        onComplete={() => refetchProducts()}
       />
     </div>
   );

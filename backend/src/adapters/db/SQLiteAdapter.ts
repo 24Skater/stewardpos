@@ -3,7 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import logger from '../../utils/logger';
-import { DatabaseError } from '../../utils/errors';
+import { DatabaseError, ValidationError } from '../../utils/errors';
+import { escapeLike } from './like';
 import { DbRow, asRows } from './types';
 
 export interface SQLiteConfig {
@@ -26,6 +27,105 @@ export interface TerminalTransactionUpdate {
   errorMessage?: string;
   orderId?: string;
   durationMs?: number;
+}
+
+
+/** Turn a `store_credits` row into the camelCase DTO the API publishes. */
+export function mapStoreCreditRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerEmail: row.customer_email,
+    returnId: row.return_id,
+    code: row.code,
+    originalAmount: Number(row.original_amount),
+    remainingAmount: Number(row.remaining_amount),
+    status: row.status,
+    expiresAt: row.expires_at ?? null,
+    createdAt: row.created_at,
+    usedAt: row.used_at ?? null,
+    usedOrderId: row.used_order_id,
+  };
+}
+
+
+/**
+ * Turn an `orders` row into the camelCase DTO the API publishes.
+ *
+ * The counterpart of `mapOrderRow` in the Postgres adapter, and extracted for
+ * the same reason: this shape was written out inline at five call sites, so a
+ * new column had to be remembered five times. The card fields were already
+ * missing from every read path here.
+ */
+export function mapOrderRow(order: DbRow): DbRow {
+  return {
+    id: order.id,
+    createdAt: order.created_at,
+    subtotal: order.subtotal,
+    discountTotal: order.discount_total,
+    taxTotal: order.tax_total,
+    total: order.total,
+    paymentMethod: order.payment_method,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    cardTransactionId: order.card_transaction_id ?? null,
+    cardAuthCode: order.card_auth_code ?? null,
+    // Null on card and other tenders, and on orders predating the columns.
+    amountTendered: order.amount_tendered ?? null,
+    changeGiven: order.change_given ?? null,
+  };
+}
+
+
+/** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
+export function mapDrawerSessionRow(row: DbRow): DbRow {
+  const money = (value: unknown) => (value == null ? null : Number(value));
+
+  return {
+    id: row.id,
+    openedBy: row.opened_by,
+    openedByName: row.opened_by_name ?? null,
+    closedBy: row.closed_by,
+    closedByName: row.closed_by_name ?? null,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at ?? null,
+    openingFloat: money(row.opening_float),
+    expectedCash: money(row.expected_cash),
+    countedCash: money(row.counted_cash),
+    variance: money(row.variance),
+    notes: row.notes ?? null,
+    status: row.status,
+  };
+}
+
+
+/** Turn a `payments` row into the camelCase DTO the API publishes. */
+export function mapPaymentRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    method: row.method,
+    amount: Number(row.amount),
+    reference: row.reference ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+
+/** Turn a `product_variants` row into the camelCase DTO the API publishes. */
+export function mapVariantRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    size: row.size,
+    color: row.color,
+    priceOverride: row.price_override ?? null,
+    priceDelta: row.price_delta ?? null,
+    sku: row.sku,
+    barcode: row.barcode,
+    stock: row.stock,
+    enabled: Boolean(row.enabled),
+    lowStockThreshold: row.low_stock_threshold ?? null,
+  };
 }
 
 export class SQLiteAdapter {
@@ -103,6 +203,8 @@ export class SQLiteAdapter {
         name: user.name,
         roleIds,
         status: user.status,
+        // See the Postgres adapter: null until a second organization exists.
+        orgId: user.org_id ?? null,
         lastLoginAt: user.last_login_at,
         createdAt: user.created_at,
         roles,
@@ -126,11 +228,63 @@ export class SQLiteAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<DbRow[]> {
+  /** See the Postgres adapter: `limit` is opt-in, with no default cap. */
+  async getAllProducts(query: {
+    q?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<{ products: DbRow[]; total: number }> {
     try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.q) {
+        // See the Postgres adapter: unescaped, a search for `%` matched the
+        // whole catalog. SQLite additionally needs the ESCAPE clause spelled
+        // out — unlike Postgres it has no default escape character, so the
+        // backslashes would otherwise be matched as literal backslashes.
+        const like = `%${escapeLike(query.q)}%`;
+        conditions.push(`(
+          p.name LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR p.barcode LIKE ? ESCAPE '\\' COLLATE NOCASE
+          OR EXISTS (
+            SELECT 1 FROM product_variants v
+            WHERE v.product_id = p.id
+              AND (v.sku LIKE ? ESCAPE '\\' COLLATE NOCASE
+                   OR v.barcode LIKE ? ESCAPE '\\' COLLATE NOCASE)
+          )
+        )`);
+        params.push(like, like, like, like);
+      }
+
+      if (query.category) {
+        conditions.push('p.category = ?');
+        params.push(query.category);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const { total } = this.db
+        .prepare(`SELECT COUNT(*) AS total FROM products p ${where}`)
+        .get(...params) as { total: number };
+
+      let paging = '';
+      const pagingParams: unknown[] = [];
+      if (query.limit != null) {
+        paging += ' LIMIT ?';
+        pagingParams.push(query.limit);
+      }
+      if (query.offset != null) {
+        // SQLite requires a LIMIT before OFFSET; -1 means "no limit".
+        if (query.limit == null) paging += ' LIMIT -1';
+        paging += ' OFFSET ?';
+        pagingParams.push(query.offset);
+      }
+
       const products = this.db
-        .prepare('SELECT * FROM products ORDER BY name ASC')
-        .all() as DbRow[];
+        .prepare(`SELECT p.* FROM products p ${where} ORDER BY p.name ASC${paging}`)
+        .all(...params, ...pagingParams) as DbRow[];
 
       // Get variants for each product
       const productsWithVariants = products.map((product) => {
@@ -146,23 +300,13 @@ export class SQLiteAdapter {
           basePrice: product.base_price,
           image: product.image,
           barcode: product.barcode,
-          variants: variants.map((v) => ({
-            id: v.id,
-            size: v.size,
-            color: v.color,
-            priceOverride: v.price_override,
-            priceDelta: v.price_delta,
-            sku: v.sku,
-            barcode: v.barcode,
-            stock: v.stock,
-            enabled: v.enabled === 1,
-          })),
+          variants: variants.map(mapVariantRow),
           createdAt: product.created_at,
           updatedAt: product.updated_at,
         };
       });
 
-      return productsWithVariants;
+      return { products: productsWithVariants, total };
     } catch (error) {
       logger.error('Error getting all products:', error);
       throw new DatabaseError('Failed to get products');
@@ -191,17 +335,7 @@ export class SQLiteAdapter {
         basePrice: product.base_price,
         image: product.image,
         barcode: product.barcode,
-        variants: variants.map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color,
-          priceOverride: v.price_override,
-          priceDelta: v.price_delta,
-          sku: v.sku,
-          barcode: v.barcode,
-          stock: v.stock,
-          enabled: v.enabled === 1,
-        })),
+        variants: variants.map(mapVariantRow),
         createdAt: product.created_at,
         updatedAt: product.updated_at,
       };
@@ -221,12 +355,12 @@ export class SQLiteAdapter {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
-          product.name,
-          product.description,
-          product.category,
-          product.basePrice,
-          product.image,
-          product.barcode,
+          product.name ?? null,
+          product.description ?? null,
+          product.category ?? null,
+          product.basePrice ?? null,
+          product.image ?? null,
+          product.barcode ?? null,
           now,
           now
         );
@@ -264,17 +398,7 @@ export class SQLiteAdapter {
             .prepare('SELECT * FROM product_variants WHERE rowid = ?')
             .get(variantResult.lastInsertRowid) as any;
 
-          variants.push({
-            id: createdVariant.id,
-            size: createdVariant.size,
-            color: createdVariant.color,
-            priceOverride: createdVariant.price_override,
-            priceDelta: createdVariant.price_delta,
-            sku: createdVariant.sku,
-            barcode: createdVariant.barcode,
-            stock: createdVariant.stock,
-            enabled: createdVariant.enabled === 1,
-          });
+          variants.push(mapVariantRow(createdVariant));
         }
       }
 
@@ -305,9 +429,17 @@ export class SQLiteAdapter {
       const now = Date.now();
       const result = this.db
         .prepare(
+          // COALESCE for the same reason as the Postgres adapter: every field on
+          // the update schema is optional, and writing the parameters straight
+          // through wipes whatever the caller did not send.
           `UPDATE products 
-           SET name = ?, description = ?, category = ?, base_price = ?, 
-               image = ?, barcode = ?, updated_at = ?
+           SET name = COALESCE(?, name),
+               description = COALESCE(?, description),
+               category = COALESCE(?, category),
+               base_price = COALESCE(?, base_price),
+               image = COALESCE(?, image),
+               barcode = COALESCE(?, barcode),
+               updated_at = ?
            WHERE id = ?`
         )
         .run(
@@ -365,8 +497,8 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
@@ -378,7 +510,9 @@ export class SQLiteAdapter {
           order.customerEmail,
           order.customerPhone,
           order.cardTransactionId ?? null,
-          order.cardAuthCode ?? null
+          order.cardAuthCode ?? null,
+          order.amountTendered ?? null,
+          order.changeGiven ?? null
         );
 
       const createdOrder = this.db
@@ -417,34 +551,82 @@ export class SQLiteAdapter {
 
           // Update variant stock if variantId is provided
           if (item.variantId) {
-            this.db
+            // Conditional for the same reason as the Postgres adapter: clamping
+            // at zero reported success on an oversell instead of failing.
+            const stockResult = this.db
               .prepare(
                 `UPDATE product_variants 
-                 SET stock = MAX(0, stock - ?)
-                 WHERE id = ?`
+                 SET stock = stock - ?
+                 WHERE id = ? AND stock >= ?`
               )
-              .run(item.quantity, item.variantId);
+              .run(item.quantity, item.variantId, item.quantity);
+
+            if (stockResult.changes === 0) {
+              throw new ValidationError(
+                `Not enough stock for "${item.nameSnapshot ?? item.productId}"`
+              );
+            }
           }
         }
       }
 
+      // See the Postgres adapter: payments and any store credit they spend belong
+      // in the same transaction as the order and its stock movements.
+      const payments: DbRow[] = [];
+      if (Array.isArray(order.payments)) {
+        for (const payment of order.payments as Array<Record<string, unknown>>) {
+          if (payment.method === 'store_credit') {
+            const redeemed = this.db
+              .prepare(
+                `UPDATE store_credits
+                 SET remaining_amount = remaining_amount - ?,
+                     status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
+                     used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+                     used_order_id = ?
+                 WHERE UPPER(code) = UPPER(?)
+                   AND status = 'active'
+                   AND remaining_amount >= ?
+                   AND (expires_at IS NULL OR expires_at > ?)`
+              )
+              .run(
+                payment.amount, payment.amount, payment.amount, now,
+                createdOrder.id, payment.reference, payment.amount, now
+              );
+
+            if (redeemed.changes === 0) {
+              throw new ValidationError(
+                'That store credit is not available for the amount requested'
+              );
+            }
+          }
+
+          const paymentId = crypto.randomUUID();
+          this.db
+            .prepare(
+              `INSERT INTO payments (id, order_id, method, amount, reference, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`
+            )
+            .run(paymentId, createdOrder.id, payment.method, payment.amount, payment.reference ?? null, now);
+
+          payments.push(
+            mapPaymentRow(this.db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId) as DbRow)
+          );
+        }
+      }
+
       return {
-        id: createdOrder.id,
-        createdAt: createdOrder.created_at,
-        subtotal: createdOrder.subtotal,
-        discountTotal: createdOrder.discount_total,
-        taxTotal: createdOrder.tax_total,
-        total: createdOrder.total,
-        paymentMethod: createdOrder.payment_method,
-        customerEmail: createdOrder.customer_email,
-        customerPhone: createdOrder.customer_phone,
+        ...mapOrderRow(createdOrder),
         items,
+        payments,
       };
     });
 
     try {
       return transaction();
     } catch (error) {
+      // A stock conflict is the caller's problem: keep it a 400.
+      if (error instanceof ValidationError) throw error;
+
       logger.error('Error creating order:', error);
       throw new DatabaseError('Failed to create order');
     }
@@ -490,15 +672,7 @@ export class SQLiteAdapter {
       }
 
       return orders.map((order) => ({
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -521,16 +695,14 @@ export class SQLiteAdapter {
         .prepare('SELECT * FROM order_items WHERE order_id = ?')
         .all(id) as DbRow[];
 
+      // See the Postgres adapter: a receipt needs the tender breakdown, not just
+      // the 'Split' summary.
+      const payments = this.db
+        .prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY created_at')
+        .all(id) as DbRow[];
+
       return {
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: items.map((item) => ({
           id: item.id,
           orderId: item.order_id,
@@ -545,6 +717,7 @@ export class SQLiteAdapter {
           lineTotal: item.line_total,
           notes: item.notes,
         })),
+        payments: payments.map(mapPaymentRow),
       };
     } catch (error) {
       logger.error('Error getting order by ID:', error);
@@ -1918,15 +2091,7 @@ export class SQLiteAdapter {
           .all(order.id) as DbRow[];
 
         return {
-          id: order.id,
-          createdAt: order.created_at,
-          subtotal: order.subtotal,
-          discountTotal: order.discount_total,
-          taxTotal: order.tax_total,
-          total: order.total,
-          paymentMethod: order.payment_method,
-          customerEmail: order.customer_email,
-          customerPhone: order.customer_phone,
+          ...mapOrderRow(order),
           items: items.map((item) => ({
             id: item.id,
             orderId: item.order_id,
@@ -2268,9 +2433,14 @@ export class SQLiteAdapter {
         ).all(ret.id) as DbRow[];
         ret.items = items.map(item => ({
           id: item.id,
+          // See the Postgres adapter: needed to tell how much of a given order
+          // line has already been returned.
+          originalOrderItemId: item.original_order_item_id,
           productId: item.product_id,
+          variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,
           returnQuantity: item.return_quantity,
+          unitPrice: item.unit_price,
           lineTotal: item.line_total,
         }));
       }
@@ -2512,10 +2682,56 @@ export class SQLiteAdapter {
         Date.now()
       );
 
-      return this.db.prepare('SELECT * FROM store_credits WHERE id = ?').get(id);
+      return mapStoreCreditRow(
+        this.db.prepare('SELECT * FROM store_credits WHERE id = ?').get(id) as DbRow
+      );
     } catch (error) {
       logger.error('Error creating store credit:', error);
       throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async getStoreCreditByCode(code: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT * FROM store_credits WHERE UPPER(code) = UPPER(?)')
+        .get(code) as DbRow | undefined;
+      return row ? mapStoreCreditRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting store credit:', error);
+      throw new DatabaseError('Failed to get store credit');
+    }
+  }
+
+  /**
+   * Spend part or all of a store credit.
+   *
+   * The balance check is in the `WHERE` clause for the same reason as the
+   * Postgres adapter: checking first and updating after lets two registers
+   * spend the same code.
+   */
+  async redeemStoreCredit(code: string, amount: number, orderId?: string): Promise<DbRow | null> {
+    try {
+      const now = Date.now();
+      const result = this.db
+        .prepare(
+          `UPDATE store_credits
+           SET remaining_amount = remaining_amount - ?,
+               status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
+               used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+               used_order_id = COALESCE(?, used_order_id)
+           WHERE UPPER(code) = UPPER(?)
+             AND status = 'active'
+             AND remaining_amount >= ?
+             AND (expires_at IS NULL OR expires_at > ?)`
+        )
+        .run(amount, amount, amount, now, orderId ?? null, code, amount, now);
+
+      if (result.changes === 0) return null;
+      return this.getStoreCreditByCode(code);
+    } catch (error) {
+      logger.error('Error redeeming store credit:', error);
+      throw new DatabaseError('Failed to redeem store credit');
     }
   }
 
@@ -2626,8 +2842,11 @@ export class SQLiteAdapter {
       const params: unknown[] = [];
 
       if (filters.query) {
-        query += ' AND (o.id LIKE ? OR o.customer_email LIKE ?)';
-        params.push(`%${filters.query}%`, `%${filters.query}%`);
+        // See the Postgres adapter. SQLite needs the ESCAPE clause spelled out,
+        // having no default escape character of its own.
+        query += " AND (o.id LIKE ? ESCAPE '\\' OR o.customer_email LIKE ? ESCAPE '\\')";
+        const like = `%${escapeLike(filters.query)}%`;
+        params.push(like, like);
       }
       if (filters.startDate) {
         query += ' AND o.created_at >= ?';
@@ -2668,15 +2887,7 @@ export class SQLiteAdapter {
       const orders = this.db.prepare(query).all(...params) as any[];
 
       return orders.map(order => ({
-        id: order.id,
-        createdAt: order.created_at,
-        subtotal: order.subtotal,
-        discountTotal: order.discount_total,
-        taxTotal: order.tax_total,
-        total: order.total,
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         itemCount: order.item_count,
       }));
     } catch (error) {
@@ -3312,4 +3523,373 @@ export class SQLiteAdapter {
       throw new DatabaseError('Failed to update terminal transaction');
     }
   }
+
+  // ===== Cash drawer sessions =====
+
+  async getOpenDrawerSession(): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT s.*, o.name AS opened_by_name
+           FROM cash_drawer_sessions s
+           LEFT JOIN users o ON s.opened_by = o.id
+           WHERE s.status = 'open' LIMIT 1`
+        )
+        .get() as DbRow | undefined;
+      return row ? mapDrawerSessionRow(row) : null;
+    } catch (error) {
+      logger.error('Error getting open drawer session:', error);
+      throw new DatabaseError('Failed to get drawer session');
+    }
+  }
+
+  /** See the Postgres adapter: the unique index is what enforces exclusivity. */
+  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+    try {
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO cash_drawer_sessions (id, opened_by, opened_at, opening_float, status)
+           VALUES (?, ?, ?, ?, 'open')`
+        )
+        .run(id, userId ?? null, Date.now(), openingFloat);
+
+      return mapDrawerSessionRow(
+        this.db.prepare('SELECT * FROM cash_drawer_sessions WHERE id = ?').get(id) as DbRow
+      );
+    } catch (error) {
+      if (String((error as Error).message).includes('UNIQUE')) {
+        throw new ValidationError('A drawer session is already open');
+      }
+      logger.error('Error opening drawer session:', error);
+      throw new DatabaseError('Failed to open drawer session');
+    }
+  }
+
+  /** Float, plus cash taken in, less change given out, for this session. */
+  async getExpectedDrawerCash(sessionId: string): Promise<number> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT
+             s.opening_float
+               + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+               AS expected
+           FROM cash_drawer_sessions s
+           LEFT JOIN orders o
+             ON LOWER(o.payment_method) = 'cash'
+            AND o.created_at >= s.opened_at
+            AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+           WHERE s.id = ?
+           GROUP BY s.opening_float`
+        )
+        .get(sessionId) as DbRow | undefined;
+      return row ? Number(row.expected) : 0;
+    } catch (error) {
+      logger.error('Error computing expected drawer cash:', error);
+      throw new DatabaseError('Failed to compute expected cash');
+    }
+  }
+
+  async closeDrawerSession(
+    sessionId: string,
+    countedCash: number,
+    expectedCash: number,
+    userId?: string,
+    notes?: string
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE cash_drawer_sessions
+           SET status = 'closed', closed_at = ?, closed_by = ?,
+               counted_cash = ?, expected_cash = ?, variance = ? - ?, notes = ?
+           WHERE id = ? AND status = 'open'`
+        )
+        .run(Date.now(), userId ?? null, countedCash, expectedCash, countedCash, expectedCash, notes ?? null, sessionId);
+
+      if (result.changes === 0) return null;
+      return mapDrawerSessionRow(
+        this.db.prepare('SELECT * FROM cash_drawer_sessions WHERE id = ?').get(sessionId) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error closing drawer session:', error);
+      throw new DatabaseError('Failed to close drawer session');
+    }
+  }
+
+  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+           FROM cash_drawer_sessions s
+           LEFT JOIN users o ON s.opened_by = o.id
+           LEFT JOIN users c ON s.closed_by = c.id
+           ORDER BY s.opened_at DESC LIMIT ?`
+        )
+        .all(limit) as DbRow[];
+      return rows.map(mapDrawerSessionRow);
+    } catch (error) {
+      logger.error('Error listing drawer sessions:', error);
+      throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
+
+  // ===== Product variants =====
+
+  /** See the Postgres adapter for why these exist. */
+  async createVariant(productId: string, variant: Record<string, unknown>): Promise<DbRow | null> {
+    try {
+      const product = this.db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+      if (!product) return null;
+
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO product_variants
+           (id, product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+            low_stock_threshold)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id, productId, variant.size ?? null, variant.color ?? null,
+          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          variant.sku ?? null, variant.barcode ?? null,
+          variant.stock ?? 0, variant.enabled !== false ? 1 : 0,
+          variant.lowStockThreshold ?? null
+        );
+
+      return mapVariantRow(
+        this.db.prepare('SELECT * FROM product_variants WHERE id = ?').get(id) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error creating variant:', error);
+      throw new DatabaseError('Failed to create variant');
+    }
+  }
+
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    variant: Record<string, unknown>
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE product_variants
+           SET size = COALESCE(?, size),
+               color = COALESCE(?, color),
+               price_override = COALESCE(?, price_override),
+               price_delta = COALESCE(?, price_delta),
+               sku = COALESCE(?, sku),
+               barcode = COALESCE(?, barcode),
+               stock = COALESCE(?, stock),
+               enabled = COALESCE(?, enabled),
+               -- See the Postgres adapter: explicit null clears the override.
+               low_stock_threshold = CASE
+                 WHEN ? = 1 THEN NULL
+                 ELSE COALESCE(?, low_stock_threshold)
+               END
+           WHERE id = ? AND product_id = ?`
+        )
+        .run(
+          variant.size ?? null, variant.color ?? null,
+          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          variant.sku ?? null, variant.barcode ?? null,
+          variant.stock ?? null,
+          variant.enabled === undefined ? null : variant.enabled ? 1 : 0,
+          'lowStockThreshold' in variant && variant.lowStockThreshold === null ? 1 : 0,
+          variant.lowStockThreshold ?? null,
+          variantId, productId
+        );
+
+      if (result.changes === 0) return null;
+      return mapVariantRow(
+        this.db.prepare('SELECT * FROM product_variants WHERE id = ?').get(variantId) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error updating variant:', error);
+      throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  // ===== Categories =====
+  // See the Postgres adapter for why `products.category` holds the name rather
+  // than a foreign key, and what that costs on rename and delete.
+
+  async getAllCategories(): Promise<DbRow[]> {
+    try {
+      return this.db
+        .prepare(
+          `SELECT c.id, c.name, c.icon, COUNT(p.id) AS productCount
+           FROM categories c
+           LEFT JOIN products p ON p.category = c.name
+           GROUP BY c.id, c.name, c.icon
+           ORDER BY c.name ASC`
+        )
+        .all() as DbRow[];
+    } catch (error) {
+      logger.error('Error getting categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /** See the Postgres adapter: names products use that no category row defines. */
+  async getUnmanagedCategories(): Promise<DbRow[]> {
+    try {
+      return this.db
+        .prepare(
+          `SELECT p.category AS name, COUNT(*) AS productCount
+           FROM products p
+           LEFT JOIN categories c ON c.name = p.category
+           WHERE c.id IS NULL AND p.category IS NOT NULL AND p.category <> ''
+           GROUP BY p.category
+           ORDER BY p.category ASC`
+        )
+        .all() as DbRow[];
+    } catch (error) {
+      logger.error('Error getting unmanaged categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  async createCategory(name: string, icon: string | null): Promise<DbRow | null> {
+    try {
+      const clash = this.db
+        .prepare('SELECT id FROM categories WHERE LOWER(name) = LOWER(?)')
+        .get(name);
+      if (clash) return null;
+
+      const id = crypto.randomUUID();
+      this.db.prepare('INSERT INTO categories (id, name, icon) VALUES (?, ?, ?)').run(id, name, icon);
+      return { id, name, icon, productCount: 0 };
+    } catch (error) {
+      logger.error('Error creating category:', error);
+      throw new DatabaseError('Failed to create category');
+    }
+  }
+
+  async renameCategory(
+    id: string,
+    name: string,
+    icon: string | null | undefined
+  ): Promise<DbRow | null | 'duplicate'> {
+    try {
+      const run = this.db.transaction(() => {
+        const existing = this.db.prepare('SELECT name FROM categories WHERE id = ?').get(id) as
+          | { name: string }
+          | undefined;
+        if (!existing) return null;
+
+        const clash = this.db
+          .prepare('SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id <> ?')
+          .get(name, id);
+        if (clash) return 'duplicate' as const;
+
+        this.db
+          .prepare('UPDATE categories SET name = ?, icon = COALESCE(?, icon) WHERE id = ?')
+          .run(name, icon ?? null, id);
+        const moved = this.db
+          .prepare('UPDATE products SET category = ? WHERE category = ?')
+          .run(name, existing.name);
+
+        return { id, name, icon: icon ?? null, productCount: moved.changes } as DbRow;
+      });
+      return run();
+    } catch (error) {
+      logger.error('Error renaming category:', error);
+      throw new DatabaseError('Failed to rename category');
+    }
+  }
+
+  async deleteCategory(
+    id: string,
+    reassignTo?: string
+  ): Promise<'deleted' | 'not_found' | { inUse: number } | 'bad_target'> {
+    try {
+      const run = this.db.transaction(() => {
+        const existing = this.db.prepare('SELECT name FROM categories WHERE id = ?').get(id) as
+          | { name: string }
+          | undefined;
+        if (!existing) return 'not_found' as const;
+
+        const { count } = this.db
+          .prepare('SELECT COUNT(*) AS count FROM products WHERE category = ?')
+          .get(existing.name) as { count: number };
+
+        if (count > 0) {
+          if (!reassignTo) return { inUse: count };
+
+          const target = this.db
+            .prepare('SELECT name FROM categories WHERE LOWER(name) = LOWER(?) AND id <> ?')
+            .get(reassignTo, id) as { name: string } | undefined;
+          if (!target) return 'bad_target' as const;
+
+          this.db
+            .prepare('UPDATE products SET category = ? WHERE category = ?')
+            .run(target.name, existing.name);
+        }
+
+        this.db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+        return 'deleted' as const;
+      });
+      return run();
+    } catch (error) {
+      logger.error('Error deleting category:', error);
+      throw new DatabaseError('Failed to delete category');
+    }
+  }
+
+  /** See the Postgres adapter for the reasoning behind the fallback and ordering. */
+  async getLowStockVariants(defaultThreshold: number): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT v.*, p.id AS product_id, p.name AS product_name, p.category
+           FROM product_variants v
+           JOIN products p ON p.id = v.product_id
+           WHERE v.enabled = 1
+             AND v.stock <= COALESCE(v.low_stock_threshold, ?)
+           ORDER BY v.stock - COALESCE(v.low_stock_threshold, ?) ASC, p.name ASC`
+        )
+        .all(defaultThreshold, defaultThreshold) as DbRow[];
+
+      return rows.map((row) => ({
+        ...mapVariantRow(row),
+        productId: row.product_id,
+        productName: row.product_name,
+        category: row.category,
+        threshold: row.low_stock_threshold ?? defaultThreshold,
+      }));
+    } catch (error) {
+      logger.error('Error loading low stock variants:', error);
+      throw new DatabaseError('Failed to load low stock');
+    }
+  }
+
+  async deleteVariant(productId: string, variantId: string): Promise<'deleted' | 'not_found' | 'last'> {
+    try {
+      const { count } = this.db
+        .prepare('SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ?')
+        .get(productId) as { count: number };
+
+      if (count <= 1) {
+        const exists = this.db
+          .prepare('SELECT id FROM product_variants WHERE id = ? AND product_id = ?')
+          .get(variantId, productId);
+        return exists ? 'last' : 'not_found';
+      }
+
+      const result = this.db
+        .prepare('DELETE FROM product_variants WHERE id = ? AND product_id = ?')
+        .run(variantId, productId);
+      return result.changes > 0 ? 'deleted' : 'not_found';
+    } catch (error) {
+      logger.error('Error deleting variant:', error);
+      throw new DatabaseError('Failed to delete variant');
+    }
+  }
+
 }

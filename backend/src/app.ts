@@ -6,15 +6,19 @@ import path from 'path';
 import config from './config';
 import { errorHandler } from './api/middleware/errorHandler';
 import { requestLogger } from './api/middleware/requestLogger';
+import logger from './utils/logger';
 
 // Import routes
 import authRoutes from './api/routes/auth';
 import productsRoutes from './api/routes/products';
+import categoriesRoutes from './api/routes/categories';
 import ordersRoutes from './api/routes/orders';
 import customersRoutes from './api/routes/customers';
 import servicesRoutes from './api/routes/services';
 import quotesRoutes from './api/routes/quotes';
 import returnsRoutes from './api/routes/returns';
+import storeCreditsRoutes from './api/routes/storeCredits';
+import drawerRoutes from './api/routes/drawer';
 import receiptsRoutes from './api/routes/receipts';
 import discountsRoutes from './api/routes/discounts';
 import uploadRoutes from './api/routes/upload';
@@ -47,15 +51,27 @@ app.use(cors({
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    // Refuse by omitting the CORS headers rather than raising. Throwing here
+    // reached the error handler as an unclassified Error and surfaced as a 500,
+    // which reads as "the server broke" in logs and monitoring when the truth is
+    // that a caller was turned away by policy. The browser blocks the response
+    // either way; this just stops a policy decision looking like an outage.
+    logger.warn(`Blocked cross-origin request from ${origin}`);
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Only when configured: see the note on `trustProxy` in config. Rate limiting
+// depends on this to see the real client, and it is unsafe to assume.
+if (config.trustProxy > 0) {
+  app.set('trust proxy', config.trustProxy);
+}
 
 // Rate limiting
 const limiter = rateLimit({
@@ -66,6 +82,27 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/', limiter);
+
+/**
+ * Brute-force protection for sign-in.
+ *
+ * The global limiter is sized for a busy shop, which makes it useless against
+ * password guessing - thousands of attempts would fit inside it. This is a
+ * separate, much smaller budget in front of `/api/auth/login` only.
+ *
+ * `skipSuccessfulRequests` is what makes a tight limit safe: only failures
+ * count, so a shift change where six cashiers sign in one after another spends
+ * nothing, while an attacker gets ten guesses a quarter-hour.
+ */
+const loginLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxLoginAttempts,
+  skipSuccessfulRequests: true,
+  message: 'Too many sign-in attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/login', loginLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -86,11 +123,14 @@ app.use('/api/setup', setupRoutes);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/categories', categoriesRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/customers', customersRoutes);
 app.use('/api/services', servicesRoutes);
 app.use('/api/quotes', quotesRoutes);
 app.use('/api/returns', returnsRoutes);
+app.use('/api/store-credits', storeCreditsRoutes);
+app.use('/api/drawer', drawerRoutes);
 app.use('/api/receipts', receiptsRoutes);
 app.use('/api/discounts', discountsRoutes);
 app.use('/api/upload', uploadRoutes);

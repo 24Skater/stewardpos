@@ -6,8 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiClient } from '@/lib/api-client';
-import type { Product, CreateProductRequest, UpdateProductRequest } from '@/lib/api-types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { adminApi, categoriesApi, productsApi, uploadApi } from '@/lib/api';
+import type {
+  Category,
+  CreateProductRequest,
+  Product,
+  UnmanagedCategory,
+  UpdateProductRequest,
+} from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -19,12 +26,18 @@ import { getErrorMessage } from '@/lib/errors';
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
+  /** Products the server considers low, by its threshold rather than this screen's. */
+  const [lowStockProductIds, setLowStockProductIds] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<Category[]>([]);
+  /** Names products use that no category defines — visible so they can be fixed. */
+  const [unmanagedCategories, setUnmanagedCategories] = useState<UnmanagedCategory[]>([]);
   const [search, setSearch] = useState('');
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isNewProduct, setIsNewProduct] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
   const { toast } = useToast();
@@ -44,10 +57,17 @@ export default function AdminInventory() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-      }
+      const [response, lowStock, categoryList] = await Promise.all([
+        productsApi.list(),
+        // Reloaded alongside the catalog, so correcting a stock count updates
+        // the badge without a manual refresh.
+        productsApi.lowStock(),
+        categoriesApi.listWithUnmanaged(),
+      ]);
+      setProducts(response);
+      setLowStockProductIds(new Set((lowStock ?? []).map(item => item.productId)));
+      setCategories(categoryList.data ?? []);
+      setUnmanagedCategories(categoryList.meta?.unmanaged ?? []);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -64,6 +84,20 @@ export default function AdminInventory() {
     p.category.toLowerCase().includes(search.toLowerCase())
   );
 
+  // The managed categories, plus whatever this product already says, so an
+  // out-of-list value is preserved rather than quietly reassigned on save.
+  const categoryOptions = Array.from(
+    new Set(
+      [
+        ...categories.map(c => c.name),
+        // Unmanaged names too, so moving a product into one that already exists
+        // does not require first recreating it as a managed category.
+        ...unmanagedCategories.map(c => c.name),
+        editingProduct?.category,
+      ].filter(Boolean) as string[]
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
   const canWrite = hasPermission(session, 'inventory', 'write');
   const canDelete = hasPermission(session, 'inventory', 'delete');
 
@@ -72,19 +106,29 @@ export default function AdminInventory() {
   };
 
   const handleReset = async () => {
-    if (!confirm('This will delete all current data and load fresh inventory. Continue?')) {
+    // The old wording - "load fresh inventory" - undersold this considerably.
+    // It also deletes every order and every staff account.
+    const warning = [
+      'Reset the database?',
+      '',
+      'This permanently deletes ALL orders and sales history, ALL products, and',
+      'ALL staff accounts, then restores demo data with a default admin login.',
+      'It cannot be undone.',
+      '',
+      'The server refuses this in production.',
+    ].join('\n');
+
+    if (!confirm(warning)) {
       return;
     }
 
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string }>('/api/admin/reset-database');
-      if (response.success) {
-        toast({ 
-          title: 'Database Reset', 
-          description: response.message || 'Database reset successfully. Fresh inventory loaded.',
-        });
-        await loadProducts();
-      }
+      const response = await adminApi.resetDatabase();
+      toast({ 
+        title: 'Database Reset', 
+        description: 'Database reset successfully. Fresh inventory loaded.',
+      });
+      await loadProducts();
     } catch (error: unknown) {
       toast({ 
         title: 'Error', 
@@ -135,17 +179,30 @@ export default function AdminInventory() {
       return;
     }
 
-    // Convert to base64 for storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      setUploadedImage(base64String);
+    // This used to base64 the file into `products.image` and report success
+    // without anything having been uploaded. A 5MB photo became ~6.7MB of text
+    // in the product row, sent to every client on every catalog load - so the
+    // register got slower with each picture a shop added.
+    try {
+      setIsUploadingImage(true);
+      const uploaded = await uploadApi.upload('product', file);
+      setUploadedImage(uploaded.url);
       if (editingProduct) {
-        setEditingProduct({ ...editingProduct, image: base64String });
+        setEditingProduct({ ...editingProduct, image: uploaded.url });
       }
-      toast({ title: 'Image uploaded successfully' });
-    };
-    reader.readAsDataURL(file);
+      toast({ title: 'Image uploaded' });
+    } catch (error: unknown) {
+      // Silence here left the old preview showing, so the picture looked
+      // attached and then was not there after saving.
+      setUploadedImage(null);
+      toast({
+        title: 'Upload failed',
+        description: getErrorMessage(error, 'The image could not be uploaded'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -170,19 +227,14 @@ export default function AdminInventory() {
           image: uploadedImage || editingProduct.image,
           variants: editingProduct.variants || [],
         };
-        const response = await apiClient.post<{ success: boolean; data: Product }>(
-          '/api/products',
-          createData
-        );
+        const response = await productsApi.create(createData);
         
-        if (response.success) {
-          setEditDialogOpen(false);
-          setEditingProduct(null);
-          setIsNewProduct(false);
-          setUploadedImage(null);
-          await loadProducts();
-          toast({ title: 'Product added successfully' });
-        }
+        setEditDialogOpen(false);
+        setEditingProduct(null);
+        setIsNewProduct(false);
+        setUploadedImage(null);
+        await loadProducts();
+        toast({ title: 'Product added successfully' });
       } else {
         // Update existing product
         const updateData: UpdateProductRequest = {
@@ -193,19 +245,14 @@ export default function AdminInventory() {
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
         };
-        const response = await apiClient.put<{ success: boolean; data: Product }>(
-          `/api/products/${editingProduct.id}`,
-          updateData
-        );
+        const response = await productsApi.update(editingProduct.id, updateData);
         
-        if (response.success) {
-          setEditDialogOpen(false);
-          setEditingProduct(null);
-          setIsNewProduct(false);
-          setUploadedImage(null);
-          await loadProducts();
-          toast({ title: 'Product updated' });
-        }
+        setEditDialogOpen(false);
+        setEditingProduct(null);
+        setIsNewProduct(false);
+        setUploadedImage(null);
+        await loadProducts();
+        toast({ title: 'Product updated' });
       }
     } catch (error: unknown) {
       toast({
@@ -219,11 +266,9 @@ export default function AdminInventory() {
   const handleDelete = async (productId: string) => {
     if (confirm('Delete this product? This cannot be undone.')) {
       try {
-        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${productId}`);
-        if (response.success) {
-          await loadProducts();
-          toast({ title: 'Product deleted' });
-        }
+        const response = await productsApi.remove(productId);
+        await loadProducts();
+        toast({ title: 'Product deleted' });
       } catch (error: unknown) {
         toast({
           title: 'Error',
@@ -249,9 +294,13 @@ export default function AdminInventory() {
               </Button>
               {canWrite && (
                 <>
-                  <Button variant="outline" onClick={handleReset}>
+                  <Button
+                    variant="outline"
+                    onClick={handleReset}
+                    className="text-destructive hover:text-destructive"
+                  >
                     <RefreshCw className="w-4 h-4 mr-2" />
-                    Reset Data
+                    Reset Demo Data
                   </Button>
                   <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
                     <Upload className="w-4 h-4 mr-2" />
@@ -295,7 +344,10 @@ export default function AdminInventory() {
                 {filteredProducts.map((product) => {
                   const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
                   const activeVariants = product.variants.filter(v => v.enabled).length;
-                  const lowStock = product.variants.some(v => v.enabled && v.stock < 10);
+                  // The server decides what "low" means — it is a store setting
+                  // with a per-variant override, and this screen judging for
+                  // itself is how it and the dashboard came to disagree.
+                  const lowStock = lowStockProductIds.has(product.id);
 
                   return (
                     <TableRow key={product.id}>
@@ -372,10 +424,31 @@ export default function AdminInventory() {
                   </div>
                   <div>
                     <Label>Category</Label>
-                    <Input
-                      value={editingProduct.category}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    />
+                    {/*
+                      A free-text box here meant a typo produced a second
+                      category that no other product would ever share, and the
+                      seeded `categories` table went unused because nothing
+                      could read it.
+
+                      A product whose category is not in the list still shows
+                      it, rather than appearing blank — otherwise saving an
+                      unrelated edit would silently move the product.
+                    */}
+                    <Select
+                      value={editingProduct.category || undefined}
+                      onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categoryOptions.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label>Base Price</Label>
@@ -399,12 +472,16 @@ export default function AdminInventory() {
                             type="file"
                             accept="image/*"
                             onChange={handleImageUpload}
+                            disabled={isUploadingImage}
                             className="cursor-pointer"
                           />
-                          <Button type="button" variant="outline" size="icon">
+                          <Button type="button" variant="outline" size="icon" disabled={isUploadingImage}>
                             <ImagePlus className="w-4 h-4" />
                           </Button>
                         </div>
+                        {isUploadingImage && (
+                          <p className="text-xs text-muted-foreground">Uploading…</p>
+                        )}
                         {(uploadedImage || editingProduct.image) && (
                           <div className="mt-2 border rounded p-2">
                             <img 

@@ -6,6 +6,7 @@ import logger from '../../utils/logger';
 import { Migrator } from '../../services/migrator';
 import { Seeder } from '../../services/seeder';
 import config from '../../config';
+import { PERMISSION_RESOURCES } from '../middleware/authorize';
 import { ValidationError, DatabaseError, getErrorMessage } from '../../utils/errors';
 
 const router = Router();
@@ -176,6 +177,26 @@ router.post('/test-database', rejectIfAlreadySetUp, async (req: Request, res: Re
 });
 
 // Complete setup
+/**
+ * Every resource, granted outright — the administrator's permission object.
+ *
+ * Built from `PERMISSION_RESOURCES` rather than listed by hand. The hand-written
+ * version here named seven resources and omitted `orders`, `returns`, and
+ * `discounts` — the same drift that made `createRoleSchema` silently drop them.
+ *
+ * Harmless in practice today, because `system_role: 'admin'` bypasses
+ * per-resource checks, so the incomplete object is never consulted. That is
+ * precisely why it could sit here unnoticed, and precisely why it should not:
+ * anything that ever reads these permissions directly, or any future removal of
+ * the archetype bypass, would leave the founding administrator unable to take
+ * orders or handle returns.
+ */
+function fullPermissions(): Record<string, { read: boolean; write: boolean; delete: boolean }> {
+  return Object.fromEntries(
+    PERMISSION_RESOURCES.map((resource) => [resource, { read: true, write: true, delete: true }])
+  );
+}
+
 const setupSchema = z.object({
   // Admin user
   adminUser: z.object({
@@ -266,10 +287,38 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
         if (setupData.database.user) process.env.DB_USER = setupData.database.user;
         if (setupData.database.password) process.env.DB_PASSWORD = setupData.database.password;
         if (setupData.database.filename) process.env.DB_FILENAME = setupData.database.filename;
+
+        // Setting the environment is not enough. `config` is built once at
+        // import and the database adapter is a singleton cached from it, so
+        // everything after this point — the migrator, the seeder, the admin
+        // insert — would otherwise target whatever database the process was
+        // already pointed at, ignoring the one the operator just typed in.
+        //
+        // Verified before this was added: setup reported success and created
+        // the administrator in the wrong database entirely.
+        config.database.adapter = setupData.database.adapter;
+        if (setupData.database.host) config.database.host = setupData.database.host;
+        if (setupData.database.port) config.database.port = setupData.database.port;
+        if (setupData.database.name) config.database.name = setupData.database.name;
+        if (setupData.database.user) config.database.user = setupData.database.user;
+        if (setupData.database.password) config.database.password = setupData.database.password;
+        if (setupData.database.filename) config.database.filename = setupData.database.filename;
+
+        // Discard the adapter built against the old config; the next caller
+        // rebuilds it against the database being provisioned.
+        await db.reset();
       }
 
       const migrator = new Migrator();
-      await migrator.runMigrations();
+      try {
+        await migrator.runMigrations();
+      } finally {
+        // Closed either way. The migrator opens its own pool, and leaving it
+        // open held connections against the freshly provisioned database for
+        // the life of the process — the seeder below already does this; the
+        // migrator was simply missed.
+        await migrator.close();
+      }
     } catch (error: unknown) {
       logger.error('Migration failed:', error);
       return res.status(500).json({
@@ -301,15 +350,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
             [
               'Administrator',
               'admin',
-              JSON.stringify({
-                inventory: { read: true, write: true, delete: true },
-                reports: { read: true, write: true, delete: true },
-                exports: { read: true, write: true, delete: true },
-                settings: { read: true, write: true, delete: true },
-                users: { read: true, write: true, delete: true },
-                services: { read: true, write: true, delete: true },
-                customers: { read: true, write: true, delete: true },
-              }),
+              JSON.stringify(fullPermissions()),
             ]
           );
           const roleId = newRoleResult.rows[0].id;
@@ -371,15 +412,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
           ).run(
             'Administrator',
             'admin',
-            JSON.stringify({
-              inventory: { read: true, write: true, delete: true },
-              reports: { read: true, write: true, delete: true },
-              exports: { read: true, write: true, delete: true },
-              settings: { read: true, write: true, delete: true },
-              users: { read: true, write: true, delete: true },
-              services: { read: true, write: true, delete: true },
-              customers: { read: true, write: true, delete: true },
-            })
+            JSON.stringify(fullPermissions())
           );
           role = { id: roleResult.lastInsertRowid };
         }

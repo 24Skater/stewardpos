@@ -1,47 +1,104 @@
 import { Response, NextFunction } from 'express';
-import { AuthRequest } from './auth';
+import { AuthRequest, AuthRole } from './auth';
 import { UnauthorizedError, ForbiddenError } from '../../utils/errors';
-import db from '../../services/database';
-import logger from '../../utils/logger';
 
 /**
- * Authorization middleware - checks if authenticated user has required role(s)
- * @param allowedRoles - Array of role names (e.g., 'admin', 'manager') that are allowed
+ * The resources a role can be granted rights over.
+ *
+ * Mirrors the keys of the `permissions` JSONB on `roles`. Typed as a union so a
+ * misspelled resource in a route is a compile error rather than a permission
+ * check that silently never passes.
  */
-export function authorize(allowedRoles: string[]) {
-  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+/**
+ * Every resource a role can carry permissions for.
+ *
+ * A runtime list, not only a type, because the role-creation schema has to
+ * enumerate these and a hand-written second copy drifted: it listed seven and
+ * omitted `orders`, `returns`, and `discounts`. Zod strips unknown keys, so a
+ * role created granting those had them **silently dropped** — a cashier role
+ * saved through the admin UI could not take orders, which is the one thing a
+ * till exists to do, and nothing on screen said why.
+ */
+export const PERMISSION_RESOURCES = [
+  'inventory',
+  'reports',
+  'exports',
+  'settings',
+  'users',
+  'services',
+  'customers',
+  'orders',
+  'returns',
+  'discounts',
+] as const;
+
+export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
+
+export type PermissionAction = 'read' | 'write' | 'delete';
+
+/** True when the user holds a role flagged as the admin archetype. */
+function isAdmin(roles: AuthRole[]): boolean {
+  return roles.some((role) => role.systemRole === 'admin');
+}
+
+function grants(roles: AuthRole[], resource: PermissionResource, action: PermissionAction): boolean {
+  return roles.some((role) => role.permissions?.[resource]?.[action] === true);
+}
+
+/**
+ * Require a specific permission on a resource.
+ *
+ * Permissions are additive across a user's roles: holding any role that grants
+ * the action is enough. Admins bypass the check outright, so a new resource key
+ * never accidentally locks out the account that has to configure it.
+ *
+ * This replaces checking role *names*. That approach had a standing bug -
+ * several routes required `['admin', 'manager']`, but no `manager` role has ever
+ * been seeded, so those endpoints were admin-only in practice and every
+ * supervisor was refused despite holding the matching permission.
+ */
+export function requirePermission(resource: PermissionResource, action: PermissionAction) {
+  return (req: AuthRequest, _res: Response, next: NextFunction) => {
     try {
       if (!req.user) {
         throw new UnauthorizedError('Authentication required');
       }
 
-      const userRoleIds = req.user.roleIds || [];
-      
-      if (userRoleIds.length === 0) {
-        throw new ForbiddenError('No roles assigned');
+      const roles = req.user.roles || [];
+      if (isAdmin(roles) || grants(roles, resource, action)) {
+        return next();
       }
 
-      // Get the role objects from database to check their systemRole/name
-      const adapter = db.getAdapter();
-      
-      let hasRequiredRole = false;
-      for (const roleId of userRoleIds) {
-        try {
-          const role = await adapter.getRoleById(roleId);
-          if (role) {
-            const roleName = role.systemRole || role.name;
-            if (allowedRoles.includes(roleName?.toLowerCase() || '')) {
-              hasRequiredRole = true;
-              break;
-            }
-          }
-        } catch (e) {
-          logger.warn(`Could not fetch role ${roleId}:`, e);
-        }
+      throw new ForbiddenError(`You do not have permission to ${action} ${resource}`);
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+/**
+ * Require one of the named system roles.
+ *
+ * For the handful of operations that are about *who you are* rather than what
+ * you may touch - irreversible deletes, key management. Prefer
+ * {@link requirePermission} everywhere else.
+ */
+export function authorize(allowedSystemRoles: string[]) {
+  const allowed = allowedSystemRoles.map((role) => role.toLowerCase());
+
+  return (req: AuthRequest, _res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        throw new UnauthorizedError('Authentication required');
       }
 
-      if (!hasRequiredRole) {
-        throw new ForbiddenError(`Access denied. Required roles: ${allowedRoles.join(', ')}`);
+      const held = (req.user.roles || []).some((role) => {
+        const name = (role.systemRole || role.name || '').toLowerCase();
+        return allowed.includes(name);
+      });
+
+      if (!held) {
+        throw new ForbiddenError(`Access denied. Required roles: ${allowedSystemRoles.join(', ')}`);
       }
 
       next();
@@ -50,4 +107,3 @@ export function authorize(allowedRoles: string[]) {
     }
   };
 }
-

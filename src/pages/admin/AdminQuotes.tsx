@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiClient } from '@/lib/api-client';
+import { quotesApi, type QuoteStatus } from '@/lib/api';
 import { Search, Eye, Send, CheckCircle, XCircle, Clock, FileText, DollarSign, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -73,10 +73,8 @@ export default function AdminQuotes() {
   const loadQuotes = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes');
-      if (response.success) {
-        setQuotes(response.data);
-      }
+      const response = await quotesApi.list();
+      setQuotes(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -90,19 +88,14 @@ export default function AdminQuotes() {
 
   const handleStatusChange = async (quoteId: string, newStatus: string) => {
     try {
-      const response = await apiClient.put<{ success: boolean; data: Quote }>(
-        `/api/quotes/${quoteId}/status`,
-        { status: newStatus }
-      );
+      const response = await quotesApi.setStatus(quoteId, newStatus as QuoteStatus);
       
-      if (response.success) {
-        toast({ title: `Quote status updated to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG].label}` });
-        await loadQuotes();
-        
-        // Update selected quote if viewing
-        if (selectedQuote?.id === quoteId) {
-          setSelectedQuote(response.data);
-        }
+      toast({ title: `Quote status updated to ${STATUS_CONFIG[newStatus as keyof typeof STATUS_CONFIG].label}` });
+      await loadQuotes();
+      
+      // Update selected quote if viewing
+      if (selectedQuote?.id === quoteId) {
+        setSelectedQuote(response);
       }
     } catch (error: unknown) {
       toast({
@@ -117,12 +110,10 @@ export default function AdminQuotes() {
     if (!confirm('Are you sure you want to delete this quote?')) return;
     
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/quotes/${quoteId}`);
-      if (response.success) {
-        toast({ title: 'Quote deleted successfully' });
-        setViewDialogOpen(false);
-        await loadQuotes();
-      }
+      const response = await quotesApi.remove(quoteId);
+      toast({ title: 'Quote deleted successfully' });
+      setViewDialogOpen(false);
+      await loadQuotes();
     } catch (error: unknown) {
       toast({
         title: 'Error',

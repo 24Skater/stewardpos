@@ -7,24 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { apiClient } from '@/lib/api-client';
+import { componentsApi, type Component, type ComponentUpdate } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Search, RefreshCw, Download, Package, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, type AuthSession } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
-
-interface Component {
-  name: string;
-  currentVersion: string;
-  type: 'frontend' | 'backend';
-  category: 'dependency' | 'devDependency';
-}
-
-interface ComponentUpdate extends Component {
-  latestVersion: string;
-}
 
 export default function AdminComponents() {
   const [components, setComponents] = useState<Component[]>([]);
@@ -55,9 +44,9 @@ export default function AdminComponents() {
   const loadComponents = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Component[] }>('/api/admin/components');
-      if (response && response.success && response.data) {
-        setComponents(response.data);
+      const response = await componentsApi.list();
+      if (response && response && response) {
+        setComponents(response);
       } else {
         console.error('Unexpected API response:', response);
         toast({
@@ -81,20 +70,18 @@ export default function AdminComponents() {
   const checkForUpdates = async () => {
     try {
       setIsCheckingUpdates(true);
-      const response = await apiClient.get<{ success: boolean; data: ComponentUpdate[] }>('/api/admin/components/updates');
-      if (response.success) {
-        setUpdates(response.data);
-        if (response.data.length > 0) {
-          toast({
-            title: 'Updates Available',
-            description: `Found ${response.data.length} package(s) with available updates`,
-          });
-        } else {
-          toast({
-            title: 'All Up to Date',
-            description: 'All packages are up to date',
-          });
-        }
+      const response = await componentsApi.updates();
+      setUpdates(response);
+      if (response.length > 0) {
+        toast({
+          title: 'Updates Available',
+          description: `Found ${response.length} package(s) with available updates`,
+        });
+      } else {
+        toast({
+          title: 'All Up to Date',
+          description: 'All packages are up to date',
+        });
       }
     } catch (error: unknown) {
       toast({
@@ -123,21 +110,16 @@ export default function AdminComponents() {
   const confirmUpdate = async () => {
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update', {
-        packages: selectedPackages,
-        type: updateType,
-      });
+      const response = await componentsApi.update(selectedPackages, updateType);
 
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: response.message || 'Packages updated successfully',
-        });
-        setUpdateDialogOpen(false);
-        setSelectedPackages([]);
-        await loadComponents();
-        await checkForUpdates();
-      }
+      toast({
+        title: 'Success',
+        description: 'Packages updated successfully',
+      });
+      setUpdateDialogOpen(false);
+      setSelectedPackages([]);
+      await loadComponents();
+      await checkForUpdates();
     } catch (error: unknown) {
       toast({
         title: 'Update Failed',
@@ -156,18 +138,14 @@ export default function AdminComponents() {
 
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update-all', {
-        type,
-      });
+      const response = await componentsApi.updateAll(type);
 
-      if (response.success) {
-        toast({
-          title: 'Success',
-          description: response.message || 'All packages updated successfully',
-        });
-        await loadComponents();
-        await checkForUpdates();
-      }
+      toast({
+        title: 'Success',
+        description: 'All packages updated successfully',
+      });
+      await loadComponents();
+      await checkForUpdates();
     } catch (error: unknown) {
       toast({
         title: 'Update Failed',

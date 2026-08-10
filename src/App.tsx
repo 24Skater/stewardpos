@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
+import RequireAuth from "@/components/RequireAuth";
 import POS from "./pages/POS";
 import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
@@ -44,27 +45,27 @@ const App = () => (
             <Routes>
               <Route path="/setup" element={<Setup />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/" element={<POS />} />
-              <Route path="/pos" element={<POS />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/services" element={<ServicesPos />} />
-              <Route path="/admin" element={<Dashboard />} />
-              <Route path="/admin/inventory" element={<AdminInventory />} />
-              <Route path="/admin/reports" element={<AdminReports />} />
-              <Route path="/admin/exports" element={<AdminExports />} />
-              <Route path="/admin/customers" element={<AdminCustomers />} />
-              <Route path="/admin/services" element={<AdminServices />} />
-              <Route path="/admin/quotes" element={<AdminQuotes />} />
-              <Route path="/admin/settings" element={<AdminSettings />} />
-              <Route path="/admin/roles" element={<AdminRoles />} />
-              <Route path="/admin/audit" element={<AdminAudit />} />
-              <Route path="/admin/components" element={<AdminComponents />} />
-              <Route path="/admin/api-keys" element={<AdminApiKeys />} />
-              <Route path="/admin/returns" element={<AdminReturns />} />
-              <Route path="/admin/receipts" element={<AdminReceipts />} />
-              <Route path="/admin/discounts" element={<AdminDiscounts />} />
+              <Route path="/" element={<RequireAuth><POS /></RequireAuth>} />
+              <Route path="/pos" element={<RequireAuth><POS /></RequireAuth>} />
+              <Route path="/inventory" element={<RequireAuth permission={{ domain: "inventory", action: "read" }}><Inventory /></RequireAuth>} />
+              <Route path="/reports" element={<RequireAuth permission={{ domain: "reports", action: "read" }}><Reports /></RequireAuth>} />
+              <Route path="/settings" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><Settings /></RequireAuth>} />
+              <Route path="/services" element={<RequireAuth permission={{ domain: "services", action: "read" }}><ServicesPos /></RequireAuth>} />
+              <Route path="/admin" element={<RequireAuth permission={{ domain: "reports", action: "read" }}><Dashboard /></RequireAuth>} />
+              <Route path="/admin/inventory" element={<RequireAuth permission={{ domain: "inventory", action: "read" }}><AdminInventory /></RequireAuth>} />
+              <Route path="/admin/reports" element={<RequireAuth permission={{ domain: "reports", action: "read" }}><AdminReports /></RequireAuth>} />
+              <Route path="/admin/exports" element={<RequireAuth permission={{ domain: "exports", action: "read" }}><AdminExports /></RequireAuth>} />
+              <Route path="/admin/customers" element={<RequireAuth permission={{ domain: "customers", action: "read" }}><AdminCustomers /></RequireAuth>} />
+              <Route path="/admin/services" element={<RequireAuth permission={{ domain: "services", action: "read" }}><AdminServices /></RequireAuth>} />
+              <Route path="/admin/quotes" element={<RequireAuth permission={{ domain: "services", action: "read" }}><AdminQuotes /></RequireAuth>} />
+              <Route path="/admin/settings" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminSettings /></RequireAuth>} />
+              <Route path="/admin/roles" element={<RequireAuth permission={{ domain: "users", action: "read" }}><AdminRoles /></RequireAuth>} />
+              <Route path="/admin/audit" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminAudit /></RequireAuth>} />
+              <Route path="/admin/components" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminComponents /></RequireAuth>} />
+              <Route path="/admin/api-keys" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminApiKeys /></RequireAuth>} />
+              <Route path="/admin/returns" element={<RequireAuth permission={{ domain: "returns", action: "read" }}><AdminReturns /></RequireAuth>} />
+              <Route path="/admin/receipts" element={<RequireAuth permission={{ domain: "orders", action: "read" }}><AdminReceipts /></RequireAuth>} />
+              <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </SetupGuard>

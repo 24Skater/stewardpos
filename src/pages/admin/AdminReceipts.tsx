@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { apiClient } from '@/lib/api-client';
+import { adminApi, receiptsApi, returnsApi, type ReturnReasonCode } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays, subMonths } from 'date-fns';
 import { exportToCSV, exportToExcel, exportOrdersToPDF } from '@/lib/export-utils';
@@ -123,36 +123,42 @@ export default function AdminReceipts() {
     loadSettings();
   }, [page, startDate, endDate, paymentFilter]);
 
+  /**
+   * Fetch a page of receipts.
+   *
+   * Two endpoints, deliberately: `/api/receipts` only understands limit/offset,
+   * so any filtering has to go through `/api/receipts/search`. Passing filters to
+   * the plain list endpoint - as this page used to - returns unfiltered results
+   * while the UI shows the filters as applied.
+   *
+   * The trade-off is that `search` reports no total, so "more pages" is inferred
+   * from a full page coming back.
+   */
   const loadReceipts = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      params.append('limit', pageSize.toString());
-      params.append('offset', (page * pageSize).toString());
-      
-      if (searchQuery) {
-        params.append('query', searchQuery);
-      }
-      if (startDate) {
-        params.append('startDate', startDate.getTime().toString());
-      }
-      if (endDate) {
-        params.append('endDate', endDate.getTime().toString());
-      }
-      if (paymentFilter !== 'all') {
-        params.append('paymentMethod', paymentFilter);
+      const limit = pageSize;
+      const offset = page * pageSize;
+      const isFiltered = Boolean(searchQuery || startDate || endDate || paymentFilter !== 'all');
+
+      if (isFiltered) {
+        const results = (await receiptsApi.search({
+          limit,
+          offset,
+          query: searchQuery || undefined,
+          startDate: startDate?.getTime(),
+          endDate: endDate?.getTime(),
+          paymentMethod: paymentFilter === 'all' ? undefined : paymentFilter,
+        })) as unknown as ReceiptOrder[];
+
+        setReceipts(results);
+        setHasMore(results.length === limit);
+        return;
       }
 
-      const response = await apiClient.get<{ 
-        success: boolean; 
-        data: ReceiptOrder[]; 
-        pagination: { total: number; hasMore: boolean } 
-      }>(`/api/receipts?${params.toString()}`);
-      
-      if (response.success) {
-        setReceipts(response.data);
-        setHasMore(response.pagination?.hasMore ?? false);
-      }
+      const { data, meta } = await receiptsApi.list({ limit, offset });
+      setReceipts(data as unknown as ReceiptOrder[]);
+      setHasMore(meta?.hasMore ?? false);
     } catch (error: unknown) {
       toast({ title: 'Error loading receipts', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
@@ -162,10 +168,8 @@ export default function AdminReceipts() {
 
   const loadSettings = async () => {
     try {
-      const res = await apiClient.get<{ success: boolean; data: ReceiptSettings }>('/api/admin/settings');
-      if (res.success) {
-        setSettings(res.data);
-      }
+      const res = (await adminApi.settings.get()) as unknown as ReceiptSettings;
+      setSettings(res);
     } catch (error) {
       console.error('Failed to load receipt settings:', error);
     }
@@ -178,14 +182,10 @@ export default function AdminReceipts() {
 
   const loadReceiptDetails = async (orderId: string) => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: ReceiptOrder }>(
-        `/api/receipts/${orderId}`
-      );
-      if (response.success) {
-        setSelectedReceipt(response.data);
-        setResendEmail(response.data.customerEmail || '');
-        setDetailsOpen(true);
-      }
+      const response = (await receiptsApi.get(orderId)) as unknown as ReceiptOrder;
+      setSelectedReceipt(response);
+      setResendEmail(response.customerEmail || '');
+      setDetailsOpen(true);
     } catch (error: unknown) {
       toast({ title: 'Error loading receipt', description: getErrorMessage(error), variant: 'destructive' });
     }
@@ -196,10 +196,7 @@ export default function AdminReceipts() {
     
     setSending(true);
     try {
-      await apiClient.post(`/api/receipts/${selectedReceipt.id}/resend`, {
-        email: resendEmail,
-        includeItems: true,
-      });
+      await receiptsApi.resend(selectedReceipt.id, resendEmail);
       toast({ title: 'Receipt sent', description: `Sent to ${resendEmail}` });
       setResendOpen(false);
       loadReceiptDetails(selectedReceipt.id);
@@ -214,22 +211,20 @@ export default function AdminReceipts() {
     if (!selectedReceipt) return;
     
     try {
-      const response = await apiClient.post<{ 
-        success: boolean; 
-        data: { returnableItems: ReturnableItem[]; hasReturnableItems: boolean } 
-      }>(`/api/receipts/${selectedReceipt.id}/start-return`, {});
+      const response = (await receiptsApi.startReturn(selectedReceipt.id)) as {
+        returnableItems: ReturnableItem[];
+        hasReturnableItems: boolean;
+      };
       
-      if (response.success) {
-        if (!response.data.hasReturnableItems) {
-          toast({ title: 'No items to return', description: 'All items have already been returned.', variant: 'destructive' });
-          return;
-        }
-        setReturnableItems(response.data.returnableItems);
-        setSelectedReturnItems({});
-        setReturnReason('not_needed');
-        setReturnNotes('');
-        setReturnOpen(true);
+      if (!response.hasReturnableItems) {
+        toast({ title: 'No items to return', description: 'All items have already been returned.', variant: 'destructive' });
+        return;
       }
+      setReturnableItems(response.returnableItems);
+      setSelectedReturnItems({});
+      setReturnReason('not_needed');
+      setReturnNotes('');
+      setReturnOpen(true);
     } catch (error: unknown) {
       toast({ title: 'Error', description: getErrorMessage(error), variant: 'destructive' });
     }
@@ -250,7 +245,7 @@ export default function AdminReceipts() {
         returnQuantity: selectedReturnItems[item.originalOrderItemId],
         unitPrice: item.unitPrice,
         lineTotal: item.unitPrice * selectedReturnItems[item.originalOrderItemId],
-        condition: 'good',
+        condition: 'good' as const,
       }));
 
     if (itemsToReturn.length === 0) {
@@ -264,7 +259,7 @@ export default function AdminReceipts() {
 
     setCreatingReturn(true);
     try {
-      await apiClient.post('/api/returns', {
+      await returnsApi.create({
         originalOrderId: selectedReceipt.id,
         returnType: 'return',
         customerEmail: selectedReceipt.customerEmail,
@@ -273,7 +268,7 @@ export default function AdminReceipts() {
         subtotal,
         taxTotal,
         total: subtotal + taxTotal,
-        reasonCode: returnReason,
+        reasonCode: returnReason as ReturnReasonCode,
         reasonDetails: returnNotes,
         restockItems: true,
       });

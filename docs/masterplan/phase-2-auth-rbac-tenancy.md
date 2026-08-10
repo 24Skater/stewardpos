@@ -143,3 +143,121 @@ create/update/delete handlers; `backend/src/api/routes/admin.ts` (list/query aud
 2. Ensure `AdminAudit.tsx` reads from `GET /api/admin/audit` with pagination/filtering.
 **Acceptance criteria.** Mutations produce audit rows visible in AdminAudit.
 **Verification.** Edit a product via API → an audit row appears in `GET /api/admin/audit`.
+
+---
+
+## Progress notes (2026-08-06)
+
+**Done:** P2-T1 (middleware hardened), P2-T2 (auth + RBAC applied across every
+route), P2-T3 (guard test suite), P2-T5 (orders/returns/discounts permissions +
+migration 008), P2-T7 (audit logging).
+
+P2-T4 is verified: on a completed install `GET /api/setup/status` reports
+`needsSetup: false`, and both `POST /api/setup/complete` and
+`POST /api/setup/test-database` return `409` — so the wizard cannot be replayed
+to mint a second admin. (The plan specifies `{ completed: boolean }`; the
+implementation returns the richer `isInitialized`/`hasAdminUser`/`needsSetup`,
+which is what the client consumes. Left as-is.)
+
+**P2-T6 is done as a foundation, and stops deliberately short of query
+scoping.** There is an `organizations` table with a default org on a fixed id, a
+nullable indexed `org_id` on 20 tenant-scoped tables, an `orgId` claim in the
+JWT, and `req.orgId` on every authenticated request — resolved from the user's
+stored org, then the token claim, then the default, and always populated so no
+consumer has to decide what an absent tenant means. The stored value wins over
+the claim for the same reason roles are reloaded per request: a token outlives a
+change.
+
+**Nothing filters or sets `org_id` yet**, and that is the stopping point rather
+than an omission. On a single-org install a correctly scoped query and a
+completely unscoped one return identical results, so landing the filtering now
+would mean touching every read and write in both adapters with nothing to verify
+against, and a failure mode — one query missed, one tenant seeing another's
+orders — that stays invisible until the day it is catastrophic. The column is
+reversible and free; the filtering is neither.
+
+`docs/guides/multi-tenant.md` sets out what exists, why the scoping is deferred,
+and the order to add it in. Its first step is the one worth doing before any
+other: backfill `org_id` and make it `NOT NULL` while there is still one org, so
+a missed write fails loudly instead of leaking quietly.
+
+**Phase 2 is complete.**
+
+### Defects found while doing the above
+
+Each verified against the running stack, and each fixed in the commit that found
+it unless noted:
+
+1. `authenticate` never loaded the user, so a **deactivated account kept full
+   access** until its token expired.
+2. `authorize(['admin', 'manager'])` guarded uploads and discount management, but
+   **no `manager` role has ever existed** — those endpoints were admin-only, and
+   supervisors holding the matching permission were refused.
+3. **Product and service catalogs were world-readable**, including SKUs and live
+   stock counts.
+4. **`config.terminalCredentials` was returned in plaintext** by
+   `GET /api/admin/settings` — the store's Stripe secret key and Square token, to
+   anyone who could read settings.
+5. **A partial product update wiped every field it did not mention.** Both
+   adapters wrote all six columns unconditionally against an all-optional update
+   schema.
+6. **`createAuditLog` was never called**, so the audit page had always been empty.
+7. The client **hard-coded a 7-day token lifetime** while the server defaults to
+   24h, leaving it convinced a dead token was good for six days.
+8. `mergePermissions` **threw on a role whose permissions JSON omitted a key**,
+   taking down every page behind the session.
+
+### Known gap: the backend is not linted
+
+`backend/package.json` runs `eslint src --ext .ts`; `--ext` was removed in ESLint
+9, and there is no `backend/eslint.config.js`, so ESLint walks up and applies the
+repo root's React config against a mismatched `typescript-eslint` major and
+crashes. The backend CI job runs typecheck, test, and build — not lint — so this
+has never failed a build, and backend source has effectively never been linted.
+
+Fixing it needs a backend-local flat config (Node globals, no react plugins, its
+own installed plugin versions) plus a corrected script and a CI step. The
+`config-protection` hook blocks writing ESLint config files, so this is left for
+a deliberate decision rather than worked around.
+
+---
+
+## API keys made real (2026-08-07)
+
+The API-key feature was inert in two separate ways, each hiding the other.
+
+**Creation had never succeeded.** `key_prefix` is `VARCHAR(8)` but
+`generateApiKey` emits `spk_` plus eight hex characters — twelve. Every attempt
+failed with `value too long for type character varying(8)`. Migration 009 widens
+the column to 32.
+
+**Nothing accepted a key as a credential.** Keys could be minted, listed,
+scoped, rate-limited, and revoked, and a documented endpoint described how to
+use them — but no middleware ever read `X-API-Key`. An operator would reasonably
+believe they had provisioned working access, and handled the returned secret as
+though it granted something.
+
+`authenticate` now takes either a bearer token or an `X-API-Key`. A key's scopes
+expand into the same per-resource permission shape a role carries, so
+`requirePermission` treats a key and a person identically rather than growing a
+second authorisation path that could drift: `read` grants read everywhere,
+`write` adds write, `delete` adds delete, and `admin` maps to the admin
+archetype. A key that is present but invalid rejects outright rather than
+falling through to anonymous.
+
+One guard rail: **an API key cannot manage API keys**, even with `admin` scope.
+Otherwise a single compromised key becomes self-renewing — mint a successor,
+widen its scopes, revoke the ones being watched.
+
+Verified live across nine cases: valid, unknown prefix, right prefix with wrong
+secret, revoked, expired, absent; read-cannot-write, write-cannot-delete, and
+admin-refused-on-key-management.
+
+### Also fixed
+
+`POST /api/products` accepted a request with no `category` — optional in the Zod
+schema, `NOT NULL` in the database — so a valid-per-schema request returned a
+500. It is now a 400 naming the field. Both Zod messages are set, since
+`required_error` covers an absent field and the `min` message covers a present
+but empty one; setting only one leaves the other as a bare "Required". The
+route's error mapping now includes the field path, matching the orders route.

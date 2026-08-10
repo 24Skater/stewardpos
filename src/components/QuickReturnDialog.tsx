@@ -9,34 +9,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api-client';
+import {
+  ordersApi,
+  returnsApi,
+  type Order,
+  type OrderItem,
+  type RefundMethod,
+  type ReturnReasonCode,
+} from '@/lib/api';
 import { Search, Receipt, RotateCcw, DollarSign, CreditCard, Wallet, AlertTriangle, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
-
-interface Order {
-  id: string;
-  createdAt: number;
-  subtotal: number;
-  discountTotal: number;
-  taxTotal: number;
-  total: number;
-  paymentMethod: string;
-  customerEmail?: string;
-  customerPhone?: string;
-  items: OrderItem[];
-}
-
-interface OrderItem {
-  id: string;
-  productId: string;
-  variantId?: string;
-  nameSnapshot: string;
-  size?: string;
-  color?: string;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-}
 
 interface ReturnItem extends OrderItem {
   returnQuantity: number;
@@ -95,9 +77,9 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
   
   // Return state
   const [returnItems, setReturnItems] = useState<ReturnItem[]>([]);
-  const [reasonCode, setReasonCode] = useState('not_needed');
+  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>('not_needed');
   const [reasonDetails, setReasonDetails] = useState('');
-  const [refundMethod, setRefundMethod] = useState('cash');
+  const [refundMethod, setRefundMethod] = useState<RefundMethod>('cash');
   const [processing, setProcessing] = useState(false);
   
   // Step state
@@ -114,14 +96,12 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
   const loadRecentOrders = async () => {
     setLoadingRecent(true);
     try {
-      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
-      if (response.success) {
-        // Sort by date and take last 10
-        const sorted = response.data
-          .sort((a, b) => b.createdAt - a.createdAt)
-          .slice(0, 10);
-        setRecentOrders(sorted);
-      }
+      const response = await ordersApi.list();
+      // Sort by date and take last 10
+      const sorted = response
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 10);
+      setRecentOrders(sorted);
     } catch (error) {
       console.error('Failed to load recent orders:', error);
     } finally {
@@ -144,43 +124,37 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     setSearching(true);
     try {
       // Get full order details with items
-      const orderResponse = await apiClient.get<{ success: boolean; data: Order }>(`/api/orders/${orderId}`);
-      if (orderResponse.success) {
-        setOrder(orderResponse.data);
-        
-        // Check for existing returns on this order
-        const returnsResponse = await apiClient.get<{ success: boolean; data: ExistingReturn[] }>(`/api/returns/order/${orderId}`);
-        if (returnsResponse.success) {
-          setExistingReturns(returnsResponse.data);
-        }
-        
-        // Calculate already returned quantities
-        const alreadyReturnedMap: Record<string, number> = {};
-        if (returnsResponse.success) {
-          for (const ret of returnsResponse.data) {
-            if (ret.items) {
-              for (const item of ret.items) {
-                const key = item.productId + (item.variantId || '');
-                alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + item.returnQuantity;
-              }
-            }
+      const orderResponse = await ordersApi.get(orderId);
+      setOrder(orderResponse);
+      
+      // Check for existing returns on this order
+      const returnsResponse = (await returnsApi.listByOrder(orderId)) as unknown as ExistingReturn[];
+      setExistingReturns(returnsResponse);
+      
+      // Calculate already returned quantities
+      const alreadyReturnedMap: Record<string, number> = {};
+      for (const ret of returnsResponse) {
+        if (ret.items) {
+          for (const item of ret.items) {
+            const key = item.productId + (item.variantId || '');
+            alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + item.returnQuantity;
           }
         }
-        
-        // Set up return items
-        setReturnItems(orderResponse.data.items.map(item => {
-          const key = item.productId + (item.variantId || '');
-          const alreadyReturned = alreadyReturnedMap[key] || 0;
-          return {
-            ...item,
-            returnQuantity: Math.max(0, item.quantity - alreadyReturned),
-            alreadyReturned,
-            selected: false,
-          };
-        }));
-        
-        setStep('select');
       }
+      
+      // Set up return items
+      setReturnItems(orderResponse.items.map(item => {
+        const key = item.productId + (item.variantId || '');
+        const alreadyReturned = alreadyReturnedMap[key] || 0;
+        return {
+          ...item,
+          returnQuantity: Math.max(0, item.quantity - alreadyReturned),
+          alreadyReturned,
+          selected: false,
+        };
+      }));
+      
+      setStep('select');
     } catch (error: unknown) {
       toast({ title: 'Failed to load order', description: (error as Error).message, variant: 'destructive' });
     } finally {
@@ -194,20 +168,18 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     setSearching(true);
     try {
       // Try to find by order ID (partial match)
-      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
+      const response = await ordersApi.list();
       
-      if (response.success) {
-        // Search by ID (first 8 chars typically shown on receipt)
-        const foundOrder = response.data.find(o => 
-          o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          o.id.slice(0, 8).toLowerCase() === searchQuery.toLowerCase()
-        );
-        
-        if (foundOrder) {
-          await selectOrder(foundOrder.id);
-        } else {
-          toast({ title: 'Order not found', description: 'Please check the receipt number', variant: 'destructive' });
-        }
+      // Search by ID (first 8 chars typically shown on receipt)
+      const foundOrder = response.find(o => 
+        o.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.id.slice(0, 8).toLowerCase() === searchQuery.toLowerCase()
+      );
+      
+      if (foundOrder) {
+        await selectOrder(foundOrder.id);
+      } else {
+        toast({ title: 'Order not found', description: 'Please check the receipt number', variant: 'destructive' });
       }
     } catch (error: unknown) {
       toast({ title: 'Search failed', description: (error as Error).message, variant: 'destructive' });
@@ -257,7 +229,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
       // Create return
       const returnData = {
         originalOrderId: order!.id,
-        returnType: 'return',
+        returnType: 'return' as const,
         customerEmail: order!.customerEmail || undefined,
         customerPhone: order!.customerPhone || undefined,
         items: selectedItems.map(item => ({
@@ -271,7 +243,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
           returnQuantity: item.returnQuantity,
           unitPrice: item.unitPrice,
           lineTotal: item.unitPrice * item.returnQuantity,
-          condition: 'good',
+          condition: 'good' as const,
         })),
         subtotal,
         taxTotal,
@@ -283,29 +255,22 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         restockingFee: 0,
       };
 
-      const createResponse = await apiClient.post<{ success: boolean; data: Record<string, unknown> }>('/api/returns', returnData);
+      const createResponse = await returnsApi.create(returnData);
       
-      if (!createResponse.success) {
-        throw new Error('Failed to create return');
-      }
-
-      const returnId = createResponse.data.id;
+      const returnId = createResponse.id;
 
       // Auto-approve if under threshold for cash, or any amount for card/store credit
       const shouldAutoApprove = refundMethod !== 'cash' || total <= APPROVAL_THRESHOLD;
 
       if (shouldAutoApprove) {
         // Approve the return
-        await apiClient.put(`/api/returns/${returnId}/status`, { status: 'approved' });
+        await returnsApi.setStatus(returnId, 'approved');
         
         // Process the refund immediately
-        await apiClient.post(`/api/returns/${returnId}/process-refund`, {
-          refundMethod,
-          amount: total,
-        });
+        await returnsApi.processRefund(returnId, { refundMethod, amount: total });
 
         // Restock items
-        await apiClient.post(`/api/returns/${returnId}/restock`);
+        await returnsApi.restock(returnId);
 
         toast({
           title: 'Return processed!',
@@ -493,7 +458,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Reason for Return</Label>
-                <Select value={reasonCode} onValueChange={setReasonCode}>
+                <Select value={reasonCode} onValueChange={(v) => setReasonCode(v as ReturnReasonCode)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -506,7 +471,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
               </div>
               <div className="space-y-2">
                 <Label>Refund Method</Label>
-                <Select value={refundMethod} onValueChange={setRefundMethod}>
+                <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as RefundMethod)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
