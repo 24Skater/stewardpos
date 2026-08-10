@@ -1,3 +1,9 @@
+> **ARCHIVED — historical, may be inaccurate.**
+> Kept for provenance only. Do not rely on it for current behaviour or status.
+> Authoritative sources: [`docs/masterplan/`](../../masterplan/README.md) for the plan,
+> [`docs/masterplan/ASSESSMENT-2026-08-04.md`](../../masterplan/ASSESSMENT-2026-08-04.md)
+> for verified current state, and [`docs/guides/`](../../guides/) for how to run things.
+
 # Archive
 
 This directory contains archived files that are no longer actively used but kept for reference.
