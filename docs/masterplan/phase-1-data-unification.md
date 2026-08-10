@@ -1,5 +1,9 @@
 # Phase 1 — Data‑Layer Unification (the fork)
 
+> **Status: complete** (2026-08-06). All exit criteria verified — see
+> [Completion notes](#completion-notes) at the end for what was found along the way
+> and what deliberately did not get done.
+
 **Objective.** Resolve **D1/C5/C4**: make the Express REST API the *only* data source for the
 frontend. Remove the client‑side IndexedDB/DI/adapter machinery, standardize the response envelope,
 and give the frontend a typed API SDK that every page uses through TanStack Query.
@@ -134,3 +138,65 @@ or `idb`.
 2. Document the two modes (dev proxy vs built absolute URL) in the env reference.
 **Acceptance criteria.** `npm run dev` (frontend) + backend running → pages work with empty base URL.
 **Verification.** Start backend + `npm run dev`; POS loads products through the proxy.
+
+---
+
+## Completion notes
+
+**Verified exit criteria** (2026-08-06, against the live Docker stack):
+
+| Criterion | Result |
+|---|---|
+| `db.ts`, `db-operations.ts`, `di.ts`, `config.ts`, `adapters/**` deleted | ✅ also `src/core/{models,ports}`, orphaned once the adapters went |
+| No `src/**` imports `idb` / `@/lib/db*` / `@/lib/di` | ✅ `grep` returns nothing |
+| `apiClient` unwraps `.data` and throws; typed SDK; one DTO module | ✅ 15 SDK modules, one per backend route file |
+| Every page renders from API data; loading/error/empty states | ⚠️ partial — see below |
+| Frontend typechecks, builds, POS/Inventory work against live backend | ✅ a sale posts and decrements stock |
+
+Additionally: **no file under `src/` constructs an API path by hand any more**,
+which was not a stated criterion but is what makes the SDK worth having.
+`idb` and `bcryptjs` (the latter never used client-side) are out of the bundle.
+
+### Defects found and fixed
+
+Pointing pages at shared types, and checking those types against the running
+backend, surfaced five real bugs that were not in the assessment:
+
+1. **`POST /api/orders` returned snake_case items** while `GET` returned
+   camelCase, so a client reading the checkout response saw `undefined` for
+   every line field. The mapping was inlined at each read site and omitted on
+   create; now extracted into `mapOrderItemRow`/`mapOrderRow` in
+   `PostgresAdapter` and used by all four paths.
+2. **Sales tax was hard-coded to 0** at three separate checkout sites, each with
+   its own `const taxRate = 0` and a TODO, while `taxRateDefault` sat in settings
+   the page already fetched.
+3. **Receipt filters were ignored.** AdminReceipts sent `query`/`startDate`/
+   `endDate`/`paymentMethod` to `/api/receipts`, which reads only `limit` and
+   `offset`. Filtering lives on `/api/receipts/search`.
+4. **A `free_shipping` promo would apply as $0 off** — the register wrote any
+   validated promo's kind into state that only models percentage/fixed, and the
+   server returns 0 for the other kinds.
+5. **Loading state was computed but never rendered** on POS and Inventory, so a
+   slow or failed catalog load displayed "No products yet".
+
+Several shared DTOs carried over from `db.ts` were also wrong against the API:
+`Service.unitType` (`per-item` vs the real `per_item`, missing `daily`),
+`Quote`/`QuoteItem` (offline shapes, missing two status values the UI renders),
+and `ValidatePromoResponse`.
+
+### Deliberately not done
+
+- **Only POS and Inventory use TanStack Query hooks.** The admin pages call the
+  SDK from `useEffect` + `useState`. They are correct and typed, but do not get
+  caching or shared invalidation. Converting them is mechanical and independent
+  — worth doing, but it is not what blocks go-live.
+- **`strictNullChecks` is off**, so the `null`-vs-`undefined` gap between the
+  API's JSON and the `?:` fields in `src/lib/api/types.ts` is invisible to the
+  compiler. Documented at the top of that module; tightening it is Phase 7.
+- **No route is protected.** Every `/admin/*` path renders for an anonymous
+  visitor; data is safe only because the API 401s and `apiClient` redirects to
+  `/login`. That is incidental, not by design — Phase 2 owns it.
+- **Variant-level catalog edits have no endpoint.** `PUT /api/products/:id`
+  takes no variants, so CSV import cannot apply variant changes to an existing
+  product; it reports the skipped count instead of dropping them silently.
+  Phase 4 owns the endpoint.

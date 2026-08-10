@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
@@ -52,7 +53,7 @@ const updateStatusSchema = z.object({
  * GET /api/quotes
  * List all quotes
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('services', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const quotes = await adapter.getAllQuotes();
@@ -72,7 +73,7 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
  * GET /api/quotes/customer/:customerId
  * Get quotes by customer ID
  */
-router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/customer/:customerId', requirePermission('services', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { customerId } = req.params;
     const adapter = db.getAdapter();
@@ -91,7 +92,7 @@ router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next
  * GET /api/quotes/:id
  * Get quote by ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('services', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -114,7 +115,7 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/quotes
  * Create new quote (service order)
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('services', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const quoteData = createQuoteSchema.parse(req.body);
     const adapter = db.getAdapter();
@@ -139,7 +140,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
  * PUT /api/quotes/:id
  * Update quote
  */
-router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', requirePermission('services', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const quoteData = updateQuoteSchema.parse(req.body);
@@ -169,7 +170,7 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * PUT /api/quotes/:id/status
  * Update quote status
  */
-router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id/status', requirePermission('services', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { status } = updateStatusSchema.parse(req.body);
@@ -199,7 +200,7 @@ router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunc
  * DELETE /api/quotes/:id
  * Delete quote
  */
-router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', requirePermission('services', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();

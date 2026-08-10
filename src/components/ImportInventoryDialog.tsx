@@ -9,7 +9,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addProduct, updateProduct, getProduct } from '@/lib/db';
+import { productsApi, type CreateProductRequest, type ProductVariant } from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 interface ImportInventoryDialogProps {
   open: boolean;
@@ -58,61 +59,118 @@ export default function ImportInventoryDialog({
     return rows;
   };
 
-  const processImport = async (rows: Record<string, unknown>[]) => {
-    const productMap = new Map();
+  /** One CSV row's worth of variant, keyed by the exported column headings. */
+  const toVariant = (row: Record<string, unknown>): Omit<ProductVariant, 'id'> => {
+    const optional = (key: string): string | undefined => {
+      const value = String(row[key] ?? '').trim();
+      return value === '' ? undefined : value;
+    };
 
-    // Group by Product ID
+    const override = optional('Price Override');
+
+    return {
+      size: optional('Size'),
+      color: optional('Color'),
+      priceDelta: parseFloat(String(row['Price Delta'] ?? '')) || 0,
+      priceOverride: override === undefined ? undefined : parseFloat(override),
+      sku: optional('SKU'),
+      barcode: optional('Barcode'),
+      stock: parseInt(String(row['Stock'] ?? '')) || 0,
+      enabled: String(row['Enabled'] ?? '').toLowerCase() === 'yes',
+    };
+  };
+
+  /**
+   * Push the parsed rows to the catalog API.
+   *
+   * Rows sharing a Product ID collapse into one product with many variants. An ID
+   * that matches a live product updates it; anything else is created fresh under
+   * a server-assigned ID, because the API does not let a client choose one.
+   *
+   * Variant rows are applied through the variant sub-resources, since
+   * `PUT /api/products/:id` carries no variant payload of its own.
+   */
+  const processImport = async (rows: Record<string, unknown>[]) => {
+    const grouped = new Map<
+      string,
+      { csvId: string; name: string; category: string; basePrice: number; barcode?: string; variants: Omit<ProductVariant, 'id'>[] }
+    >();
+
     for (const row of rows) {
-      const productId = String(row['Product ID'] ?? '');
-      if (!productMap.has(productId)) {
-        productMap.set(productId, {
-          id: productId,
-          name: String(row['Product Name'] ?? ''),
-          category: String(row['Category'] ?? ''),
+      const csvId = String(row['Product ID'] ?? '').trim();
+      if (!csvId) continue;
+
+      let product = grouped.get(csvId);
+      if (!product) {
+        product = {
+          csvId,
+          name: String(row['Product Name'] ?? '').trim(),
+          category: String(row['Category'] ?? '').trim(),
           basePrice: parseFloat(String(row['Base Price'] ?? '')) || 0,
+          barcode: undefined,
           variants: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        });
+        };
+        grouped.set(csvId, product);
       }
 
-      const product = productMap.get(productId);
-      product.variants.push({
-        id: String(row['Variant ID'] ?? ''),
-        size: row['Size'] || undefined,
-        color: row['Color'] || undefined,
-        priceDelta: parseFloat(String(row['Price Delta'] ?? '')) || 0,
-        priceOverride: row['Price Override'] ? parseFloat(String(row['Price Override'] ?? '')) : undefined,
-        sku: row['SKU'] || undefined,
-        barcode: row['Barcode'] || undefined,
-        stock: parseInt(String(row['Stock'] ?? '')) || 0,
-        enabled: String(row['Enabled'] ?? '').toLowerCase() === 'yes',
-      });
+      product.variants.push(toVariant(row));
     }
 
-    // Save to database
+    const existing = await productsApi.list();
+    const byId = new Map(existing.map((product) => [product.id, product]));
+
     let imported = 0;
     let updated = 0;
+    let variantsChanged = 0;
 
-    for (const product of productMap.values()) {
-      const existing = await getProduct(product.id);
+    for (const product of grouped.values()) {
+      const existing = byId.get(product.csvId);
+
       if (existing) {
-        await updateProduct(product.id, {
+        await productsApi.update(product.csvId, {
           name: product.name,
-          description: product.description,
           category: product.category,
           basePrice: product.basePrice,
-          barcode: product.barcode,
-          image: product.image,
         });
         updated++;
-      } else {
-        await addProduct(product);
-        imported++;
+
+        // Variant rows used to be dropped here, because there was no endpoint to
+        // apply them — which made a re-import unable to do the most ordinary
+        // thing a shop wants from one: correct stock counts.
+        //
+        // Matched on SKU, then barcode, then the size/colour pair, since a CSV
+        // carries no variant id. Anything unmatched is a new option.
+        for (const incoming of product.variants) {
+          const match = existing.variants.find(candidate =>
+            incoming.sku && candidate.sku
+              ? candidate.sku === incoming.sku
+              : incoming.barcode && candidate.barcode
+                ? candidate.barcode === incoming.barcode
+                : (candidate.size ?? '') === (incoming.size ?? '') &&
+                  (candidate.color ?? '') === (incoming.color ?? '')
+          );
+
+          if (match) {
+            await productsApi.variants.update(existing.id, match.id, incoming);
+          } else {
+            await productsApi.variants.create(existing.id, incoming);
+          }
+          variantsChanged++;
+        }
+        continue;
       }
+
+      const body: CreateProductRequest = {
+        name: product.name,
+        category: product.category,
+        basePrice: product.basePrice,
+        variants: product.variants,
+      };
+      await productsApi.create(body);
+      imported++;
     }
 
-    return { imported, updated };
+    return { imported, updated, variantsChanged };
   };
 
   const handleFileUpload = async (file: File) => {
@@ -129,11 +187,13 @@ export default function ImportInventoryDialog({
     try {
       const text = await file.text();
       const rows = parseCSV(text);
-      const { imported, updated } = await processImport(rows);
+      const { imported, updated, variantsChanged } = await processImport(rows);
 
       toast({
         title: 'Import successful',
-        description: `${imported} products imported, ${updated} products updated`,
+        description:
+          `${imported} products imported, ${updated} updated` +
+          (variantsChanged > 0 ? `, ${variantsChanged} variants applied` : ''),
       });
 
       onImportComplete();
@@ -141,7 +201,7 @@ export default function ImportInventoryDialog({
     } catch (error) {
       toast({
         title: 'Import failed',
-        description: 'Please check your CSV format and try again',
+        description: getErrorMessage(error, 'Please check your CSV format and try again'),
         variant: 'destructive',
       });
     } finally {

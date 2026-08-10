@@ -9,7 +9,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiClient } from '@/lib/api-client';
+import { customersApi, ordersApi, quotesApi, returnsApi } from '@/lib/api';
+import type { Order } from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, RotateCcw, Archive, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -34,15 +35,6 @@ interface Customer {
   lastOrderAt?: number;
   createdAt: number;
   updatedAt: number;
-}
-
-interface Order {
-  id: string;
-  createdAt: number;
-  total: number;
-  taxTotal: number;
-  paymentMethod: string;
-  items: { nameSnapshot: string; quantity: number; lineTotal: number }[];
 }
 
 interface Quote {
@@ -123,15 +115,13 @@ export default function AdminCustomers() {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers');
-      if (response.success) {
-        const customersWithDefaults = response.data.map(c => ({
-          ...c,
-          tags: c.tags || [],
-          lifetimeValue: c.lifetimeValue || 0,
-        }));
-        setCustomers(customersWithDefaults.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
-      }
+      const response = await customersApi.list();
+      const customersWithDefaults = response.map(c => ({
+        ...c,
+        tags: c.tags || [],
+        lifetimeValue: c.lifetimeValue || 0,
+      }));
+      setCustomers(customersWithDefaults.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -151,25 +141,17 @@ export default function AdminCustomers() {
       setCustomerReturns([]);
 
       // Load quotes
-      const quotesResponse = await apiClient.get<{ success: boolean; data: Quote[] }>(`/api/quotes/customer/${customer.id}`);
-      if (quotesResponse.success) {
-        setCustomerQuotes(quotesResponse.data);
-      }
+      const quotesResponse = await quotesApi.listByCustomer(customer.id);
+      setCustomerQuotes(quotesResponse);
 
       // Load returns by customer ID
-      const returnsResponse = await apiClient.get<{ success: boolean; data: Return[] }>(`/api/returns/customer/${customer.id}`);
-      if (returnsResponse.success) {
-        setCustomerReturns(returnsResponse.data);
-      }
+      const returnsResponse = await returnsApi.listByCustomer(customer.id);
+      setCustomerReturns(returnsResponse);
 
       // Load orders by email if customer has an email
       if (customer.email) {
-        const ordersResponse = await apiClient.get<{ success: boolean; data: Order[] }>(
-          `/api/orders/customer/${encodeURIComponent(customer.email)}`
-        );
-        if (ordersResponse.success) {
-          setCustomerOrders(ordersResponse.data);
-        }
+        const ordersResponse = await ordersApi.listByCustomerEmail(customer.email);
+        setCustomerOrders(ordersResponse);
       }
     } catch (error: unknown) {
       console.error('Error loading customer history:', error);
@@ -231,15 +213,11 @@ export default function AdminCustomers() {
       };
 
       if (isNewCustomer) {
-        const response = await apiClient.post<{ success: boolean; data: Customer }>('/api/customers', payload);
-        if (response.success) {
-          toast({ title: 'Customer created successfully' });
-        }
+        const response = await customersApi.create(payload);
+        toast({ title: 'Customer created successfully' });
       } else {
-        const response = await apiClient.put<{ success: boolean; data: Customer }>(`/api/customers/${editingCustomer.id}`, payload);
-        if (response.success) {
-          toast({ title: 'Customer updated successfully' });
-        }
+        const response = await customersApi.update(editingCustomer.id, payload);
+        toast({ title: 'Customer updated successfully' });
       }
 
       setEditDialogOpen(false);
@@ -267,16 +245,11 @@ export default function AdminCustomers() {
     setDeletingCustomer(true);
 
     try {
-      const response = await apiClient.post<{ success: boolean; message: string }>(
-        `/api/customers/${customerToDelete.id}/archive`,
-        { reason: archiveReason || undefined }
-      );
-      if (response.success) {
-        toast({ title: 'Customer archived', description: response.message });
-        setDeleteDialogOpen(false);
-        setCustomerToDelete(null);
-        await loadCustomers();
-      }
+      const response = await customersApi.archive(customerToDelete.id, archiveReason || undefined);
+      toast({ title: 'Customer archived' });
+      setDeleteDialogOpen(false);
+      setCustomerToDelete(null);
+      await loadCustomers();
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -293,15 +266,11 @@ export default function AdminCustomers() {
     setDeletingCustomer(true);
 
     try {
-      const response = await apiClient.delete<{ success: boolean; message: string }>(
-        `/api/customers/${customerToDelete.id}/permanent`
-      );
-      if (response.success) {
-        toast({ title: 'Customer deleted', description: response.message });
-        setDeleteDialogOpen(false);
-        setCustomerToDelete(null);
-        await loadCustomers();
-      }
+      const response = await customersApi.purge(customerToDelete.id);
+      toast({ title: 'Customer deleted' });
+      setDeleteDialogOpen(false);
+      setCustomerToDelete(null);
+      await loadCustomers();
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -318,15 +287,11 @@ export default function AdminCustomers() {
     setDeletingCustomer(true);
 
     try {
-      const response = await apiClient.delete<{ success: boolean; hasRelatedRecords?: boolean }>(
-        `/api/customers/${customerToDelete.id}`
-      );
-      if (response.success) {
-        toast({ title: 'Customer deleted successfully' });
-        setDeleteDialogOpen(false);
-        setCustomerToDelete(null);
-        await loadCustomers();
-      }
+      const response = await customersApi.remove(customerToDelete.id);
+      toast({ title: 'Customer deleted successfully' });
+      setDeleteDialogOpen(false);
+      setCustomerToDelete(null);
+      await loadCustomers();
     } catch (error: unknown) {
       // If customer has related records, show archive/permanent delete options
       if (getErrorMessage(error)?.includes('associated') || getErrorMessage(error)?.includes('Archive')) {

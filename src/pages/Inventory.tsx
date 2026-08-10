@@ -1,12 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { ProductVariant } from "@/lib/db";
-import { apiClient } from "@/lib/api-client";
-import type { Product, CreateProductRequest, UpdateProductRequest } from "@/lib/api-types";
-import { ArrowLeft, Plus, Pencil, Trash2, Package } from "lucide-react";
+import type {
+  CreateProductRequest,
+  Product,
+  ProductVariant,
+  UpdateProductRequest,
+} from "@/lib/api";
+import {
+  useCreateProduct,
+  useDeleteProduct,
+  useProducts,
+  useUpdateProduct,
+} from "@/hooks/queries";
+import { ArrowLeft, Plus, Pencil, Trash2, Package, AlertCircle, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -15,34 +24,17 @@ import { Badge } from "@/components/ui/badge";
 import { getErrorMessage } from '@/lib/errors';
 
 export default function Inventory() {
-  const [products, setProducts] = useState<Product[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+  const { data: products = [], isPending, isError, error, refetch } = useProducts();
+  const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Product[] }>('/api/products');
-      if (response.success) {
-        setProducts(response.data);
-      }
-    } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: getErrorMessage(error, 'Failed to load products'),
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const isSaving = createProduct.isPending || updateProduct.isPending;
 
   const handleAddProduct = () => {
     const newProduct: Product = {
@@ -74,7 +66,9 @@ export default function Inventory() {
     }
 
     try {
-      const isNew = !products.find(p => p.id === currentProduct.id);
+      // A product being added exists only in local state until now - its `id` was
+      // fabricated for React keys, and the server assigns the real one on create.
+      const isNew = !products.some(p => p.id === currentProduct.id);
 
       if (isNew) {
         const createData: CreateProductRequest = {
@@ -95,10 +89,8 @@ export default function Inventory() {
             enabled: v.enabled,
           })),
         };
-        const response = await apiClient.post<{ success: boolean; data: Product }>('/api/products', createData);
-        if (response.success) {
-          toast({ title: "Product added successfully" });
-        }
+        await createProduct.mutateAsync(createData);
+        toast({ title: "Product added successfully" });
       } else {
         const updateData: UpdateProductRequest = {
           name: currentProduct.name,
@@ -108,13 +100,10 @@ export default function Inventory() {
           barcode: currentProduct.barcode,
           image: currentProduct.image,
         };
-        const response = await apiClient.put<{ success: boolean; data: Product }>(`/api/products/${currentProduct.id}`, updateData);
-        if (response.success) {
-          toast({ title: "Product updated successfully" });
-        }
+        await updateProduct.mutateAsync({ id: currentProduct.id, body: updateData });
+        toast({ title: "Product updated successfully" });
       }
 
-      await loadProducts();
       setEditDialogOpen(false);
       setCurrentProduct(null);
     } catch (error: unknown) {
@@ -127,20 +116,17 @@ export default function Inventory() {
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (confirm("Delete this product?")) {
-      try {
-        const response = await apiClient.delete<{ success: boolean }>(`/api/products/${id}`);
-        if (response.success) {
-          toast({ title: "Product deleted" });
-          await loadProducts();
-        }
-      } catch (error: unknown) {
-        toast({
-          title: "Error",
-          description: getErrorMessage(error, 'Failed to delete product'),
-          variant: 'destructive',
-        });
-      }
+    if (!confirm("Delete this product?")) return;
+
+    try {
+      await deleteProduct.mutateAsync(id);
+      toast({ title: "Product deleted" });
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getErrorMessage(error, 'Failed to delete product'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -194,7 +180,9 @@ export default function Inventory() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">Inventory Management</h1>
-              <p className="text-xs text-muted-foreground">{products.length} products</p>
+              <p className="text-xs text-muted-foreground">
+                {isPending ? 'Loading…' : isError ? 'Unavailable' : `${products.length} products`}
+              </p>
             </div>
           </div>
           <Button onClick={handleAddProduct} className="bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -206,6 +194,23 @@ export default function Inventory() {
 
       {/* Products Table */}
       <div className="p-6">
+        {isPending ? (
+          <Card className="bg-card border-border py-16 text-center">
+            <Loader2 className="w-8 h-8 text-muted-foreground mx-auto mb-4 animate-spin" />
+            <p className="text-muted-foreground">Loading products…</p>
+          </Card>
+        ) : isError ? (
+          <Card className="bg-card border-border py-16 text-center">
+            <AlertCircle className="w-12 h-12 text-destructive/70 mx-auto mb-4" />
+            <p className="text-foreground font-medium">Could not load products</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {getErrorMessage(error, 'The catalog service did not respond.')}
+            </p>
+            <Button variant="outline" className="mt-4 border-border" onClick={() => refetch()}>
+              Try again
+            </Button>
+          </Card>
+        ) : (
         <Card className="bg-card border-border overflow-hidden">
           <Table>
             <TableHeader>
@@ -269,6 +274,7 @@ export default function Inventory() {
             </div>
           )}
         </Card>
+        )}
       </div>
 
       {/* Edit Product Dialog */}
@@ -398,11 +404,21 @@ export default function Inventory() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="border-border">
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={isSaving}
+              className="border-border"
+            >
               Cancel
             </Button>
-            <Button onClick={handleSaveProduct} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              Save Product
+            <Button
+              onClick={handleSaveProduct}
+              disabled={isSaving}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {isSaving ? 'Saving…' : 'Save Product'}
             </Button>
           </DialogFooter>
         </DialogContent>

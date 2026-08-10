@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { apiClient } from "@/lib/api-client";
-import type { Order, OrderItem } from "@/lib/api-types";
+import { ordersApi } from '@/lib/api';
+import type { Order, OrderItem } from "@/lib/api";
 import { ArrowLeft, DollarSign, ShoppingCart, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -25,20 +25,18 @@ export default function Reports() {
       const now = Date.now();
       const startDate = now - dateRange * 86400000;
 
-      const response = await apiClient.get<{ success: boolean; data: Order[] }>('/api/orders');
-      if (response.success) {
-        const filteredOrders = response.data.filter(o => o.createdAt >= startDate);
-        setOrders(filteredOrders);
+      const response = await ordersApi.list();
+      const filteredOrders = response.filter(o => o.createdAt >= startDate);
+      setOrders(filteredOrders);
 
-        // Extract order items from orders (if included in response)
-        const allItems: OrderItem[] = [];
-        filteredOrders.forEach(order => {
-          if (order.items) {
-            allItems.push(...order.items);
-          }
-        });
-        setOrderItems(allItems);
-      }
+      // Extract order items from orders (if included in response)
+      const allItems: OrderItem[] = [];
+      filteredOrders.forEach(order => {
+        if (order.items) {
+          allItems.push(...order.items);
+        }
+      });
+      setOrderItems(allItems);
     } catch (error: unknown) {
       // Error logged via toast notification
       // Set empty arrays on error

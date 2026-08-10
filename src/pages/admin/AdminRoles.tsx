@@ -7,7 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { apiClient } from '@/lib/api-client';
+import { adminApi } from '@/lib/api';
+import {
+  PERMISSION_RESOURCES,
+  type AppRole as SystemRoleName,
+  type RolePermissions,
+} from '@/lib/permissions';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -15,48 +20,35 @@ import { getCurrentSession, hasAnyRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 
-interface Permission {
-  read: boolean;
-  write: boolean;
-  delete: boolean;
-}
-
-interface Permissions {
-  inventory: Permission;
-  reports: Permission;
-  exports: Permission;
-  settings: Permission;
-  users: Permission;
-  services: Permission;
-  customers: Permission;
-}
-
 interface Role {
   id: string;
   name: string;
-  systemRole?: string;
-  permissions: Permissions;
+  systemRole?: SystemRoleName;
+  permissions: RolePermissions;
 }
 
-const defaultPermissions: Permissions = {
-  inventory: { read: false, write: false, delete: false },
-  reports: { read: false, write: false, delete: false },
-  exports: { read: false, write: false, delete: false },
-  settings: { read: false, write: false, delete: false },
-  users: { read: false, write: false, delete: false },
-  services: { read: false, write: false, delete: false },
-  customers: { read: false, write: false, delete: false },
-};
+/**
+ * The matrix rendered by the editor, and the blank slate a new role starts from.
+ *
+ * Both derive from PERMISSION_RESOURCES rather than being listed again here: the
+ * previous hand-written copy silently omitted every resource added after it was
+ * written, so those permissions could not be granted through the UI at all.
+ */
+const permissionModules = PERMISSION_RESOURCES;
 
-const permissionModules = [
-  'inventory',
-  'reports',
-  'exports',
-  'settings',
-  'users',
-  'services',
-  'customers',
-] as const;
+const defaultPermissions = Object.fromEntries(
+  PERMISSION_RESOURCES.map((resource) => [resource, { read: false, write: false, delete: false }])
+) as unknown as RolePermissions;
+
+/** Short explanations for the resources whose scope is not obvious from the name. */
+const MODULE_HINTS: Partial<Record<keyof RolePermissions, string>> = {
+  orders: 'Ringing sales, receipts, and the card terminal',
+  returns: 'Refunds and restocking',
+  discounts: 'Discount types, promo codes, and employee entitlements',
+  exports: 'Downloading data extracts',
+  users: 'Staff accounts and roles',
+  settings: 'Store configuration and audit log',
+};
 
 export default function AdminRoles() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -83,10 +75,8 @@ export default function AdminRoles() {
   const loadRoles = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Role[] }>('/api/admin/roles');
-      if (response.success) {
-        setRoles(response.data);
-      }
+      const response = await adminApi.roles.list();
+      setRoles(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -136,23 +126,19 @@ export default function AdminRoles() {
 
     try {
       if (isNewRole) {
-        const response = await apiClient.post<{ success: boolean; data: Role }>('/api/admin/roles', {
+        const response = await adminApi.roles.create({
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
         });
-        if (response.success) {
-          toast({ title: 'Role created successfully' });
-        }
+        toast({ title: 'Role created successfully' });
       } else {
-        const response = await apiClient.put<{ success: boolean; data: Role }>(`/api/admin/roles/${editingRole.id}`, {
+        const response = await adminApi.roles.update(editingRole.id, {
           name: editingRole.name,
           systemRole: editingRole.systemRole,
           permissions: editingRole.permissions,
         });
-        if (response.success) {
-          toast({ title: 'Role updated successfully' });
-        }
+        toast({ title: 'Role updated successfully' });
       }
 
       setEditDialogOpen(false);
@@ -182,11 +168,9 @@ export default function AdminRoles() {
     if (!confirm('Are you sure you want to delete this role?')) return;
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/admin/roles/${id}`);
-      if (response.success) {
-        toast({ title: 'Role deleted successfully' });
-        await loadRoles();
-      }
+      const response = await adminApi.roles.remove(id);
+      toast({ title: 'Role deleted successfully' });
+      await loadRoles();
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -197,8 +181,8 @@ export default function AdminRoles() {
   };
 
   const updatePermission = (
-    module: keyof Permissions,
-    action: keyof Permission,
+    module: keyof RolePermissions,
+    action: 'read' | 'write' | 'delete',
     value: boolean
   ) => {
     if (!editingRole) return;
@@ -353,7 +337,7 @@ export default function AdminRoles() {
                         value={editingRole.systemRole || 'none'}
                         onValueChange={(value) => setEditingRole({ 
                           ...editingRole, 
-                          systemRole: value === 'none' ? undefined : value 
+                          systemRole: value === 'none' ? undefined : (value as SystemRoleName) 
                         })}
                       >
                         <SelectTrigger>
@@ -385,7 +369,14 @@ export default function AdminRoles() {
                         <TableBody>
                           {permissionModules.map((module) => (
                             <TableRow key={module}>
-                              <TableCell className="capitalize font-medium">{module}</TableCell>
+                              <TableCell className="font-medium">
+                                <span className="capitalize">{module}</span>
+                                {MODULE_HINTS[module] && (
+                                  <p className="text-xs font-normal text-muted-foreground">
+                                    {MODULE_HINTS[module]}
+                                  </p>
+                                )}
+                              </TableCell>
                               <TableCell className="text-center">
                                 <Checkbox
                                   checked={editingRole.permissions[module]?.read || false}

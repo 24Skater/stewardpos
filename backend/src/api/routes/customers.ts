@@ -1,10 +1,11 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
-import { authorize } from '../middleware/authorize';
+import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
 
 const router = Router();
 
@@ -44,7 +45,7 @@ const updateCustomerSchema = createCustomerSchema.partial();
  * GET /api/customers
  * List all customers
  */
-router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('customers', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const customers = await adapter.getAllCustomers();
@@ -64,7 +65,7 @@ router.get('/', async (_req: AuthRequest, res: Response, next: NextFunction) => 
  * GET /api/customers/:id
  * Get customer by ID
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('customers', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -87,13 +88,14 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/customers
  * Create new customer
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const customerData = createCustomerSchema.parse(req.body);
     const adapter = db.getAdapter();
     const customer = await adapter.createCustomer(customerData);
 
     logger.info(`Created customer: ${customer.name} (${customer.id})`);
+    await audit(req, { action: 'create', entity: 'customer', entityId: String(customer.id), after: customer });
 
     res.status(201).json({
       success: true,
@@ -112,7 +114,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
  * PUT /api/customers/:id
  * Update customer
  */
-router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const customerData = updateCustomerSchema.parse(req.body);
@@ -124,6 +126,7 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
     }
 
     logger.info(`Updated customer: ${id}`);
+    await audit(req, { action: 'update', entity: 'customer', entityId: id, after: customer });
 
     res.json({
       success: true,
@@ -142,7 +145,7 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * DELETE /api/customers/:id
  * Delete customer (will fail if customer has related records)
  */
-router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.delete('/:id', requirePermission('customers', 'delete'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -153,6 +156,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response, next: NextFunction
     }
 
     logger.info(`Deleted customer: ${id}`);
+    await audit(req, { action: 'delete', entity: 'customer', entityId: id });
 
     res.json({
       success: true,
@@ -190,10 +194,13 @@ const archiveCustomerSchema = z.object({
 
 /**
  * POST /api/customers/:id/archive
- * Archive customer and their related records (quotes, orders)
- * Moves data to archive tables for potential restoration later
+ *
+ * Moves the customer and their quotes into the archive tables, so the record
+ * survives without cluttering the live list. Orders are deliberately left where
+ * they are — they are the sales ledger, they carry the customer's email as a
+ * snapshot, and returns and reporting read them.
  */
-router.post('/:id/archive', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/archive', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { reason } = archiveCustomerSchema.parse(req.body);
@@ -212,10 +219,14 @@ router.post('/:id/archive', async (req: AuthRequest, res: Response, next: NextFu
     }
 
     logger.info(`Archived customer: ${customer.name} (${id}) by user ${req.user!.id}`);
+    await audit(req, { action: 'archive', entity: 'customer', entityId: id, before: customer });
 
     res.json({
       success: true,
-      message: `Customer "${customer.name}" has been archived along with their quotes and orders.`,
+      // Says what actually happens. Orders are deliberately not archived — they
+      // are the sales ledger, and claiming to have moved them would leave a
+      // shop believing its records had gone somewhere they had not.
+      message: `Customer "${customer.name}" has been archived, along with their quotes. Their orders remain in the sales records.`,
     });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

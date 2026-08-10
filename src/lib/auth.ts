@@ -1,7 +1,7 @@
 import { apiClient } from './api-client';
 import { authStore } from './auth-store';
-import type { SessionResponse } from './api-types';
-import type { RolePermissions } from './db';
+import type { SessionResponse } from './api/types';
+import { PERMISSION_RESOURCES, type RolePermissions } from './permissions';
 import { logger } from './logger';
 
 export interface AuthSession {
@@ -36,8 +36,8 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 
   try {
     const response = await apiClient.get<SessionResponse>('/api/auth/session');
-    if (response.success && response.data?.user) {
-      const user = response.data.user;
+    if (response?.user) {
+      const user = response.user;
       
       // Ensure user has required properties
       if (!user.id || !user.email || !user.name) {
@@ -92,13 +92,26 @@ export async function login(email: string, password: string): Promise<AuthSessio
   return null;
 }
 
+/**
+ * Whether the session may take `action` on `domain`.
+ *
+ * Admins pass regardless, matching the server's `requirePermission`: a resource
+ * key added later must not lock out the account that has to configure it. Keep
+ * the two in step - this decides what the UI offers, the server decides what it
+ * accepts, and a mismatch shows up as a control that always 403s.
+ */
 export function hasPermission(
   session: AuthSession | null,
   domain: keyof RolePermissions,
   action: 'read' | 'write' | 'delete'
 ): boolean {
   if (!session) return false;
-  return session.permissions[domain][action];
+  if (isAdmin(session)) return true;
+  return session.permissions[domain]?.[action] === true;
+}
+
+export function isAdmin(session: AuthSession | null): boolean {
+  return (session?.user?.roles || []).some((role) => role.systemRole === 'admin');
 }
 
 export function hasAnyRole(session: AuthSession | null, roleNames: string[]): boolean {
@@ -111,22 +124,25 @@ export function hasRole(session: AuthSession | null, roleName: string): boolean 
 }
 
 function mergePermissions(permissionsArray: RolePermissions[]): RolePermissions {
-  const merged: RolePermissions = {
-    inventory: { read: false, write: false, delete: false },
-    reports: { read: false, write: false, delete: false },
-    exports: { read: false, write: false, delete: false },
-    settings: { read: false, write: false, delete: false },
-    users: { read: false, write: false, delete: false },
-    services: { read: false, write: false, delete: false },
-    customers: { read: false, write: false, delete: false },
-  };
+  // Built from PERMISSION_RESOURCES so a new resource cannot be added to the
+  // model and silently forgotten here, which would leave it permanently denied.
+  const merged = Object.fromEntries(
+    PERMISSION_RESOURCES.map((resource) => [
+      resource,
+      { read: false, write: false, delete: false },
+    ])
+  ) as unknown as RolePermissions;
 
   for (const perms of permissionsArray) {
     for (const domain in merged) {
       const key = domain as keyof RolePermissions;
-      merged[key].read = merged[key].read || perms[key].read;
-      merged[key].write = merged[key].write || perms[key].write;
-      merged[key].delete = merged[key].delete || perms[key].delete;
+      // A role's permissions JSONB need not carry every key - one written before
+      // a resource existed, or edited by hand, simply omits it. Reading through
+      // an absent key would throw and take down every page behind the session.
+      const granted = perms?.[key];
+      merged[key].read = merged[key].read || granted?.read === true;
+      merged[key].write = merged[key].write || granted?.write === true;
+      merged[key].delete = merged[key].delete || granted?.delete === true;
     }
   }
 

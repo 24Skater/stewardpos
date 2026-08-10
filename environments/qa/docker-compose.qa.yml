@@ -32,7 +32,11 @@ services:
       AUTO_SEED: "false"  # Don't auto-seed in QA
       CORS_ORIGIN: ${CORS_ORIGIN:-https://qa.stewardpos.example.com,http://localhost:8080}
       RATE_LIMIT_WINDOW_MS: 900000  # 15 minutes
-      RATE_LIMIT_MAX_REQUESTS: 200
+      # One nginx sits in front; without this every client shares one
+      # rate-limit bucket because they all appear to come from the proxy.
+      TRUST_PROXY: 1
+      RATE_LIMIT_MAX_REQUESTS: 3000  # Matches prod; see the prod compose for why
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: 10
     ports:
       - "3003:3001"  # Different port
     volumes:

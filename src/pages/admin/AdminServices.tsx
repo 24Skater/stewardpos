@@ -8,25 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { apiClient } from '@/lib/api-client';
+import { servicesApi, type Service, type ServiceUnitType } from '@/lib/api';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
-
-interface Service {
-  id: string;
-  name: string;
-  category: string;
-  description?: string;
-  basePrice?: number;
-  unitType: string;
-  isActive: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
 
 export default function AdminServices() {
   const [services, setServices] = useState<Service[]>([]);
@@ -53,10 +41,8 @@ export default function AdminServices() {
   const loadServices = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Service[] }>('/api/services');
-      if (response.success) {
-        setServices(response.data);
-      }
+      const response = await servicesApi.list();
+      setServices(response);
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -110,7 +96,7 @@ export default function AdminServices() {
 
     try {
       if (isNewService) {
-        const response = await apiClient.post<{ success: boolean; data: Service }>('/api/services', {
+        const response = await servicesApi.create({
           name: editingService.name,
           category: editingService.category,
           description: editingService.description,
@@ -118,11 +104,9 @@ export default function AdminServices() {
           unitType: editingService.unitType,
           isActive: editingService.isActive,
         });
-        if (response.success) {
-          toast({ title: 'Service created successfully' });
-        }
+        toast({ title: 'Service created successfully' });
       } else {
-        const response = await apiClient.put<{ success: boolean; data: Service }>(`/api/services/${editingService.id}`, {
+        const response = await servicesApi.update(editingService.id, {
           name: editingService.name,
           category: editingService.category,
           description: editingService.description,
@@ -130,9 +114,7 @@ export default function AdminServices() {
           unitType: editingService.unitType,
           isActive: editingService.isActive,
         });
-        if (response.success) {
-          toast({ title: 'Service updated successfully' });
-        }
+        toast({ title: 'Service updated successfully' });
       }
 
       setEditDialogOpen(false);
@@ -152,11 +134,9 @@ export default function AdminServices() {
     if (!confirm('Are you sure you want to delete this service?')) return;
 
     try {
-      const response = await apiClient.delete<{ success: boolean }>(`/api/services/${id}`);
-      if (response.success) {
-        toast({ title: 'Service deleted successfully' });
-        await loadServices();
-      }
+      const response = await servicesApi.remove(id);
+      toast({ title: 'Service deleted successfully' });
+      await loadServices();
     } catch (error: unknown) {
       toast({
         title: 'Error',
@@ -321,7 +301,7 @@ export default function AdminServices() {
                       <Label htmlFor="unitType">Unit Type</Label>
                       <Select
                         value={editingService.unitType}
-                        onValueChange={(value) => setEditingService({ ...editingService, unitType: value })}
+                        onValueChange={(value) => setEditingService({ ...editingService, unitType: value as ServiceUnitType })}
                       >
                         <SelectTrigger>
                           <SelectValue />

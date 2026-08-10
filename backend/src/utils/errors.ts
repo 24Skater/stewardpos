@@ -58,6 +58,19 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * A dependency this request needed is unavailable or misconfigured.
+ *
+ * 502 rather than 500: the request was fine and the server is fine, something
+ * downstream is not. Retrying may work; reporting it as a server fault sends
+ * whoever reads the logs looking in the wrong place.
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string) {
+    super(message, 502);
+  }
+}
+
 export class DatabaseError extends AppError {
   constructor(message: string = 'Database operation failed') {
     super(message, 500);

@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import logger from '../../utils/logger';
-import { DatabaseError } from '../../utils/errors';
+import { escapeLike } from './like';
+import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
 
 export interface PostgresConfig {
@@ -28,6 +29,129 @@ export interface TerminalTransactionUpdate {
   errorMessage?: string;
   orderId?: string;
   durationMs?: number;
+}
+
+/**
+ * Turn an `order_items` row into the camelCase DTO the API publishes.
+ *
+ * Shared by every path that returns order lines. It was previously inlined at
+ * each read site and omitted entirely on create, which meant a completed sale
+ * responded with raw snake_case columns while a subsequent read of the same
+ * order came back camelCase - the client saw `undefined` for every line total
+ * on the response it got immediately after checkout.
+ *
+ * DECIMAL columns arrive from `pg` as strings; the numeric fields are parsed
+ * here so callers never have to.
+ */
+export function mapOrderItemRow(item: DbRow): DbRow {
+  return {
+    id: item.id,
+    orderId: item.order_id,
+    productId: item.product_id,
+    variantId: item.variant_id,
+    nameSnapshot: item.name_snapshot,
+    size: item.size,
+    color: item.color,
+    quantity: item.quantity,
+    unitPrice: parseFloat(item.unit_price as string),
+    lineDiscount: parseFloat(item.line_discount as string),
+    lineTotal: parseFloat(item.line_total as string),
+    notes: item.notes,
+  };
+}
+
+/** Turn an `orders` row into the camelCase DTO the API publishes. */
+export function mapOrderRow(order: DbRow): DbRow {
+  return {
+    id: order.id,
+    createdAt: new Date(order.created_at as string).getTime(),
+    subtotal: parseFloat(order.subtotal as string),
+    discountTotal: parseFloat(order.discount_total as string),
+    taxTotal: parseFloat(order.tax_total as string),
+    total: parseFloat(order.total as string),
+    paymentMethod: order.payment_method,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    cardTransactionId: order.card_transaction_id ?? null,
+    cardAuthCode: order.card_auth_code ?? null,
+    // Null on card and other tenders, and on orders predating the columns.
+    amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
+    changeGiven: order.change_given == null ? null : parseFloat(order.change_given as string),
+  };
+}
+
+
+/** Turn a `store_credits` row into the camelCase DTO the API publishes. */
+export function mapStoreCreditRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerEmail: row.customer_email,
+    returnId: row.return_id,
+    code: row.code,
+    originalAmount: parseFloat(row.original_amount as string),
+    remainingAmount: parseFloat(row.remaining_amount as string),
+    status: row.status,
+    expiresAt: row.expires_at ? new Date(row.expires_at as string).getTime() : null,
+    createdAt: new Date(row.created_at as string).getTime(),
+    usedAt: row.used_at ? new Date(row.used_at as string).getTime() : null,
+    usedOrderId: row.used_order_id,
+  };
+}
+
+
+/** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
+export function mapDrawerSessionRow(row: DbRow): DbRow {
+  const money = (value: unknown) => (value == null ? null : parseFloat(value as string));
+
+  return {
+    id: row.id,
+    openedBy: row.opened_by,
+    openedByName: row.opened_by_name ?? null,
+    closedBy: row.closed_by,
+    closedByName: row.closed_by_name ?? null,
+    openedAt: new Date(row.opened_at as string).getTime(),
+    closedAt: row.closed_at ? new Date(row.closed_at as string).getTime() : null,
+    openingFloat: money(row.opening_float),
+    expectedCash: money(row.expected_cash),
+    countedCash: money(row.counted_cash),
+    variance: money(row.variance),
+    notes: row.notes ?? null,
+    status: row.status,
+  };
+}
+
+
+/** Turn a `payments` row into the camelCase DTO the API publishes. */
+export function mapPaymentRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    method: row.method,
+    amount: parseFloat(row.amount as string),
+    reference: row.reference ?? null,
+    createdAt: new Date(row.created_at as string).getTime(),
+  };
+}
+
+
+
+/** Turn a `product_variants` row into the camelCase DTO the API publishes. */
+export function mapVariantRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    size: row.size,
+    color: row.color,
+    priceOverride: row.price_override == null ? null : parseFloat(row.price_override as string),
+    priceDelta: row.price_delta == null ? null : parseFloat(row.price_delta as string),
+    sku: row.sku,
+    barcode: row.barcode,
+    stock: row.stock,
+    enabled: row.enabled,
+    // Null means "use the store default", so a shop can change its mind about
+    // what counts as low without editing every variant it owns.
+    lowStockThreshold: row.low_stock_threshold ?? null,
+  };
 }
 
 export class PostgresAdapter {
@@ -121,6 +245,9 @@ export class PostgresAdapter {
         name: user.name,
         roleIds: user.role_ids || [],
         status: user.status,
+        // Null until a second organization exists; `authenticate` falls back to
+        // the default org so consumers never see an absent tenant.
+        orgId: user.org_id ?? null,
         lastLoginAt: user.last_login_at ? new Date(user.last_login_at).getTime() : undefined,
         createdAt: new Date(user.created_at).getTime(),
         roles: roles,
@@ -144,8 +271,66 @@ export class PostgresAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<DbRow[]> {
+
+  /**
+   * The catalog, optionally searched, filtered, and paged.
+   *
+   * `limit` is opt-in and there is deliberately **no default cap**. Quietly
+   * capping this would drop products off the end of the register with no
+   * indication — the page shows what it was given, so the failure looks like a
+   * missing product rather than a truncated response. A default belongs with a
+   * register that pages, not before it.
+   *
+   * Search covers name, barcode, and variant SKU/barcode, case-insensitively,
+   * because those are the three things someone types when hunting for an item.
+   */
+  async getAllProducts(query: {
+    q?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<{ products: DbRow[]; total: number }> {
     try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.q) {
+        params.push(`%${escapeLike(query.q)}%`);
+        const like = `$${params.length}`;
+        // EXISTS rather than a join condition: a match on one variant's SKU
+        // should return the product with *all* its variants, not just that one.
+        conditions.push(`(
+          p.name ILIKE ${like}
+          OR p.barcode ILIKE ${like}
+          OR EXISTS (
+            SELECT 1 FROM product_variants v
+            WHERE v.product_id = p.id AND (v.sku ILIKE ${like} OR v.barcode ILIKE ${like})
+          )
+        )`);
+      }
+
+      if (query.category) {
+        params.push(query.category);
+        conditions.push(`p.category = $${params.length}`);
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*)::int AS total FROM products p ${where}`,
+        params
+      );
+
+      let paging = '';
+      if (query.limit != null) {
+        params.push(query.limit);
+        paging += ` LIMIT $${params.length}`;
+      }
+      if (query.offset != null) {
+        params.push(query.offset);
+        paging += ` OFFSET $${params.length}`;
+      }
+
       const result = await this.pool.query(
         `SELECT p.*, 
                 json_agg(
@@ -158,16 +343,19 @@ export class PostgresAdapter {
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
-                    'enabled', pv.enabled
+                    'enabled', pv.enabled,
+                    'lowStockThreshold', pv.low_stock_threshold
                   )
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
          LEFT JOIN product_variants pv ON p.id = pv.product_id
+         ${where}
          GROUP BY p.id
-         ORDER BY p.name ASC`
+         ORDER BY p.name ASC${paging}`,
+        params
       );
 
-      return result.rows.map((row) => ({
+      const products = result.rows.map((row) => ({
         id: row.id,
         name: row.name,
         description: row.description,
@@ -179,6 +367,8 @@ export class PostgresAdapter {
         createdAt: new Date(row.created_at).getTime(),
         updatedAt: new Date(row.updated_at).getTime(),
       }));
+
+      return { products, total: countResult.rows[0].total };
     } catch (error) {
       logger.error('Error getting all products:', error);
       throw new DatabaseError('Failed to get products');
@@ -199,7 +389,8 @@ export class PostgresAdapter {
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
-                    'enabled', pv.enabled
+                    'enabled', pv.enabled,
+                    'lowStockThreshold', pv.low_stock_threshold
                   )
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
@@ -305,19 +496,29 @@ export class PostgresAdapter {
 
   async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
+      // COALESCE, not bare assignment: every field on the update schema is
+      // optional, so a caller changing only the price sends nothing else. Writing
+      // the parameters straight through set those columns to NULL - erasing the
+      // description, category, image, and barcode of any product updated in part,
+      // and failing outright on `name`, which is NOT NULL.
       const result = await this.pool.query(
         `UPDATE products 
-         SET name = $1, description = $2, category = $3, base_price = $4, 
-             image = $5, barcode = $6, updated_at = CURRENT_TIMESTAMP
+         SET name = COALESCE($1, name),
+             description = COALESCE($2, description),
+             category = COALESCE($3, category),
+             base_price = COALESCE($4, base_price),
+             image = COALESCE($5, image),
+             barcode = COALESCE($6, barcode),
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = $7
          RETURNING *`,
         [
-          product.name,
-          product.description,
-          product.category,
-          product.basePrice,
-          product.image,
-          product.barcode,
+          product.name ?? null,
+          product.description ?? null,
+          product.category ?? null,
+          product.basePrice ?? null,
+          product.image ?? null,
+          product.barcode ?? null,
           id,
         ]
       );
@@ -366,8 +567,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           order.subtotal,
@@ -379,6 +580,8 @@ export class PostgresAdapter {
           order.customerPhone,
           order.cardTransactionId ?? null,
           order.cardAuthCode ?? null,
+          order.amountTendered ?? null,
+          order.changeGiven ?? null,
         ]
       );
 
@@ -409,34 +612,89 @@ export class PostgresAdapter {
           );
           items.push(itemResult.rows[0]);
 
-          // Update variant stock if variantId is provided
+          // Decrement stock, conditionally.
+          //
+          // `WHERE stock >= $1` is what makes this safe under concurrency: the
+          // repricing pass checks stock before this transaction opens, so two
+          // registers selling the last unit can both pass that check. The row
+          // lock here means only one of them matches, and the other updates
+          // nothing and rolls the whole order back.
+          //
+          // The previous `GREATEST(0, stock - $1)` did the opposite - it clamped
+          // at zero and reported success, so an oversold item silently sat at 0
+          // stock while both sales were recorded.
           if (item.variantId) {
-            await client.query(
+            const stockResult = await client.query(
               `UPDATE product_variants 
-               SET stock = GREATEST(0, stock - $1)
-               WHERE id = $2`,
+               SET stock = stock - $1
+               WHERE id = $2 AND stock >= $1`,
               [item.quantity, item.variantId]
             );
+
+            if (stockResult.rowCount === 0) {
+              throw new ValidationError(
+                `Not enough stock for "${item.nameSnapshot ?? item.productId}"`
+              );
+            }
           }
+        }
+      }
+
+      // Payments, and any store credit they spend, inside the same transaction as
+      // the order and its stock movements. Redeeming a credit in a separate step
+      // would mean a failure between the two either burns a credit for a sale
+      // that never happened, or records a sale paid with a credit still worth
+      // its full value.
+      const payments = [];
+      if (Array.isArray(order.payments)) {
+        for (const payment of order.payments as Array<Record<string, unknown>>) {
+          if (payment.method === 'store_credit') {
+            const redeemed = await client.query(
+              `UPDATE store_credits
+               SET remaining_amount = remaining_amount - $2,
+                   status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
+                   used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+                   used_order_id = $3
+               WHERE UPPER(code) = UPPER($1)
+                 AND status = 'active'
+                 AND remaining_amount >= $2
+                 AND (expires_at IS NULL OR expires_at > NOW())
+               RETURNING id`,
+              [payment.reference, payment.amount, newOrder.id]
+            );
+
+            if (redeemed.rowCount === 0) {
+              throw new ValidationError(
+                'That store credit is not available for the amount requested'
+              );
+            }
+          }
+
+          const inserted = await client.query(
+            `INSERT INTO payments (order_id, method, amount, reference)
+             VALUES ($1, $2, $3, $4)
+             RETURNING *`,
+            [newOrder.id, payment.method, payment.amount, payment.reference ?? null]
+          );
+          payments.push(mapPaymentRow(inserted.rows[0]));
         }
       }
 
       await client.query('COMMIT');
 
       return {
-        id: newOrder.id,
-        createdAt: new Date(newOrder.created_at).getTime(),
-        subtotal: parseFloat(newOrder.subtotal),
-        discountTotal: parseFloat(newOrder.discount_total),
-        taxTotal: parseFloat(newOrder.tax_total),
-        total: parseFloat(newOrder.total),
-        paymentMethod: newOrder.payment_method,
-        customerEmail: newOrder.customer_email,
-        customerPhone: newOrder.customer_phone,
-        items,
+        ...mapOrderRow(newOrder),
+        items: items.map(mapOrderItemRow),
+        payments,
       };
     } catch (error) {
       await client.query('ROLLBACK');
+
+      // A stock conflict is the caller's problem, not the server's: let it
+      // through as the 400 it is, rather than flattening it into a generic
+      // "Failed to create order" 500 that tells the cashier nothing.
+      if (error instanceof ValidationError) throw error;
+
       logger.error('Error creating order:', error);
       throw new DatabaseError('Failed to create order');
     } finally {
@@ -466,33 +724,12 @@ export class PostgresAdapter {
           if (!itemsMap.has(orderId)) {
             itemsMap.set(orderId, []);
           }
-          itemsMap.get(orderId)!.push({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineDiscount: parseFloat(item.line_discount),
-            lineTotal: parseFloat(item.line_total),
-            notes: item.notes,
-          });
+          itemsMap.get(orderId)!.push(mapOrderItemRow(item));
         });
       }
 
       return result.rows.map((order) => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -519,30 +756,17 @@ export class PostgresAdapter {
         [id]
       );
 
+      // Payments belong on the detail view: without them a receipt cannot show
+      // how a split sale was actually paid, only the 'Split' summary.
+      const paymentsResult = await this.pool.query(
+        'SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at',
+        [id]
+      );
+
       return {
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
-        items: itemsResult.rows.map((item) => ({
-          id: item.id,
-          orderId: item.order_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          nameSnapshot: item.name_snapshot,
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity,
-          unitPrice: parseFloat(item.unit_price),
-          lineDiscount: parseFloat(item.line_discount),
-          lineTotal: parseFloat(item.line_total),
-          notes: item.notes,
-        })),
+        ...mapOrderRow(order),
+        items: itemsResult.rows.map(mapOrderItemRow),
+        payments: paymentsResult.rows.map(mapPaymentRow),
       };
     } catch (error) {
       logger.error('Error getting order by ID:', error);
@@ -758,49 +982,61 @@ export class PostgresAdapter {
         ]
       );
 
-      // Archive associated quotes
-      const quotesResult = await client.query(
-        'SELECT * FROM quotes WHERE customer_id = $1',
-        [id]
-      );
+      // Archive associated quotes.
+      //
+      // They have to move: `quotes.customer_id` is a foreign key with NO ACTION,
+      // so deleting the customer while a quote points at them simply fails.
+      //
+      // The column names differ between the live table and the archive, and the
+      // previous version read `quote.tax` and `quote.valid_until` — neither of
+      // which exists. `SELECT *` yields undefined for those, which reaches
+      // Postgres as NULL, so an archive whose entire purpose is preserving the
+      // record was storing it with the tax and the expiry blanked.
+      const quotesResult = await client.query('SELECT * FROM quotes WHERE customer_id = $1', [id]);
 
       for (const quote of quotesResult.rows) {
+        // Line items live in their own table; folded into the archive's `items`
+        // JSON so they survive the quote row being deleted.
+        const itemsResult = await client.query(
+          'SELECT * FROM quote_items WHERE quote_id = $1',
+          [quote.id]
+        );
+
         await client.query(
-          `INSERT INTO archived_quotes 
-           (id, customer_id, quote_number, status, items, subtotal, tax, total, notes, 
-            valid_until, created_at, updated_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          `INSERT INTO archived_quotes
+           (id, customer_id, status, items, subtotal, tax, total, notes, valid_until, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
-            quote.id, quote.customer_id, quote.quote_number, quote.status, quote.items,
-            quote.subtotal, quote.tax, quote.total, quote.notes, quote.valid_until,
-            quote.created_at, quote.updated_at, quote.created_by
+            quote.id,
+            quote.customer_id,
+            quote.status,
+            JSON.stringify(itemsResult.rows),
+            quote.subtotal,
+            quote.tax_total,
+            quote.total,
+            quote.notes,
+            quote.expires_at,
+            quote.created_at,
           ]
         );
       }
 
-      // Archive associated orders
-      const ordersResult = await client.query(
-        'SELECT * FROM orders WHERE customer_id = $1',
-        [id]
-      );
+      // Orders are deliberately left alone.
+      //
+      // The previous version selected `FROM orders WHERE customer_id = $1` and
+      // then deleted the matches. `orders` has no `customer_id` — it records
+      // `customer_email` as a snapshot — so that query raised "column
+      // customer_id does not exist" and archiving **any** customer failed with
+      // a 500. The feature had never worked.
+      //
+      // Deleting them would have been worse than the crash: orders are the
+      // sales ledger, they are what returns and reporting read, and a customer
+      // asking to be archived is not a reason to erase the shop's record of
+      // what it sold. They carry the email as a snapshot, so they survive the
+      // customer row going away without any dangling reference.
 
-      for (const order of ordersResult.rows) {
-        await client.query(
-          `INSERT INTO archived_orders 
-           (id, customer_id, order_number, status, items, subtotal, tax, discount, total, 
-            payment_method, notes, created_at, updated_at, created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          [
-            order.id, order.customer_id, order.order_number, order.status, order.items,
-            order.subtotal, order.tax, order.discount, order.total, order.payment_method,
-            order.notes, order.created_at, order.updated_at, order.created_by
-          ]
-        );
-      }
-
-      // Delete from original tables (order matters due to foreign keys)
+      await client.query('DELETE FROM quote_items WHERE quote_id IN (SELECT id FROM quotes WHERE customer_id = $1)', [id]);
       await client.query('DELETE FROM quotes WHERE customer_id = $1', [id]);
-      await client.query('DELETE FROM orders WHERE customer_id = $1', [id]);
       await client.query('DELETE FROM customers WHERE id = $1', [id]);
 
       await client.query('COMMIT');
@@ -1882,33 +2118,12 @@ export class PostgresAdapter {
           if (!itemsMap.has(orderId)) {
             itemsMap.set(orderId, []);
           }
-          itemsMap.get(orderId)!.push({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineDiscount: parseFloat(item.line_discount),
-            lineTotal: parseFloat(item.line_total),
-            notes: item.notes,
-          });
+          itemsMap.get(orderId)!.push(mapOrderItemRow(item));
         });
       }
 
       return result.rows.map((order) => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
@@ -2233,9 +2448,14 @@ export class PostgresAdapter {
         );
         ret.items = itemsResult.rows.map(item => ({
           id: item.id,
+          // Needed to tell how much of a specific order line has already been
+          // returned, which is what stops the same item being refunded twice.
+          originalOrderItemId: item.original_order_item_id,
           productId: item.product_id,
+          variantId: item.variant_id,
           nameSnapshot: item.name_snapshot,
           returnQuantity: item.return_quantity,
+          unitPrice: parseFloat(item.unit_price),
           lineTotal: parseFloat(item.line_total),
         }));
       }
@@ -2493,10 +2713,58 @@ export class PostgresAdapter {
         ]
       );
 
-      return result.rows[0];
+      return mapStoreCreditRow(result.rows[0]);
     } catch (error) {
       logger.error('Error creating store credit:', error);
       throw new DatabaseError('Failed to create store credit');
+    }
+  }
+
+  async getStoreCreditByCode(code: string): Promise<Record<string, unknown> | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM store_credits WHERE UPPER(code) = UPPER($1)',
+        [code]
+      );
+      return result.rows[0] ? mapStoreCreditRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting store credit:', error);
+      throw new DatabaseError('Failed to get store credit');
+    }
+  }
+
+  /**
+   * Spend part or all of a store credit.
+   *
+   * The balance check lives in the `WHERE` clause, not in a read beforehand:
+   * two registers presented with the same code would both pass a prior read and
+   * both spend it. Here the row lock means only one matches, and the other gets
+   * `null` to report as insufficient.
+   */
+  async redeemStoreCredit(
+    code: string,
+    amount: number,
+    orderId?: string
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE store_credits
+         SET remaining_amount = remaining_amount - $2,
+             status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
+             used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+             used_order_id = COALESCE($3, used_order_id)
+         WHERE UPPER(code) = UPPER($1)
+           AND status = 'active'
+           AND remaining_amount >= $2
+           AND (expires_at IS NULL OR expires_at > NOW())
+         RETURNING *`,
+        [code, amount, orderId ?? null]
+      );
+
+      return result.rows[0] ? mapStoreCreditRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error redeeming store credit:', error);
+      throw new DatabaseError('Failed to redeem store credit');
     }
   }
 
@@ -2620,7 +2888,11 @@ export class PostgresAdapter {
 
       if (filters.query) {
         query += ` AND (o.id::text ILIKE $${paramIndex} OR o.customer_email ILIKE $${paramIndex})`;
-        params.push(`%${filters.query}%`);
+        // Escaped for the same reason as the catalog search: unescaped, a `%`
+        // matches every order, so a cashier looking up one receipt is handed
+        // the entire sales history. `_` is subtler — it matches any single
+        // character, so `a_a` quietly returns `ada`.
+        params.push(`%${escapeLike(filters.query)}%`);
         paramIndex++;
       }
       if (filters.startDate) {
@@ -2662,15 +2934,7 @@ export class PostgresAdapter {
       const result = await this.pool.query(query, params);
 
       return result.rows.map(order => ({
-        id: order.id,
-        createdAt: new Date(order.created_at).getTime(),
-        subtotal: parseFloat(order.subtotal),
-        discountTotal: parseFloat(order.discount_total),
-        taxTotal: parseFloat(order.tax_total),
-        total: parseFloat(order.total),
-        paymentMethod: order.payment_method,
-        customerEmail: order.customer_email,
-        customerPhone: order.customer_phone,
+        ...mapOrderRow(order),
         itemCount: parseInt(order.item_count),
       }));
     } catch (error) {
@@ -3310,4 +3574,490 @@ export class PostgresAdapter {
       throw new DatabaseError('Failed to update terminal transaction');
     }
   }
+
+  // ===== Cash drawer sessions =====
+
+  async getOpenDrawerSession(): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT s.*, o.name AS opened_by_name
+         FROM cash_drawer_sessions s
+         LEFT JOIN users o ON s.opened_by = o.id
+         WHERE s.status = 'open'
+         LIMIT 1`
+      );
+      return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting open drawer session:', error);
+      throw new DatabaseError('Failed to get drawer session');
+    }
+  }
+
+  /**
+   * Open a drawer.
+   *
+   * Relies on the partial unique index for exclusivity rather than checking
+   * first: two cashiers opening at once would both pass a prior read, and then
+   * neither would know which drawer a sale belonged to.
+   */
+  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO cash_drawer_sessions (opened_by, opening_float, status)
+         VALUES ($1, $2, 'open')
+         RETURNING *`,
+        [userId ?? null, openingFloat]
+      );
+      return mapDrawerSessionRow(result.rows[0]);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new ValidationError('A drawer session is already open');
+      }
+      logger.error('Error opening drawer session:', error);
+      throw new DatabaseError('Failed to open drawer session');
+    }
+  }
+
+  /**
+   * Cash the drawer should hold: the float, plus cash taken in, less change
+   * given out, for sales rung while this session was open.
+   *
+   * Only cash sales count - a card sale never touches the drawer. Sales with no
+   * recorded tender fall back to their total, which is what a cash sale
+   * contributed before `amount_tendered` existed.
+   */
+  async getExpectedDrawerCash(sessionId: string): Promise<number> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           s.opening_float
+             + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+             AS expected
+         FROM cash_drawer_sessions s
+         LEFT JOIN orders o
+           ON LOWER(o.payment_method) = 'cash'
+          AND o.created_at >= s.opened_at
+          AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+         WHERE s.id = $1
+         GROUP BY s.opening_float`,
+        [sessionId]
+      );
+      return result.rows[0] ? parseFloat(result.rows[0].expected) : 0;
+    } catch (error) {
+      logger.error('Error computing expected drawer cash:', error);
+      throw new DatabaseError('Failed to compute expected cash');
+    }
+  }
+
+  async closeDrawerSession(
+    sessionId: string,
+    countedCash: number,
+    expectedCash: number,
+    userId?: string,
+    notes?: string
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE cash_drawer_sessions
+         SET status = 'closed',
+             closed_at = NOW(),
+             closed_by = $2,
+             counted_cash = $3,
+             expected_cash = $4,
+             -- Cast explicitly: Postgres cannot infer the type of two untyped
+             -- parameters being subtracted, and fails with "operator is not
+             -- unique: unknown - unknown".
+             variance = $3::numeric - $4::numeric,
+             notes = $5
+         WHERE id = $1 AND status = 'open'
+         RETURNING *`,
+        [sessionId, userId ?? null, countedCash, expectedCash, notes ?? null]
+      );
+      return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error closing drawer session:', error);
+      throw new DatabaseError('Failed to close drawer session');
+    }
+  }
+
+  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+         FROM cash_drawer_sessions s
+         LEFT JOIN users o ON s.opened_by = o.id
+         LEFT JOIN users c ON s.closed_by = c.id
+         ORDER BY s.opened_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+      return result.rows.map(mapDrawerSessionRow);
+    } catch (error) {
+      logger.error('Error listing drawer sessions:', error);
+      throw new DatabaseError('Failed to list drawer sessions');
+    }
+  }
+
+
+  // ===== Product variants =====
+
+  /**
+   * Add a variant to an existing product.
+   *
+   * There was no way to do this: `createProduct` takes nested variants, but
+   * `updateProduct` takes none, so a product's options were fixed at creation.
+   * CSV re-import could not update stock on anything already in the catalog,
+   * which is the ordinary case for a shop restocking.
+   */
+  async createVariant(productId: string, variant: Record<string, unknown>): Promise<DbRow | null> {
+    try {
+      const product = await this.pool.query('SELECT id FROM products WHERE id = $1', [productId]);
+      if (product.rows.length === 0) return null;
+
+      const result = await this.pool.query(
+        `INSERT INTO product_variants
+         (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+          low_stock_threshold)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
+        [
+          productId,
+          variant.size ?? null,
+          variant.color ?? null,
+          variant.priceOverride ?? null,
+          variant.priceDelta ?? null,
+          variant.sku ?? null,
+          variant.barcode ?? null,
+          variant.stock ?? 0,
+          variant.enabled !== false,
+          variant.lowStockThreshold ?? null,
+        ]
+      );
+      return mapVariantRow(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating variant:', error);
+      throw new DatabaseError('Failed to create variant');
+    }
+  }
+
+  /**
+   * Update a variant.
+   *
+   * COALESCE throughout, for the same reason as `updateProduct`: every field is
+   * optional, and writing the parameters straight through would blank whatever
+   * the caller did not mention. `enabled` is handled separately because it is a
+   * boolean where `false` is a real value, not an absence.
+   */
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    variant: Record<string, unknown>
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE product_variants
+         SET size = COALESCE($3, size),
+             color = COALESCE($4, color),
+             price_override = COALESCE($5, price_override),
+             price_delta = COALESCE($6, price_delta),
+             sku = COALESCE($7, sku),
+             barcode = COALESCE($8, barcode),
+             stock = COALESCE($9, stock),
+             enabled = COALESCE($10, enabled),
+             -- Explicit null means "go back to the store default", which
+             -- COALESCE alone cannot express: it reads every null as "not
+             -- mentioned", so a threshold once set could never be cleared.
+             low_stock_threshold = CASE
+               WHEN $12::boolean THEN NULL
+               ELSE COALESCE($11, low_stock_threshold)
+             END
+         WHERE id = $1 AND product_id = $2
+         RETURNING *`,
+        [
+          variantId,
+          productId,
+          variant.size ?? null,
+          variant.color ?? null,
+          variant.priceOverride ?? null,
+          variant.priceDelta ?? null,
+          variant.sku ?? null,
+          variant.barcode ?? null,
+          variant.stock ?? null,
+          variant.enabled ?? null,
+          variant.lowStockThreshold ?? null,
+          'lowStockThreshold' in variant && variant.lowStockThreshold === null,
+        ]
+      );
+      return result.rows[0] ? mapVariantRow(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error updating variant:', error);
+      throw new DatabaseError('Failed to update variant');
+    }
+  }
+
+  // ===== Categories =====
+  //
+  // `products.category` holds the category *name*, not a foreign key. That is
+  // how the schema already was, and converting it would mean backfilling every
+  // product whose category was typed rather than picked, plus rewriting the
+  // catalog filter, the CSV import, and the exports. The cost is that the two
+  // have to be kept in step by hand — which is what `renameCategory` is for.
+
+  async getAllCategories(): Promise<DbRow[]> {
+    try {
+      // The product count comes back with the row because every caller wants it:
+      // the admin list shows it, and delete needs it to explain a refusal.
+      const result = await this.pool.query(
+        `SELECT c.id, c.name, c.icon, COUNT(p.id)::int AS product_count
+         FROM categories c
+         LEFT JOIN products p ON p.category = c.name
+         GROUP BY c.id, c.name, c.icon
+         ORDER BY c.name ASC`
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        icon: row.icon,
+        productCount: row.product_count,
+      }));
+    } catch (error) {
+      logger.error('Error getting categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /**
+   * Category names that products use but no category row defines.
+   *
+   * `products.category` is free text historically, so a typo or an import could
+   * put a product in a category the manager cannot see — and therefore cannot
+   * rename, merge, or clean up. Surfacing them is what makes "products
+   * reference valid categories" something a shop can actually act on.
+   */
+  async getUnmanagedCategories(): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT p.category AS name, COUNT(*)::int AS product_count
+         FROM products p
+         LEFT JOIN categories c ON c.name = p.category
+         WHERE c.id IS NULL AND p.category IS NOT NULL AND p.category <> ''
+         GROUP BY p.category
+         ORDER BY p.category ASC`
+      );
+      return result.rows.map((row) => ({ name: row.name, productCount: row.product_count }));
+    } catch (error) {
+      logger.error('Error getting unmanaged categories:', error);
+      throw new DatabaseError('Failed to get categories');
+    }
+  }
+
+  /** Null when the name is already taken, which the route turns into a 409. */
+  async createCategory(name: string, icon: string | null): Promise<DbRow | null> {
+    try {
+      // Case-insensitive: "drinks" alongside "Drinks" is a typo, not two
+      // categories, and the products under each would never appear together.
+      const clash = await this.pool.query('SELECT id FROM categories WHERE LOWER(name) = LOWER($1)', [
+        name,
+      ]);
+      if (clash.rows.length > 0) return null;
+
+      const result = await this.pool.query(
+        'INSERT INTO categories (name, icon) VALUES ($1, $2) RETURNING id, name, icon',
+        [name, icon]
+      );
+      return { ...result.rows[0], productCount: 0 };
+    } catch (error) {
+      logger.error('Error creating category:', error);
+      throw new DatabaseError('Failed to create category');
+    }
+  }
+
+  /**
+   * Rename a category, carrying its products with it.
+   *
+   * Because `products.category` stores the name, renaming the row alone would
+   * leave every product pointing at a category that no longer exists — they
+   * would vanish from the category filter while still claiming to be in it. The
+   * two writes are one transaction so a failure cannot leave that state behind.
+   */
+  async renameCategory(
+    id: string,
+    name: string,
+    icon: string | null | undefined
+  ): Promise<DbRow | null | 'duplicate'> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query('SELECT name FROM categories WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const clash = await client.query(
+        'SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND id <> $2',
+        [name, id]
+      );
+      if (clash.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return 'duplicate';
+      }
+
+      const previousName = existing.rows[0].name;
+      const result = await client.query(
+        'UPDATE categories SET name = $2, icon = COALESCE($3, icon) WHERE id = $1 RETURNING id, name, icon',
+        [id, name, icon ?? null]
+      );
+
+      const moved = await client.query('UPDATE products SET category = $1 WHERE category = $2', [
+        name,
+        previousName,
+      ]);
+
+      await client.query('COMMIT');
+      return { ...result.rows[0], productCount: moved.rowCount ?? 0 };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error renaming category:', error);
+      throw new DatabaseError('Failed to rename category');
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Delete a category, optionally moving its products somewhere else first.
+   *
+   * Without `reassignTo` an in-use category is refused rather than deleted:
+   * `products.category` is NOT NULL, so the products would be left naming a
+   * category that no longer exists and would disappear from the filter.
+   */
+  async deleteCategory(
+    id: string,
+    reassignTo?: string
+  ): Promise<'deleted' | 'not_found' | { inUse: number } | 'bad_target'> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query('SELECT name FROM categories WHERE id = $1', [id]);
+      if (existing.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return 'not_found';
+      }
+      const name = existing.rows[0].name;
+
+      const inUse = await client.query(
+        'SELECT COUNT(*)::int AS count FROM products WHERE category = $1',
+        [name]
+      );
+      const count = inUse.rows[0].count;
+
+      if (count > 0) {
+        if (!reassignTo) {
+          await client.query('ROLLBACK');
+          return { inUse: count };
+        }
+
+        // The destination has to be a real category, or reassignment would
+        // strand the products just as thoroughly as deleting outright.
+        const target = await client.query(
+          'SELECT name FROM categories WHERE LOWER(name) = LOWER($1) AND id <> $2',
+          [reassignTo, id]
+        );
+        if (target.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'bad_target';
+        }
+
+        await client.query('UPDATE products SET category = $1 WHERE category = $2', [
+          target.rows[0].name,
+          name,
+        ]);
+      }
+
+      await client.query('DELETE FROM categories WHERE id = $1', [id]);
+      await client.query('COMMIT');
+      return 'deleted';
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error deleting category:', error);
+      throw new DatabaseError('Failed to delete category');
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Variants at or below their low-stock threshold.
+   *
+   * The threshold is per-variant, falling back to the store default, because a
+   * shop can be out of Large while Small is fine — and because what counts as
+   * low differs by item: two wedding cakes is a lot, two rolls of receipt paper
+   * is nearly none.
+   *
+   * Disabled variants are excluded. They are not for sale, so they cannot run
+   * out, and including them would bury the real shortages under discontinued
+   * ones.
+   *
+   * Ordered by how far under the threshold each one is, so the most urgent
+   * comes first rather than whatever happens to sort first alphabetically.
+   */
+  async getLowStockVariants(defaultThreshold: number): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT v.*, p.id AS product_id, p.name AS product_name, p.category
+         FROM product_variants v
+         JOIN products p ON p.id = v.product_id
+         WHERE v.enabled = true
+           AND v.stock <= COALESCE(v.low_stock_threshold, $1)
+         ORDER BY v.stock - COALESCE(v.low_stock_threshold, $1) ASC, p.name ASC`,
+        [defaultThreshold]
+      );
+
+      return result.rows.map((row) => ({
+        ...mapVariantRow(row),
+        productId: row.product_id,
+        productName: row.product_name,
+        category: row.category,
+        threshold: row.low_stock_threshold ?? defaultThreshold,
+      }));
+    } catch (error) {
+      logger.error('Error loading low stock variants:', error);
+      throw new DatabaseError('Failed to load low stock');
+    }
+  }
+
+  /**
+   * Remove a variant.
+   *
+   * Refuses the last one: a product with no variants cannot be sold, and the
+   * catalog has no separate notion of "unsellable". Disable it instead.
+   */
+  async deleteVariant(productId: string, variantId: string): Promise<'deleted' | 'not_found' | 'last'> {
+    try {
+      const remaining = await this.pool.query(
+        'SELECT COUNT(*)::int AS count FROM product_variants WHERE product_id = $1',
+        [productId]
+      );
+      if (remaining.rows[0].count <= 1) {
+        const exists = await this.pool.query(
+          'SELECT id FROM product_variants WHERE id = $1 AND product_id = $2',
+          [variantId, productId]
+        );
+        return exists.rows.length > 0 ? 'last' : 'not_found';
+      }
+
+      const result = await this.pool.query(
+        'DELETE FROM product_variants WHERE id = $1 AND product_id = $2',
+        [variantId, productId]
+      );
+      return (result.rowCount ?? 0) > 0 ? 'deleted' : 'not_found';
+    } catch (error) {
+      logger.error('Error deleting variant:', error);
+      throw new DatabaseError('Failed to delete variant');
+    }
+  }
+
 }

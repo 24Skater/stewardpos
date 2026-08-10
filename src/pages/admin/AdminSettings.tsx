@@ -3,57 +3,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { apiClient } from '@/lib/api-client';
+import { adminApi, terminalApi } from '@/lib/api';
+import type {
+  PaymentMethodsConfig,
+  Settings,
+  TerminalCredentials,
+} from '@/lib/api';
 import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
-
-interface PaymentMethodsConfig {
-  cash?: { enabled: boolean };
-  zelle?: { enabled: boolean; destination?: string };
-  card?: { enabled: boolean; provider?: string };
-}
-
-interface TerminalCredentials {
-  stripeSecretKey?: string;
-  stripeTerminalLocationId?: string;
-  stripeReaderId?: string;
-  squareAccessToken?: string;
-  squareLocationId?: string;
-  squareDeviceId?: string;
-  cloverApiToken?: string;
-  cloverMerchantId?: string;
-  cloverDeviceId?: string;
-  verifoneApiKey?: string;
-  verifoneTerminalId?: string;
-  verifoneMerchantId?: string;
-  dejavooApiKey?: string;
-  dejavooTerminalId?: string;
-  dejavooMerchantId?: string;
-}
-
-interface Settings {
-  taxRateDefault: number;
-  storeName: string;
-  storeEmail: string;
-  storePhone: string;
-  timezone: string;
-  config?: {
-    authMethods?: {
-      local?: boolean;
-      google?: boolean;
-      oidc?: boolean;
-    };
-    demoMode?: boolean;
-    paymentMethods?: PaymentMethodsConfig;
-    terminalCredentials?: TerminalCredentials;
-  };
-}
 
 const CARD_PROVIDERS = [
   { value: 'square', label: 'Square' },
@@ -107,6 +71,7 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [terminalCreds, setTerminalCreds] = useState<TerminalCredentials>({});
+  const [credentialsStored, setCredentialsStored] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [discoveringReaders, setDiscoveringReaders] = useState(false);
   const [readers, setReaders] = useState<Array<{ id: string; label: string; status: string }>>([]);
@@ -120,30 +85,31 @@ export default function AdminSettings() {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: Settings }>('/api/admin/settings');
-      if (response.success && response.data) {
+      const response = await adminApi.settings.get();
+      if (response && response) {
         setSettings({
           ...settings,
-          ...response.data,
+          ...response,
           config: {
             authMethods: {
               local: true,
               google: false,
               oidc: false,
-              ...response.data.config?.authMethods,
+              ...response.config?.authMethods,
             },
-            demoMode: response.data.config?.demoMode || false,
+            demoMode: response.config?.demoMode || false,
             paymentMethods: {
               cash: { enabled: true },
               zelle: { enabled: false, destination: '' },
               card: { enabled: false, provider: 'square' },
-              ...response.data.config?.paymentMethods,
+              ...response.config?.paymentMethods,
             },
           },
         });
-        if (response.data.config?.terminalCredentials) {
-          setTerminalCreds(response.data.config.terminalCredentials);
-        }
+        // Credentials are never returned - the server strips them - so the
+        // fields start blank. Blank means "keep what is stored"; typing a value
+        // rotates it.
+        setCredentialsStored(Boolean(response.config?.terminalCredentialsConfigured));
       }
     } catch (error: unknown) {
       console.warn('Could not load settings:', getErrorMessage(error));
@@ -159,13 +125,13 @@ export default function AdminSettings() {
         ...settings,
         config: {
           ...settings.config,
+          // Sent as typed; an empty object tells the server to keep the stored
+          // keys rather than clearing them.
           terminalCredentials: terminalCreds,
         },
       };
-      const response = await apiClient.put<{ success: boolean; data: Settings }>('/api/admin/settings', payload);
-      if (response.success) {
-        toast({ title: 'Settings saved successfully' });
-      }
+      const response = await adminApi.settings.update(payload);
+      toast({ title: 'Settings saved successfully' });
     } catch (error: unknown) {
       toast({
         title: 'Error saving settings',
@@ -180,11 +146,10 @@ export default function AdminSettings() {
   const handleTestConnection = async () => {
     setTestingConnection(true);
     try {
-      const data = await apiClient.post<{ success: boolean; message: string }>('/api/terminal/test', {});
+      await terminalApi.test();
       toast({
-        title: data.success ? 'Connection successful' : 'Connection failed',
-        description: (data as unknown as { data?: { message?: string } }).data?.message || 'Unknown result',
-        variant: data.success ? 'default' : 'destructive',
+        title: 'Connection successful',
+        description: 'The terminal responded to the test request.',
       });
     } catch (error: unknown) {
       toast({
@@ -200,7 +165,7 @@ export default function AdminSettings() {
   const handleDiscoverReaders = async () => {
     setDiscoveringReaders(true);
     try {
-      const data = await apiClient.get<{ success: boolean; data: Array<{ id: string; label: string; status: string }> }>('/api/terminal/readers');
+      const data = await terminalApi.listReaders();
       const found = (data as unknown as { data?: Array<{ id: string; label: string; status: string }> }).data || [];
       setReaders(found);
       toast({ title: `Found ${found.length} reader(s)` });
@@ -222,10 +187,8 @@ export default function AdminSettings() {
 
     try {
       setResetting(true);
-      const response = await apiClient.post<{ success: boolean; message: string }>('/api/admin/reset-database', {});
-      if (response.success) {
-        toast({ title: 'Database reset successfully', description: response.message });
-      }
+      const response = await adminApi.resetDatabase();
+      toast({ title: 'Database reset successfully' });
     } catch (error: unknown) {
       toast({
         title: 'Error resetting database',
@@ -518,7 +481,14 @@ export default function AdminSettings() {
                         {/* Terminal Credentials */}
                         <div className="mt-4 space-y-4 border-t pt-4">
                           <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium">Terminal Credentials</Label>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm font-medium">Terminal Credentials</Label>
+                              {credentialsStored && (
+                                <Badge variant="secondary" className="font-normal">
+                                  Saved
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex gap-2">
                               <Button
                                 variant="outline"
@@ -538,6 +508,13 @@ export default function AdminSettings() {
                               </Button>
                             </div>
                           </div>
+
+                          {credentialsStored && (
+                            <p className="text-xs text-muted-foreground">
+                              Stored keys are never shown. Leave a field blank to keep it; type a new
+                              value to replace it.
+                            </p>
+                          )}
 
                           {/* Stripe fields */}
                           {settings.config?.paymentMethods?.card?.provider === 'stripe' && (

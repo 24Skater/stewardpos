@@ -2,9 +2,16 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { audit } from '../../services/audit';
+import {
+  repriceReturn,
+  type OriginalOrder,
+  type PriorReturn,
+} from '../../services/returnPricing';
 
 const router = Router();
 
@@ -46,7 +53,29 @@ const returnItemSchema = z.object({
 
 const createReturnSchema = z.object({
   originalOrderId: z.string(),
-  returnType: z.enum(['return', 'exchange', 'void']).default('return'),
+  /**
+   * `exchange` is refused, deliberately.
+   *
+   * It was accepted and then priced as a plain return: the customer got a full
+   * refund and nothing was charged for the replacement, so they left with a new
+   * item and their money back. Verified against the live stack before this.
+   *
+   * Nothing anywhere carries replacement items — not this schema, not the DTOs,
+   * not the admin UI — so there is no exchange to price, only a refund wearing
+   * the wrong label. Refusing it costs nobody anything today and closes the
+   * hole. Implementing it means replacement line items, a price difference that
+   * can go either way, and stock moving in both directions; that is a feature,
+   * and building it blind against no interface would be guesswork.
+   */
+  returnType: z
+    .enum(['return', 'exchange', 'void'], {
+      errorMap: () => ({ message: 'returnType must be "return" or "void"' }),
+    })
+    .default('return')
+    .refine((value) => value !== 'exchange', {
+      message:
+        'Exchanges are not supported yet. Record a return, then ring up the replacement as a new sale.',
+    }),
   customerEmail: z.preprocess(nullToUndefined, z.string().email().optional()),
   customerPhone: z.preprocess(nullToUndefined, z.string().optional()),
   customerId: z.preprocess(nullToUndefined, z.string().optional()),
@@ -91,7 +120,7 @@ function generateStoreCreditCode(): string {
  * GET /api/returns
  * List all returns with optional filters
  */
-router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { status, startDate, endDate, customerId } = req.query;
@@ -116,7 +145,7 @@ router.get('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
  * GET /api/returns/stats
  * Get return statistics for reporting
  */
-router.get('/stats', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/stats', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
     const { startDate, endDate } = req.query;
@@ -139,7 +168,7 @@ router.get('/stats', async (req: AuthRequest, res: Response, next: NextFunction)
  * GET /api/returns/order/:orderId
  * Get returns for a specific order
  */
-router.get('/order/:orderId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/order/:orderId', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { orderId } = req.params;
     const adapter = db.getAdapter();
@@ -158,7 +187,7 @@ router.get('/order/:orderId', async (req: AuthRequest, res: Response, next: Next
  * GET /api/returns/customer/:customerId
  * Get returns for a specific customer
  */
-router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/customer/:customerId', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { customerId } = req.params;
     const adapter = db.getAdapter();
@@ -177,7 +206,7 @@ router.get('/customer/:customerId', async (req: AuthRequest, res: Response, next
  * GET /api/returns/:id
  * Get return by ID with items
  */
-router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/:id', requirePermission('returns', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
@@ -200,16 +229,33 @@ router.get('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
  * POST /api/returns
  * Create a new return
  */
-router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = createReturnSchema.parse(req.body);
     const adapter = db.getAdapter();
 
-    // Verify the original order exists
     const originalOrder = await adapter.getOrderById(data.originalOrderId);
     if (!originalOrder) {
       throw new NotFoundError('Original order not found');
     }
+
+    // Reprice against the order. Line prices, quantities, and totals all come
+    // from what was actually sold and not already returned - the request only
+    // says which lines and how many. Storing the client's figures let a return
+    // against a $1 order claim $9,999 and be paid out in full.
+    const priorReturns = await adapter.getReturnsByOrder(data.originalOrderId);
+    const priced = repriceReturn(
+      originalOrder as unknown as OriginalOrder,
+      data.items.map((item) => ({
+        originalOrderItemId: item.originalOrderItemId,
+        productId: item.productId,
+        returnQuantity: item.returnQuantity,
+        condition: item.condition,
+        notes: item.notes,
+      })),
+      priorReturns as unknown as PriorReturn[],
+      { restockingFee: data.restockingFee }
+    );
 
     // Generate return number
     const returnNumber = generateReturnNumber();
@@ -217,6 +263,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     // Create the return
     const returnData = await adapter.createReturn({
       ...data,
+      ...priced,
       returnNumber,
       status: 'pending',
       refundStatus: 'pending',
@@ -224,6 +271,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     });
 
     logger.info(`Created return: ${returnNumber} for order ${data.originalOrderId}`);
+    await audit(req, { action: 'create', entity: 'return', entityId: String(returnData.id), after: returnData });
 
     res.status(201).json({
       success: true,
@@ -242,7 +290,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
  * PUT /api/returns/:id/status
  * Update return status (approve/reject/complete)
  */
-router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.put('/:id/status', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const data = updateReturnStatusSchema.parse(req.body);
@@ -259,6 +307,7 @@ router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunc
     }
 
     logger.info(`Updated return ${id} status to: ${data.status}`);
+    await audit(req, { action: 'update', entity: 'return', entityId: id, after: { status: data.status, internalNotes: data.internalNotes } });
 
     res.json({
       success: true,
@@ -277,7 +326,7 @@ router.put('/:id/status', async (req: AuthRequest, res: Response, next: NextFunc
  * POST /api/returns/:id/process-refund
  * Process refund for a return
  */
-router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/process-refund', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const data = processRefundSchema.parse(req.body);
@@ -299,7 +348,16 @@ router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next:
       throw new ValidationError('Refund already processed for this return');
     }
 
-    const refundAmount = data.amount || returnData.total;
+    // The return's total is the ceiling. `amount` exists for partial refunds, and
+    // was previously used unbounded - a caller could refund any sum they liked,
+    // or mint a store credit for it.
+    const returnTotal = Number(returnData.total ?? 0);
+    if (data.amount !== undefined && data.amount > returnTotal) {
+      throw new ValidationError(
+        `A refund cannot exceed the return's total of $${returnTotal.toFixed(2)}`
+      );
+    }
+    const refundAmount = data.amount ?? returnTotal;
 
     // Process based on refund method
     let storeCreditCode = null;
@@ -339,6 +397,8 @@ router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next:
     });
 
     logger.info(`Processed refund for return ${id}: $${refundAmount} via ${data.refundMethod}`);
+    // Money leaving the till is the single most important thing to attribute.
+    await audit(req, { action: 'refund', entity: 'return', entityId: id, after: { refundAmount, refundMethod: data.refundMethod } });
 
     res.json({
       success: true,
@@ -361,7 +421,7 @@ router.post('/:id/process-refund', async (req: AuthRequest, res: Response, next:
  * POST /api/returns/:id/restock
  * Restock items from a return
  */
-router.post('/:id/restock', async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/:id/restock', requirePermission('returns', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { itemIds } = req.body; // Optional: specific items to restock
@@ -373,10 +433,19 @@ router.post('/:id/restock', async (req: AuthRequest, res: Response, next: NextFu
       throw new NotFoundError('Return not found');
     }
 
-    // Restock items
+    // Same gate as processing the refund. Restocking puts goods back on the
+    // shelf as sellable, so doing it on a pending return means whoever filed it
+    // decides inventory on their own - and the item may never have come back.
+    if (returnData.status !== 'approved' && returnData.status !== 'completed') {
+      throw new ValidationError('Return must be approved before restocking');
+    }
+
+    // Restock items. Idempotent: the adapter only touches rows still flagged
+    // `restocked = false`, so a repeated call adds nothing.
     const restockedItems = await adapter.restockReturnItems(id, itemIds);
 
     logger.info(`Restocked ${restockedItems.length} items from return ${id}`);
+    await audit(req, { action: 'restock', entity: 'return', entityId: id, after: { restockedItems } });
 
     res.json({
       success: true,

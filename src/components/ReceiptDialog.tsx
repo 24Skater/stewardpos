@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { apiClient } from "@/lib/api-client";
+import { adminApi } from '@/lib/api';
 import { Mail, Phone, Printer } from "lucide-react";
 
 interface ReceiptSettings {
@@ -85,10 +85,8 @@ export default function ReceiptDialog({
 
   const loadSettings = async () => {
     try {
-      const res = await apiClient.get<{ success: boolean; data: ReceiptSettings }>('/api/admin/settings');
-      if (res.success) {
-        setSettings(res.data);
-      }
+      const res = (await adminApi.settings.get()) as unknown as ReceiptSettings;
+      setSettings(res);
     } catch (error) {
       // Use default empty settings
       console.error('Failed to load receipt settings:', error);
