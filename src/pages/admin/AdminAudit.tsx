@@ -9,6 +9,7 @@ import { Search, Eye, RefreshCw } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface AuditLog {
   id: string;
@@ -19,8 +20,8 @@ interface AuditLog {
   action: string;
   entity: string;
   entityId: string;
-  before?: Record<string, any>;
-  after?: Record<string, any>;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
 }
 
 export default function AdminAudit() {
@@ -41,10 +42,10 @@ export default function AdminAudit() {
       if (response.success) {
         setLogs(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load audit logs',
+        description: getErrorMessage(error, 'Failed to load audit logs'),
         variant: 'destructive',
       });
     } finally {

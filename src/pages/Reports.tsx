@@ -39,7 +39,7 @@ export default function Reports() {
         });
         setOrderItems(allItems);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Error logged via toast notification
       // Set empty arrays on error
       setOrders([]);

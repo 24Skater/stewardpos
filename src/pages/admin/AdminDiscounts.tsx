@@ -20,6 +20,7 @@ import {
   Gift, Clock, Search, CheckCircle2, XCircle, AlertCircle,
   UserCheck, GraduationCap, Shield, Heart, Cake, AlertTriangle
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface DiscountType {
@@ -79,7 +80,92 @@ interface EmployeeDiscount {
   approvedAt?: number;
 }
 
-const iconMap: Record<string, any> = {
+/** Aggregate discount figures shown on the summary cards. */
+interface DiscountStats {
+  totalDiscounts: number;
+  totalDiscountAmount: number;
+}
+
+/** A user selectable as the subject of an employee discount. */
+interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * Dialog form state. Numeric fields the user types into are held as strings and
+ * parsed on save, so these deliberately differ from the entity interfaces above.
+ * `discountType` must carry the full union, not the initial literal - inferring it
+ * from `'percentage' as const` is what previously forced `as any` when loading an
+ * existing record into the form.
+ */
+interface DiscountTypeForm {
+  name: string;
+  description: string;
+  code: string;
+  discountType: DiscountType['discountType'];
+  discountValue: number;
+  minPurchase: number;
+  maxDiscount: string;
+  requiresApproval: boolean;
+  approvalThreshold: string;
+  requiresEmployeeId: boolean;
+  displayOrder: number;
+  color: string;
+  icon: string;
+  showInPos: boolean;
+  isActive: boolean;
+}
+
+interface PromoCodeForm {
+  code: string;
+  name: string;
+  description: string;
+  discountType: PromoCode['discountType'];
+  discountValue: number;
+  minPurchase: number;
+  maxDiscount: string;
+  maxUses: string;
+  maxUsesPerCustomer: number;
+  startsAt: string;
+  expiresAt: string;
+  firstOrderOnly: boolean;
+  stackable: boolean;
+  isActive: boolean;
+}
+
+interface EmployeeDiscountForm {
+  userId: string;
+  discountPercentage: number;
+  maxDiscountAmount: string;
+  requiresManagerApprovalAbove: string;
+  isActive: boolean;
+}
+
+/** What the API receives: form strings parsed into numbers or null. */
+type DiscountTypePayload = Omit<DiscountTypeForm, 'maxDiscount' | 'approvalThreshold'> & {
+  maxDiscount: number | null;
+  approvalThreshold: number | null;
+};
+
+type PromoCodePayload = Omit<PromoCodeForm, 'maxDiscount' | 'maxUses' | 'expiresAt'> & {
+  maxDiscount: number | null;
+  maxUses: number | null;
+  /** ISO 8601 - the form's datetime-local value is converted on save. */
+  expiresAt: string | null;
+};
+
+type EmployeeDiscountPayload = Omit<
+  EmployeeDiscountForm,
+  'maxDiscountAmount' | 'requiresManagerApprovalAbove'
+> & {
+  maxDiscountAmount: number | null;
+  requiresManagerApprovalAbove: number | null;
+};
+
+
+const iconMap: Record<string, LucideIcon> = {
   'user': UserCheck,
   'shield': Shield,
   'graduation-cap': GraduationCap,
@@ -115,11 +201,11 @@ export default function AdminDiscounts() {
   const [editingEmployeeDiscount, setEditingEmployeeDiscount] = useState<EmployeeDiscount | null>(null);
 
   // Form state
-  const [discountTypeForm, setDiscountTypeForm] = useState({
+  const [discountTypeForm, setDiscountTypeForm] = useState<DiscountTypeForm>({
     name: '',
     description: '',
     code: '',
-    discountType: 'percentage' as const,
+    discountType: 'percentage',
     discountValue: 10,
     minPurchase: 0,
     maxDiscount: '',
@@ -133,11 +219,11 @@ export default function AdminDiscounts() {
     isActive: true,
   });
 
-  const [promoCodeForm, setPromoCodeForm] = useState({
+  const [promoCodeForm, setPromoCodeForm] = useState<PromoCodeForm>({
     code: '',
     name: '',
     description: '',
-    discountType: 'percentage' as const,
+    discountType: 'percentage',
     discountValue: 10,
     minPurchase: 0,
     maxDiscount: '',
@@ -150,7 +236,7 @@ export default function AdminDiscounts() {
     isActive: true,
   });
 
-  const [employeeDiscountForm, setEmployeeDiscountForm] = useState({
+  const [employeeDiscountForm, setEmployeeDiscountForm] = useState<EmployeeDiscountForm>({
     userId: '',
     discountPercentage: 10,
     maxDiscountAmount: '',
@@ -186,7 +272,7 @@ export default function AdminDiscounts() {
   const { data: discountStats } = useQuery({
     queryKey: ['discount-stats'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: any }>('/api/discounts/stats');
+      const res = await apiClient.get<{ success: boolean; data: DiscountStats }>('/api/discounts/stats');
       return res.data;
     },
   });
@@ -194,14 +280,14 @@ export default function AdminDiscounts() {
   const { data: users = [] } = useQuery({
     queryKey: ['users-for-employee-discount'],
     queryFn: async () => {
-      const res = await apiClient.get<{ success: boolean; data: any[] }>('/api/admin/users');
+      const res = await apiClient.get<{ success: boolean; data: AdminUser[] }>('/api/admin/users');
       return res.data;
     },
   });
 
   // Mutations
   const createDiscountType = useMutation({
-    mutationFn: (data: any) => apiClient.post('/api/discounts/types', data),
+    mutationFn: (data: DiscountTypePayload) => apiClient.post('/api/discounts/types', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discount-types'] });
       setDiscountTypeDialog(false);
@@ -211,7 +297,7 @@ export default function AdminDiscounts() {
   });
 
   const updateDiscountType = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => apiClient.put(`/api/discounts/types/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: DiscountTypePayload }) => apiClient.put(`/api/discounts/types/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['discount-types'] });
       setDiscountTypeDialog(false);
@@ -230,7 +316,7 @@ export default function AdminDiscounts() {
   });
 
   const createPromoCode = useMutation({
-    mutationFn: (data: any) => apiClient.post('/api/discounts/promos', data),
+    mutationFn: (data: PromoCodePayload) => apiClient.post('/api/discounts/promos', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
       setPromoCodeDialog(false);
@@ -240,7 +326,7 @@ export default function AdminDiscounts() {
   });
 
   const updatePromoCode = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => apiClient.put(`/api/discounts/promos/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: PromoCodePayload }) => apiClient.put(`/api/discounts/promos/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promo-codes'] });
       setPromoCodeDialog(false);
@@ -259,7 +345,7 @@ export default function AdminDiscounts() {
   });
 
   const upsertEmployeeDiscount = useMutation({
-    mutationFn: (data: any) => apiClient.post('/api/discounts/employee', data),
+    mutationFn: (data: EmployeeDiscountPayload) => apiClient.post('/api/discounts/employee', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-discounts'] });
       setEmployeeDiscountDialog(false);
@@ -363,7 +449,7 @@ export default function AdminDiscounts() {
       code: pc.code,
       name: pc.name,
       description: pc.description || '',
-      discountType: pc.discountType as any,
+      discountType: pc.discountType,
       discountValue: pc.discountValue,
       minPurchase: pc.minPurchase,
       maxDiscount: pc.maxDiscount?.toString() || '',
@@ -821,7 +907,7 @@ export default function AdminDiscounts() {
                     <Label>Discount Type</Label>
                     <Select
                       value={discountTypeForm.discountType}
-                      onValueChange={(v: any) => setDiscountTypeForm({...discountTypeForm, discountType: v})}
+                      onValueChange={(v: DiscountTypeForm['discountType']) => setDiscountTypeForm({...discountTypeForm, discountType: v})}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -969,7 +1055,7 @@ export default function AdminDiscounts() {
                     <Label>Discount Type</Label>
                     <Select
                       value={promoCodeForm.discountType}
-                      onValueChange={(v: any) => setPromoCodeForm({...promoCodeForm, discountType: v})}
+                      onValueChange={(v: PromoCodeForm['discountType']) => setPromoCodeForm({...promoCodeForm, discountType: v})}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -1108,7 +1194,7 @@ export default function AdminDiscounts() {
                   >
                     <SelectTrigger><SelectValue placeholder="Select an employee" /></SelectTrigger>
                     <SelectContent>
-                      {users.map((user: any) => (
+                      {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
                           {user.name} ({user.email})
                         </SelectItem>

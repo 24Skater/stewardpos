@@ -15,6 +15,7 @@ import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, hasRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Customer {
   id: string;
@@ -131,10 +132,10 @@ export default function AdminCustomers() {
         }));
         setCustomers(customersWithDefaults.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load customers',
+        description: getErrorMessage(error, 'Failed to load customers'),
         variant: 'destructive',
       });
     } finally {
@@ -170,7 +171,7 @@ export default function AdminCustomers() {
           setCustomerOrders(ordersResponse.data);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading customer history:', error);
     } finally {
       setLoadingHistory(false);
@@ -245,10 +246,10 @@ export default function AdminCustomers() {
       setEditingCustomer(null);
       setIsNewCustomer(false);
       await loadCustomers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save customer',
+        description: getErrorMessage(error, 'Failed to save customer'),
         variant: 'destructive',
       });
     }
@@ -276,10 +277,10 @@ export default function AdminCustomers() {
         setCustomerToDelete(null);
         await loadCustomers();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to archive customer',
+        description: getErrorMessage(error, 'Failed to archive customer'),
         variant: 'destructive',
       });
     } finally {
@@ -301,10 +302,10 @@ export default function AdminCustomers() {
         setCustomerToDelete(null);
         await loadCustomers();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete customer',
+        description: getErrorMessage(error, 'Failed to delete customer'),
         variant: 'destructive',
       });
     } finally {
@@ -326,9 +327,9 @@ export default function AdminCustomers() {
         setCustomerToDelete(null);
         await loadCustomers();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If customer has related records, show archive/permanent delete options
-      if (error.message?.includes('associated') || error.message?.includes('Archive')) {
+      if (getErrorMessage(error)?.includes('associated') || getErrorMessage(error)?.includes('Archive')) {
         setDeleteAction('archive'); // Show the options
         toast({
           title: 'Cannot delete directly',
@@ -338,7 +339,7 @@ export default function AdminCustomers() {
       } else {
         toast({
           title: 'Error',
-          description: error.message || 'Failed to delete customer',
+          description: getErrorMessage(error, 'Failed to delete customer'),
           variant: 'destructive',
         });
       }

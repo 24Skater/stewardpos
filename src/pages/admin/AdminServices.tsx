@@ -14,6 +14,7 @@ import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Service {
   id: string;
@@ -56,10 +57,10 @@ export default function AdminServices() {
       if (response.success) {
         setServices(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load services',
+        description: getErrorMessage(error, 'Failed to load services'),
         variant: 'destructive',
       });
     } finally {
@@ -138,10 +139,10 @@ export default function AdminServices() {
       setEditingService(null);
       setIsNewService(false);
       await loadServices();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save service',
+        description: getErrorMessage(error, 'Failed to save service'),
         variant: 'destructive',
       });
     }
@@ -156,10 +157,10 @@ export default function AdminServices() {
         toast({ title: 'Service deleted successfully' });
         await loadServices();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete service',
+        description: getErrorMessage(error, 'Failed to delete service'),
         variant: 'destructive',
       });
     }

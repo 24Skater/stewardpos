@@ -12,6 +12,7 @@ import { QuoteItem } from '@/lib/db';
 import { Search, Plus, UserPlus, ShoppingCart, Calendar, MapPin, Clock, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Service {
   id: string;
@@ -68,10 +69,10 @@ export default function ServicesPos() {
       if (customersResponse.success) {
         setCustomers(customersResponse.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error loading data',
-        description: error.message || 'Failed to load services and customers',
+        description: getErrorMessage(error, 'Failed to load services and customers'),
         variant: 'destructive',
       });
     } finally {
@@ -129,10 +130,10 @@ export default function ServicesPos() {
         setNewCustomerOpen(false);
         toast({ title: 'Customer created' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error creating customer',
-        description: error.message || 'Failed to create customer',
+        description: getErrorMessage(error, 'Failed to create customer'),
         variant: 'destructive',
       });
     }
@@ -166,7 +167,7 @@ export default function ServicesPos() {
         notes: '',
       };
 
-      const response = await apiClient.post<{ success: boolean; data: any }>('/api/quotes', quoteData);
+      const response = await apiClient.post<{ success: boolean; data: { id: string } }>('/api/quotes', quoteData);
       
       if (response.success) {
         toast({ 
@@ -176,10 +177,10 @@ export default function ServicesPos() {
         setCart([]);
         setSelectedCustomer(null);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({ 
         title: 'Error creating quote',
-        description: error.message || 'Failed to create quote',
+        description: getErrorMessage(error, 'Failed to create quote'),
         variant: 'destructive',
       });
     }
@@ -192,7 +193,15 @@ export default function ServicesPos() {
       { key: 'location', label: 'Location', type: 'text', icon: MapPin },
     ];
 
-    const categoryFields: Record<string, any[]> = {
+    /** One configurable input shown for a service category. */
+interface ServiceField {
+  key: string;
+  label: string;
+  type: string;
+  options?: string[];
+}
+
+    const categoryFields: Record<string, ServiceField[]> = {
       'Audio': [
         ...commonFields,
         { key: 'duration', label: 'Duration (hours)', type: 'number' },

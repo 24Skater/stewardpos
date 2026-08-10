@@ -84,23 +84,12 @@ export interface Settings {
   supabaseAnonKey?: string;
 }
 
-export type AppRole = 'admin' | 'supervisor' | 'reporter' | 'standard';
+// Authorization shapes moved to ./permissions so they survive the Phase 1 removal
+// of this module. Imported for local use and re-exported so existing imports keep
+// working.
+import type { AppRole, Permission, RolePermissions } from './permissions';
 
-export interface Permission {
-  read: boolean;
-  write: boolean;
-  delete: boolean;
-}
-
-export interface RolePermissions {
-  inventory: Permission;
-  reports: Permission;
-  exports: Permission;
-  settings: Permission;
-  users: Permission;
-  services: Permission;
-  customers: Permission;
-}
+export type { AppRole, Permission, RolePermissions };
 
 export interface Role {
   id: string;
@@ -127,8 +116,8 @@ export interface AuditLog {
   action: string;
   entity: string;
   entityId: string;
-  before?: any;
-  after?: any;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
 }
 
 export interface Service {

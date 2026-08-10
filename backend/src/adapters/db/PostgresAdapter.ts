@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import logger from '../../utils/logger';
 import { DatabaseError } from '../../utils/errors';
+import { DbRow, asRows } from './types';
 
 export interface PostgresConfig {
   host: string;
@@ -93,7 +94,7 @@ export class PostgresAdapter {
       const user = result.rows[0];
       
       // Parse roles - roles is now a JSON array
-      const roles: unknown[] = [];
+      let roles: unknown[] = [];
       if (user.roles) {
         try {
           const rolesArray = typeof user.roles === 'string' ? JSON.parse(user.roles) : user.roles;
@@ -102,8 +103,8 @@ export class PostgresAdapter {
               id: r.id,
               name: r.name,
               systemRole: r.system_role,
-              permissions: typeof r.permissions === 'string' 
-                ? JSON.parse(r.permissions) 
+              permissions: typeof r.permissions === 'string'
+                ? JSON.parse(r.permissions)
                 : r.permissions,
             }));
           }
@@ -143,7 +144,7 @@ export class PostgresAdapter {
   }
 
   // Product Operations
-  async getAllProducts(): Promise<unknown[]> {
+  async getAllProducts(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT p.*, 
@@ -256,7 +257,7 @@ export class PostgresAdapter {
 
       // Insert variants if provided
       const variants = [];
-      if (product.variants && product.variants.length > 0) {
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
         for (const variant of product.variants) {
           const variantResult = await client.query(
             `INSERT INTO product_variants 
@@ -302,7 +303,7 @@ export class PostgresAdapter {
     }
   }
 
-  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async updateProduct(id: string, product: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     try {
       const result = await this.pool.query(
         `UPDATE products 
@@ -385,7 +386,7 @@ export class PostgresAdapter {
 
       // Insert order items and update stock
       const items = [];
-      if (order.items && order.items.length > 0) {
+      if (Array.isArray(order.items) && order.items.length > 0) {
         for (const item of order.items) {
           const itemResult = await client.query(
             `INSERT INTO order_items 
@@ -443,7 +444,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getAllOrders(): Promise<unknown[]> {
+  async getAllOrders(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT * FROM orders ORDER BY created_at DESC`
@@ -549,7 +550,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getAllCustomers(): Promise<unknown[]> {
+  async getAllCustomers(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM customers ORDER BY name ASC'
@@ -900,7 +901,7 @@ export class PostgresAdapter {
   }
 
   // ===== Service Operations =====
-  async getAllServices(): Promise<unknown[]> {
+  async getAllServices(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM services ORDER BY name ASC'
@@ -1046,7 +1047,7 @@ export class PostgresAdapter {
   }
 
   // ===== User Operations =====
-  async getAllUsers(): Promise<unknown[]> {
+  async getAllUsers(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT u.*, 
@@ -1095,8 +1096,8 @@ export class PostgresAdapter {
       const newUser = result.rows[0];
 
       // Assign roles if provided
-      if (user.roleIds && user.roleIds.length > 0) {
-        for (const roleId of user.roleIds) {
+      if (Array.isArray(user.roleIds) && user.roleIds.length > 0) {
+        for (const roleId of asRows(user.roleIds)) {
           await client.query(
             'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
             [newUser.id, roleId]
@@ -1164,7 +1165,7 @@ export class PostgresAdapter {
       // Update roles if provided
       if (user.roleIds !== undefined) {
         await client.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
-        for (const roleId of user.roleIds) {
+        for (const roleId of asRows(user.roleIds)) {
           await client.query(
             'INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)',
             [id, roleId]
@@ -1206,7 +1207,7 @@ export class PostgresAdapter {
   }
 
   // ===== Role Operations =====
-  async getAllRoles(): Promise<unknown[]> {
+  async getAllRoles(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         'SELECT * FROM roles ORDER BY name ASC'
@@ -1475,7 +1476,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<unknown[]> {
+  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<DbRow[]> {
     try {
       let query = `
         SELECT al.*, u.name as user_name, u.email as user_email
@@ -1523,7 +1524,7 @@ export class PostgresAdapter {
   }
 
   // ===== Quote Operations =====
-  async getAllQuotes(): Promise<unknown[]> {
+  async getAllQuotes(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT q.*, c.name as customer_name, c.email as customer_email
@@ -1636,7 +1637,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getQuotesByCustomer(customerId: string): Promise<unknown[]> {
+  async getQuotesByCustomer(customerId: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT q.*, c.name as customer_name, c.email as customer_email
@@ -1714,15 +1715,15 @@ export class PostgresAdapter {
           quote.taxTotal || 0,
           quote.total,
           quote.notes,
-          quote.expiresAt ? new Date(quote.expiresAt) : null,
+          quote.expiresAt ? new Date(quote.expiresAt as string) : null,
         ]
       );
 
       const newQuote = quoteResult.rows[0];
       const items = [];
 
-      if (quote.items && quote.items.length > 0) {
-        for (const item of quote.items) {
+      if (Array.isArray(quote.items) && quote.items.length > 0) {
+        for (const item of asRows(quote.items)) {
           const itemResult = await client.query(
             `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
              VALUES ($1, $2, $3, $4, $5, $6)
@@ -1794,7 +1795,7 @@ export class PostgresAdapter {
           quote.taxTotal,
           quote.total,
           quote.notes,
-          quote.expiresAt ? new Date(quote.expiresAt) : null,
+          quote.expiresAt ? new Date(quote.expiresAt as string) : null,
           id,
         ]
       );
@@ -1807,7 +1808,7 @@ export class PostgresAdapter {
       // Update items if provided
       if (quote.items) {
         await client.query('DELETE FROM quote_items WHERE quote_id = $1', [id]);
-        for (const item of quote.items) {
+        for (const item of asRows(quote.items)) {
           await client.query(
             `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
              VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -1860,7 +1861,7 @@ export class PostgresAdapter {
   }
 
   // ===== Order Operations Extended =====
-  async getOrdersByCustomerEmail(email: string): Promise<unknown[]> {
+  async getOrdersByCustomerEmail(email: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT * FROM orders WHERE customer_email = $1 ORDER BY created_at DESC`,
@@ -1917,7 +1918,7 @@ export class PostgresAdapter {
   }
 
   // ===== API Key Operations =====
-  async getAllApiKeys(): Promise<unknown[]> {
+  async getAllApiKeys(): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT ak.*, u.name as created_by_name, u.email as created_by_email
@@ -2028,7 +2029,7 @@ export class PostgresAdapter {
           apiKey.keyHash,
           JSON.stringify(apiKey.scopes || ['read']),
           apiKey.rateLimit || 1000,
-          apiKey.expiresAt ? new Date(apiKey.expiresAt) : null,
+          apiKey.expiresAt ? new Date(apiKey.expiresAt as string) : null,
           apiKey.createdBy,
         ]
       );
@@ -2071,7 +2072,7 @@ export class PostgresAdapter {
           apiKey.scopes ? JSON.stringify(apiKey.scopes) : null,
           apiKey.rateLimit,
           apiKey.isActive,
-          apiKey.expiresAt ? new Date(apiKey.expiresAt) : null,
+          apiKey.expiresAt ? new Date(apiKey.expiresAt as string) : null,
           id,
         ]
       );
@@ -2113,7 +2114,7 @@ export class PostgresAdapter {
 
   // ===== Returns & Refunds Operations =====
 
-  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<unknown[]> {
+  async getAllReturns(filters?: { status?: string; startDate?: number; endDate?: number; customerId?: string }): Promise<DbRow[]> {
     try {
       let query = `
         SELECT r.*, 
@@ -2211,7 +2212,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsByOrder(orderId: string): Promise<unknown[]> {
+  async getReturnsByOrder(orderId: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT r.*, u.name as created_by_name
@@ -2246,7 +2247,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsByCustomer(customerId: string): Promise<unknown[]> {
+  async getReturnsByCustomer(customerId: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
         `SELECT r.*, o.total as original_order_total
@@ -2305,7 +2306,7 @@ export class PostgresAdapter {
       const returnId = returnResult.rows[0].id;
 
       // Insert return items
-      for (const item of returnData.items || []) {
+      for (const item of asRows(returnData.items)) {
         await client.query(
           `INSERT INTO return_items (
             return_id, original_order_item_id, product_id, variant_id,
@@ -2499,7 +2500,7 @@ export class PostgresAdapter {
     }
   }
 
-  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<unknown[]> {
+  async restockReturnItems(returnId: string, itemIds?: string[]): Promise<DbRow[]> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -2514,7 +2515,7 @@ export class PostgresAdapter {
       }
 
       const itemsResult = await client.query(query, params);
-      const restockedItems: unknown[] = [];
+      const restockedItems: DbRow[] = [];
 
       for (const item of itemsResult.rows) {
         // Update stock in product_variants

@@ -19,6 +19,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { getErrorMessage } from '@/lib/errors';
 
 interface ReturnItem {
   id: string;
@@ -111,8 +112,8 @@ export default function AdminReturns() {
       if (response.success) {
         setReturns(response.data);
       }
-    } catch (error: any) {
-      toast({ title: 'Error loading returns', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error loading returns', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -136,8 +137,8 @@ export default function AdminReturns() {
         setSelectedReturn(response.data);
         setDetailsOpen(true);
       }
-    } catch (error: any) {
-      toast({ title: 'Error loading return details', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error loading return details', description: getErrorMessage(error), variant: 'destructive' });
     }
   };
 
@@ -172,8 +173,8 @@ export default function AdminReturns() {
       loadReturns();
       loadStats();
       loadReturnDetails(selectedReturn.id);
-    } catch (error: any) {
-      toast({ title: 'Action failed', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Action failed', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setProcessing(false);
     }

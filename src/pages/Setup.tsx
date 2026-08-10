@@ -20,6 +20,14 @@ import {
   AlertCircle,
   Info
 } from 'lucide-react';
+import { getErrorMessage } from '@/lib/errors';
+
+/** Deployment target chosen in the setup wizard. */
+type DeployEnvironment = 'development' | 'staging' | 'production';
+
+/** One end of a database replication pair. */
+type ReplicationEndpoint = 'dev' | 'qa' | 'prod';
+
 
 interface SetupStatus {
   isInitialized: boolean;
@@ -60,12 +68,12 @@ export default function Setup() {
     oidc: { issuer: '', clientId: '', clientSecret: '' },
   });
 
-  const [environment, setEnvironment] = useState<'development' | 'staging' | 'production'>('production');
+  const [environment, setEnvironment] = useState<DeployEnvironment>('production');
   const [demoMode, setDemoMode] = useState(false);
   const [replication, setReplication] = useState({
     enabled: false,
-    source: 'dev' as 'dev' | 'qa' | 'prod',
-    target: 'prod' as 'dev' | 'qa' | 'prod',
+    source: 'dev' as ReplicationEndpoint,
+    target: 'prod' as ReplicationEndpoint,
   });
 
   useEffect(() => {
@@ -82,7 +90,7 @@ export default function Setup() {
           navigate('/login');
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If setup endpoint doesn't exist or fails, assume setup is needed
       console.error('Failed to check setup status:', error);
     }
@@ -110,10 +118,10 @@ export default function Setup() {
         });
         return false;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Connection Failed',
-        description: error.message || 'Failed to connect to database',
+        description: getErrorMessage(error, 'Failed to connect to database'),
         variant: 'destructive',
       });
       return false;
@@ -170,7 +178,7 @@ export default function Setup() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post<{ success: boolean; message?: string; data?: any }>(
+      const response = await apiClient.post<{ success: boolean; message?: string; data?: unknown }>(
         '/api/setup/complete',
         {
           adminUser: {
@@ -196,10 +204,10 @@ export default function Setup() {
           navigate('/login');
         }, 2000);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Setup Failed',
-        description: error.message || 'Failed to complete setup',
+        description: getErrorMessage(error, 'Failed to complete setup'),
         variant: 'destructive',
       });
     } finally {
@@ -690,7 +698,7 @@ export default function Setup() {
                     <Label>Environment</Label>
                     <Select
                       value={environment}
-                      onValueChange={(v) => setEnvironment(v as any)}
+                      onValueChange={(v) => setEnvironment(v as DeployEnvironment)}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -728,7 +736,7 @@ export default function Setup() {
                             <Label>Source Environment</Label>
                             <Select
                               value={replication.source}
-                              onValueChange={(v) => setReplication({ ...replication, source: v as any })}
+                              onValueChange={(v) => setReplication({ ...replication, source: v as ReplicationEndpoint })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -744,7 +752,7 @@ export default function Setup() {
                             <Label>Target Environment</Label>
                             <Select
                               value={replication.target}
-                              onValueChange={(v) => setReplication({ ...replication, target: v as any })}
+                              onValueChange={(v) => setReplication({ ...replication, target: v as ReplicationEndpoint })}
                             >
                               <SelectTrigger>
                                 <SelectValue />
