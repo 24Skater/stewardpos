@@ -40,7 +40,7 @@ The API will be available at `http://localhost:3001`
 - Email: `admin@example.com`
 - Password: `admin123`
 
-📖 **See [PHASE2-QUICKSTART.md](./PHASE2-QUICKSTART.md) for detailed setup and API examples**
+📖 **See [PHASE2-QUICKSTART.md](../docs/archive/BACKEND-PHASE2-QUICKSTART.md) for detailed setup and API examples**
 
 ## 📝 Environment Variables
 
@@ -193,9 +193,9 @@ docker run -p 3000:3000 --env-file .env persona-pos-backend
 
 ## 📖 Documentation
 
-- [Full Roadmap](../ROADMAP.md)
-- [Installation Guide](../INSTALL.md)
-- [Configuration Guide](../CONFIGURATION.md)
+- [Full Roadmap](../docs/masterplan/README.md)
+- [Installation Guide](../docs/archive/process/INSTALL.md)
+- [Configuration Guide](../docs/reference/environment.md)
 
 ## 🤝 Contributing
 

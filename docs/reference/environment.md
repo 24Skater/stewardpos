@@ -110,5 +110,5 @@ Replace `{env}` with `dev`, `qa`, or `prod`.
 
 ## Full Documentation
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment guide.
+See [DEPLOYMENT.md](../guides/deployment.md) for complete deployment guide.
 
