@@ -10,64 +10,102 @@ import { ValidationError, DatabaseError } from '../../utils/errors';
 
 const router = Router();
 
-// Setup state check - no auth required
-router.get('/status', async (_req: Request, res: Response, next: NextFunction) => {
+interface SetupState {
+  isInitialized: boolean;
+  hasAdminUser: boolean;
+}
+
+/**
+ * Inspect whether this instance has already been provisioned.
+ *
+ * A missing schema or an unreachable database means "not set up yet", which is the
+ * correct answer on a genuine first run. Any other failure is also treated as
+ * not-set-up so the first-run wizard stays reachable — the write guard below is what
+ * protects a provisioned instance.
+ */
+async function getSetupState(): Promise<SetupState> {
+  const adapter = db.getAdapter();
+
+  let isInitialized = false;
   try {
-    const adapter = db.getAdapter();
-    
-    // Check if database is initialized
-    let isInitialized = false;
+    if (config.database.adapter === 'postgres') {
+      const pool = (adapter as any).pool;
+      const result = await pool.query(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users')"
+      );
+      isInitialized = result.rows[0].exists;
+    } else {
+      const sqliteDb = (adapter as any).db;
+      const tables = sqliteDb.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+      ).get();
+      isInitialized = !!tables;
+    }
+  } catch (error) {
+    isInitialized = false;
+  }
+
+  let hasAdminUser = false;
+  if (isInitialized) {
     try {
-      // Try to query a system table to see if migrations have run
       if (config.database.adapter === 'postgres') {
         const pool = (adapter as any).pool;
         const result = await pool.query(
-          "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'users')"
+          `SELECT COUNT(*) as count
+           FROM users u
+           JOIN user_roles ur ON u.id = ur.user_id
+           JOIN roles r ON ur.role_id = r.id
+           WHERE r.system_role = 'admin'`
         );
-        isInitialized = result.rows[0].exists;
+        hasAdminUser = parseInt(result.rows[0].count) > 0;
       } else {
         const sqliteDb = (adapter as any).db;
-        const tables = sqliteDb.prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
-        ).get();
-        isInitialized = !!tables;
+        const result = sqliteDb.prepare(
+          `SELECT COUNT(*) as count
+           FROM users u
+           JOIN user_roles ur ON u.id = ur.user_id
+           JOIN roles r ON ur.role_id = r.id
+           WHERE r.system_role = 'admin'`
+        ).get() as any;
+        hasAdminUser = (result?.count || 0) > 0;
       }
     } catch (error) {
-      // Database not initialized
-      isInitialized = false;
+      hasAdminUser = false;
+    }
+  }
+
+  return { isInitialized, hasAdminUser };
+}
+
+/**
+ * Refuse first-run setup operations once an admin already exists.
+ *
+ * These routes are deliberately unauthenticated so a fresh instance can be provisioned,
+ * which means that without this guard anyone who can reach the API could re-run setup
+ * against a live system and seize the admin account.
+ */
+export async function rejectIfAlreadySetUp(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const { hasAdminUser } = await getSetupState();
+
+    if (hasAdminUser) {
+      logger.warn('Rejected setup request: instance is already provisioned');
+      return res.status(409).json({
+        success: false,
+        error: 'Setup has already been completed for this instance.',
+      });
     }
 
-    // Check if admin user exists
-    let hasAdminUser = false;
-    if (isInitialized) {
-      try {
-        // Check for admin user by querying directly
-        if (config.database.adapter === 'postgres') {
-          const pool = (adapter as any).pool;
-          const result = await pool.query(
-            `SELECT COUNT(*) as count 
-             FROM users u
-             JOIN user_roles ur ON u.id = ur.user_id
-             JOIN roles r ON ur.role_id = r.id
-             WHERE r.system_role = 'admin'`
-          );
-          hasAdminUser = parseInt(result.rows[0].count) > 0;
-        } else {
-          const sqliteDb = (adapter as any).db;
-          const result = sqliteDb.prepare(
-            `SELECT COUNT(*) as count 
-             FROM users u
-             JOIN user_roles ur ON u.id = ur.user_id
-             JOIN roles r ON ur.role_id = r.id
-             WHERE r.system_role = 'admin'`
-          ).get() as any;
-          hasAdminUser = (result?.count || 0) > 0;
-        }
-      } catch (error) {
-        // Error checking users - assume no admin user
-        hasAdminUser = false;
-      }
-    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Setup state check - no auth required
+router.get('/status', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { isInitialized, hasAdminUser } = await getSetupState();
 
     res.json({
       success: true,
@@ -84,7 +122,7 @@ router.get('/status', async (_req: Request, res: Response, next: NextFunction) =
 });
 
 // Test database connection
-router.post('/test-database', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/test-database', rejectIfAlreadySetUp, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const schema = z.object({
       adapter: z.enum(['postgres', 'sqlite']),
@@ -185,7 +223,7 @@ const setupSchema = z.object({
   }).optional(),
 });
 
-router.post('/complete', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const setupData = setupSchema.parse(req.body);
 
@@ -293,17 +331,24 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
         } else {
           const roleId = roleResult.rows[0].id;
 
-          // Create admin user
+          // Create admin user. Never overwrite an existing account's credentials here —
+          // this route is unauthenticated, so an upsert would let a caller reset any
+          // existing user's password by claiming their email address.
           const userResult = await pool.query(
             `INSERT INTO users (email, password_hash, name, status)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (email) DO UPDATE SET
-               password_hash = EXCLUDED.password_hash,
-               name = EXCLUDED.name,
-               status = EXCLUDED.status
+             ON CONFLICT (email) DO NOTHING
              RETURNING id`,
             [setupData.adminUser.email, passwordHash, setupData.adminUser.name, 'active']
           );
+
+          if (userResult.rows.length === 0) {
+            return res.status(409).json({
+              success: false,
+              error: 'A user with that email address already exists.',
+            });
+          }
+
           const userId = userResult.rows[0].id;
 
           // Assign admin role
@@ -339,14 +384,12 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
           role = { id: roleResult.lastInsertRowid };
         }
 
-        // Create admin user
+        // Create admin user. See the Postgres branch above — never upsert credentials
+        // from an unauthenticated route.
         const userResult = sqliteDb.prepare(
           `INSERT INTO users (email, password_hash, name, status)
            VALUES (?, ?, ?, ?)
-           ON CONFLICT (email) DO UPDATE SET
-             password_hash = EXCLUDED.password_hash,
-             name = EXCLUDED.name,
-             status = EXCLUDED.status`
+           ON CONFLICT (email) DO NOTHING`
         ).run(
           setupData.adminUser.email,
           passwordHash,
@@ -354,7 +397,14 @@ router.post('/complete', async (req: Request, res: Response, next: NextFunction)
           'active'
         );
 
-        const userId = userResult.lastInsertRowid || sqliteDb.prepare("SELECT id FROM users WHERE email = ?").get(setupData.adminUser.email)?.id;
+        if (userResult.changes === 0) {
+          return res.status(409).json({
+            success: false,
+            error: 'A user with that email address already exists.',
+          });
+        }
+
+        const userId = userResult.lastInsertRowid;
 
         // Assign admin role
         sqliteDb.prepare(
