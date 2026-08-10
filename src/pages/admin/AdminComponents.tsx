@@ -13,6 +13,7 @@ import { Search, RefreshCw, Download, Package, AlertCircle, CheckCircle, Loader2
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, type AuthSession } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Component {
   name: string;
@@ -65,11 +66,11 @@ export default function AdminComponents() {
           variant: 'destructive',
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading components:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load components',
+        description: getErrorMessage(error, 'Failed to load components'),
         variant: 'destructive',
       });
     } finally {
@@ -95,10 +96,10 @@ export default function AdminComponents() {
           });
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to check for updates',
+        description: getErrorMessage(error, 'Failed to check for updates'),
         variant: 'destructive',
       });
     } finally {
@@ -122,7 +123,7 @@ export default function AdminComponents() {
   const confirmUpdate = async () => {
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: any }>('/api/admin/components/update', {
+      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update', {
         packages: selectedPackages,
         type: updateType,
       });
@@ -137,10 +138,10 @@ export default function AdminComponents() {
         await loadComponents();
         await checkForUpdates();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Update Failed',
-        description: error.message || 'Failed to update packages',
+        description: getErrorMessage(error, 'Failed to update packages'),
         variant: 'destructive',
       });
     } finally {
@@ -155,7 +156,7 @@ export default function AdminComponents() {
 
     try {
       setIsUpdating(true);
-      const response = await apiClient.post<{ success: boolean; message: string; data: any }>('/api/admin/components/update-all', {
+      const response = await apiClient.post<{ success: boolean; message: string; data: unknown }>('/api/admin/components/update-all', {
         type,
       });
 
@@ -167,10 +168,10 @@ export default function AdminComponents() {
         await loadComponents();
         await checkForUpdates();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Update Failed',
-        description: error.message || 'Failed to update all packages',
+        description: getErrorMessage(error, 'Failed to update all packages'),
         variant: 'destructive',
       });
     } finally {

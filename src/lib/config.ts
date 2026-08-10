@@ -62,7 +62,7 @@ const configSchema = z.object({
     storage: z.boolean().default(true),
   }),
   app: z.object({
-    name: z.string().default('Persona POS'),
+    name: z.string().default('StewardPOS'),
     environment: z.enum(['development', 'production']).default('development'),
   }),
 });
@@ -103,7 +103,7 @@ const defaultConfig: AppConfig = {
 
 // Environment variable mapping
 function getConfigFromEnv(): Partial<AppConfig> {
-  const envConfig: any = {};
+  const envConfig: Partial<AppConfig> = {};
 
   // Database
   if (import.meta.env.VITE_DB_ADAPTER) {
@@ -142,7 +142,7 @@ function getConfigFromEnv(): Partial<AppConfig> {
   }
 
   // Features
-  const features: any = {};
+  const features: Partial<AppConfig['features']> = {};
   if (import.meta.env.VITE_FEATURE_REPORTS !== undefined) {
     features.reports = import.meta.env.VITE_FEATURE_REPORTS === 'true';
   }

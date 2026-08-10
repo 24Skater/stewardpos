@@ -15,6 +15,7 @@ import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
 import ImportInventoryDialog from '@/components/ImportInventoryDialog';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -47,10 +48,10 @@ export default function AdminInventory() {
       if (response.success) {
         setProducts(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load products',
+        description: getErrorMessage(error, 'Failed to load products'),
         variant: 'destructive',
       });
     } finally {
@@ -84,10 +85,10 @@ export default function AdminInventory() {
         });
         await loadProducts();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({ 
         title: 'Error', 
-        description: error.message || 'Failed to reset database',
+        description: getErrorMessage(error, 'Failed to reset database'),
         variant: 'destructive'
       });
     }
@@ -206,10 +207,10 @@ export default function AdminInventory() {
           toast({ title: 'Product updated' });
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || `Failed to ${isNewProduct ? 'create' : 'update'} product`,
+        description: getErrorMessage(error, `Failed to ${isNewProduct ? 'create' : 'update'} product`),
         variant: 'destructive',
       });
     }
@@ -223,10 +224,10 @@ export default function AdminInventory() {
           await loadProducts();
           toast({ title: 'Product deleted' });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: 'Error',
-          description: error.message || 'Failed to delete product',
+          description: getErrorMessage(error, 'Failed to delete product'),
           variant: 'destructive',
         });
       }

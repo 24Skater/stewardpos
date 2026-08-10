@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { getErrorMessage } from '@/lib/errors';
 
 export default function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -32,10 +33,10 @@ export default function Inventory() {
       if (response.success) {
         setProducts(response.data);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load products',
+        description: getErrorMessage(error, 'Failed to load products'),
         variant: 'destructive',
       });
     } finally {
@@ -116,10 +117,10 @@ export default function Inventory() {
       await loadProducts();
       setEditDialogOpen(false);
       setCurrentProduct(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || 'Failed to save product',
+        description: getErrorMessage(error, 'Failed to save product'),
         variant: 'destructive',
       });
     }
@@ -133,10 +134,10 @@ export default function Inventory() {
           toast({ title: "Product deleted" });
           await loadProducts();
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: "Error",
-          description: error.message || 'Failed to delete product',
+          description: getErrorMessage(error, 'Failed to delete product'),
           variant: 'destructive',
         });
       }
@@ -157,7 +158,7 @@ export default function Inventory() {
     });
   };
 
-  const handleUpdateVariant = (index: number, field: keyof ProductVariant, value: any) => {
+  const handleUpdateVariant = (index: number, field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => {
     if (!currentProduct) return;
     const updatedVariants = [...currentProduct.variants];
     updatedVariants[index] = { ...updatedVariants[index], [field]: value };

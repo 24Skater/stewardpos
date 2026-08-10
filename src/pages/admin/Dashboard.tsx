@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api-client';
+import type { Customer } from '@/lib/api-types';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -59,8 +60,8 @@ export default function Dashboard() {
         apiClient.get<{ success: boolean; data: Product[] }>('/api/products'),
         apiClient.get<{ success: boolean; data: Quote[] }>('/api/quotes'),
         apiClient.get<{ success: boolean; data: Service[] }>('/api/services'),
-        apiClient.get<{ success: boolean; data: any[] }>('/api/customers'),
-        apiClient.get<{ success: boolean; data: any }>('/api/discounts/stats'),
+        apiClient.get<{ success: boolean; data: Customer[] }>('/api/customers'),
+        apiClient.get<{ success: boolean; data: { totalDiscounts: number; totalDiscountAmount: number } }>('/api/discounts/stats'),
       ]);
 
       const discountStats = discountStatsResponse.success ? discountStatsResponse.data : { totalDiscounts: 0, totalDiscountAmount: 0 };

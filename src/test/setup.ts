@@ -7,16 +7,34 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-  length: 0,
-  key: vi.fn(),
+// In-memory localStorage.
+//
+// This has to actually store values: code under test writes a key and then reads it
+// back (auth token handling, for one). Bare vi.fn() stubs return undefined from
+// getItem no matter what was set, which silently turns "token is present" tests into
+// "token is absent" tests that can never pass.
+const createLocalStorageMock = (): Storage => {
+  let store = new Map<string, string>();
+
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store = new Map<string, string>();
+    },
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
 };
-global.localStorage = localStorageMock as any;
+
+global.localStorage = createLocalStorageMock();
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
