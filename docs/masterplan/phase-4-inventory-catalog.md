@@ -1,0 +1,92 @@
+# Phase 4 — Inventory & Catalog
+
+**Objective.** Complete product/variant/category management: full CRUD, barcode support, product
+images via MinIO/S3, CSV import/export, and low‑stock signals — all org‑scoped and RBAC‑gated. This
+is what stocks the POS built in Phase 3.
+
+**Entry criteria.** Phase 3 green (checkout decrements real stock).
+
+**Exit criteria.**
+- Products, variants, and categories have full CRUD via API + admin UI, org‑scoped and permissioned.
+- Barcode lookup resolves a product/variant at the register.
+- Product images upload to MinIO and render.
+- CSV import (upsert) and export round‑trip cleanly with a documented column spec.
+- Low‑stock threshold produces a visible signal.
+
+---
+
+### `P4-T1` — Product & variant CRUD (API)
+**Context.** `products.ts` exists; ensure complete, validated, org‑scoped CRUD including variants.
+**Files.** `backend/src/api/routes/products.ts`, DB adapter, shared types, `src/lib/api/products.ts`.
+**Steps.**
+1. Endpoints: `GET /` (list w/ pagination + `?q=` search + `?category=` filter), `GET /:id`,
+   `POST /`, `PUT /:id`, `DELETE /:id` (soft delete or block if referenced by orders — pick and
+   document), plus variant sub‑resources (`POST/PUT/DELETE /:id/variants[/:variantId]`).
+2. Zod‑validate all inputs; `authorize('inventory', …)`; set/filter `org_id`.
+3. Search: name + barcode + sku, case‑insensitive, paginated.
+**Acceptance criteria.** CRUD works with validation, RBAC, pagination, and search.
+**Verification.** Integration tests for each endpoint (happy + validation + RBAC). `npm run test`.
+
+---
+
+### `P4-T2` — Categories CRUD  `[parallel-ok]`
+**Files.** `backend/src/api/routes/products.ts` or a new `categories.ts`; `AdminInventory.tsx`.
+**Steps.** CRUD for `categories` (name unique per org, optional icon); prevent deleting a category in
+use (or reassign). Wire the admin UI category picker.
+**Acceptance criteria.** Categories manageable; products reference valid categories.
+**Verification.** Create/rename/delete category via API; deletion of an in‑use category is blocked.
+
+---
+
+### `P4-T3` — Product images via MinIO/S3
+**Context.** `upload.ts` route + `minio` dep + Compose MinIO service exist; wire uploads.
+**Files.** `backend/src/api/routes/upload.ts`, a storage service using `minio`, `products.ts`
+(store returned URL/key), `AdminInventory.tsx` image uploader, `docs/reference/environment.md`.
+**Steps.**
+1. `POST /api/upload` (multer, size/type limits: images only, ≤5MB) → stream to the MinIO bucket
+   (`MINIO_BUCKET`) → return a stable public URL (`MINIO_PUBLIC_HOST`) or object key.
+2. Store the key on the product; serve via the public host (or a signed URL if the bucket is private
+   — pick and document). Ensure the bucket is created on boot if missing.
+3. Frontend: upload widget with preview; product card renders the image.
+**Acceptance criteria.** Uploading an image persists it in MinIO and renders on the product.
+**Verification.** With the stack up, upload an image → it appears in MinIO console and on the product
+card after reload.
+
+---
+
+### `P4-T4` — CSV import / export
+**Context.** `xlsx` (frontend) + README claim CSV import/export; make it real and safe.
+**Files.** `src/components/ImportInventoryDialog.tsx`, `src/lib/export-utils.ts`, backend
+`products.ts` bulk‑upsert endpoint, `docs/guides/inventory-import.md`.
+**Steps.**
+1. Define and document the CSV column spec (name, description, category, base_price, barcode, and
+   variant columns: size, color, sku, variant_barcode, price_override/price_delta, stock, enabled).
+2. Export: `GET /api/products/export.csv` (or client‑side from fetched data) producing the exact spec.
+3. Import: client parses + validates rows (zod), shows a preview with per‑row errors, then calls a
+   backend **bulk‑upsert** endpoint that runs in a transaction (match on barcode/sku or name+variant).
+   Reject the whole file on structural errors; report per‑row skips for soft errors.
+4. Money parsed as decimal → cents server‑side.
+**Acceptance criteria.** Export then re‑import is idempotent; malformed files are rejected clearly.
+**Verification.** Export current catalog → modify a price → re‑import → the change applies and no
+duplicates are created.
+
+---
+
+### `P4-T5` — Low‑stock signal  `[parallel-ok]`
+**Files.** `product_variants` (add `low_stock_threshold` via a small migration, default null),
+`products.ts` (`GET /api/products/low-stock`), `AdminInventory.tsx`, POS/dashboard badge.
+**Steps.** Add an optional per‑variant threshold; an endpoint listing variants at/below threshold;
+surface a count badge in admin and a filter in the inventory list.
+**Acceptance criteria.** Variants below threshold are listed and badged.
+**Verification.** Set a threshold above current stock → the variant appears in low‑stock results.
+
+---
+
+### `P4-T6` — Inventory admin UX polish  `[parallel-ok]`
+**Files.** `src/pages/admin/AdminInventory.tsx`, `src/pages/Inventory.tsx`, related components.
+**Steps.** Ensure list/table has search, category filter, pagination, create/edit dialogs with RHF +
+zod, optimistic updates via TanStack Query, and proper loading/empty/error states. No `@/lib/db`
+imports (Phase 1 invariant). Follow the design‑quality rules (no default‑template look).
+**Acceptance criteria.** Inventory management is usable end‑to‑end from the UI.
+**Verification.** Manual: create a product with two variants + image, edit price, delete — all reflect
+immediately without a full reload.
