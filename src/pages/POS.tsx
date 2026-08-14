@@ -1170,20 +1170,30 @@ export default function POS() {
               <div className="border-t pt-4">
                 <Label className="text-sm font-medium mb-2 block">Manual Discount</Label>
                 <div className="flex gap-2">
-                  <div className="flex-1 flex gap-2">
+                  {/*
+                    A pair of icon-only toggles announcing themselves as
+                    "button". `aria-pressed` because they are a toggle, not two
+                    separate actions — without it a screen reader gives no way
+                    to tell which kind of discount is currently selected.
+                  */}
+                  <div className="flex-1 flex gap-2" role="group" aria-label="Discount type">
                     <Button
                       variant={manualDiscountType === 'percentage' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setManualDiscountType('percentage')}
+                      aria-label="Percentage discount"
+                      aria-pressed={manualDiscountType === 'percentage'}
                     >
-                      <Percent className="w-4 h-4" />
+                      <Percent className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant={manualDiscountType === 'fixed' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setManualDiscountType('fixed')}
+                      aria-label="Fixed-amount discount"
+                      aria-pressed={manualDiscountType === 'fixed'}
                     >
-                      <DollarSign className="w-4 h-4" />
+                      <DollarSign className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Input
                       type="number"
