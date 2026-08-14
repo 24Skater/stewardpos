@@ -1,6 +1,26 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import type jsPDF from 'jspdf';
+
+/**
+ * jspdf, jspdf-autotable and xlsx are loaded on demand, not at import.
+ *
+ * Together they are the better part of a megabyte, and they exist to serve a
+ * button a manager presses occasionally. Imported statically they landed in the
+ * bundle every cashier downloads before ringing the first sale of the day.
+ *
+ * The cost is that every function which reaches for them is now async. Callers
+ * fire these from click handlers and ignore the result, so nothing had to
+ * change at the call sites — but an awaited caller now gets a promise that
+ * settles when the file is actually saved, which is more honest than the old
+ * signature was.
+ */
+async function loadPdfKit() {
+  const [{ default: jsPDFCtor }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+
+  return { jsPDFCtor, autoTable };
+}
 
 /**
  * One row of an exported report: column label -> cell value.
@@ -156,7 +176,8 @@ export function exportToCSV(data: ExportRow[], filename: string) {
   link.click();
 }
 
-export function exportToExcel(sheets: { name: string; data: ExportRow[] }[], filename: string) {
+export async function exportToExcel(sheets: { name: string; data: ExportRow[] }[], filename: string) {
+  const XLSX = await import('xlsx');
   const workbook = XLSX.utils.book_new();
   
   sheets.forEach(sheet => {
@@ -464,13 +485,14 @@ export function generateServicesByCategoryReport(services: Service[], quotes: Qu
 
 // ========== PDF EXPORTS ==========
 
-export function exportOrdersToPDF(
+export async function exportOrdersToPDF(
   orders: Order[],
   orderItems: OrderItem[],
   settings: Settings,
   dateRange: { start: number; end: number }
 ) {
-  const doc = new jsPDF();
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Orders Report', 
     `${new Date(dateRange.start).toLocaleDateString()} - ${new Date(dateRange.end).toLocaleDateString()}`,
     settings
@@ -507,8 +529,9 @@ export function exportOrdersToPDF(
   doc.save(`orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesMoMToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportSalesMoMToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Sales Month-over-Month Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -536,8 +559,9 @@ export function exportSalesMoMToPDF(data: ExportRow[], settings?: Settings) {
   doc.save(`sales-mom-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesWoWToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportSalesWoWToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Sales Week-over-Week Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -558,8 +582,9 @@ export function exportSalesWoWToPDF(data: ExportRow[], settings?: Settings) {
   doc.save(`sales-wow-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesByCustomerToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportSalesByCustomerToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Sales by Customer Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -580,8 +605,9 @@ export function exportSalesByCustomerToPDF(data: ExportRow[], settings?: Setting
   doc.save(`sales-by-customer-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportSalesByItemToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportSalesByItemToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Sales by Item Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -601,8 +627,9 @@ export function exportSalesByItemToPDF(data: ExportRow[], settings?: Settings) {
   doc.save(`sales-by-item-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportTrendingToPDF(productTrends: ExportRow[], serviceTrends: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportTrendingToPDF(productTrends: ExportRow[], serviceTrends: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Trending Products & Services Report', 
     `Last 30 Days | Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -641,8 +668,9 @@ export function exportTrendingToPDF(productTrends: ExportRow[], serviceTrends: E
   doc.save(`trending-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportCustomerListToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF('landscape');
+export async function exportCustomerListToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor('landscape');
   const startY = createPDFHeader(doc, 'Customer List', 
     `Total: ${data.length} customers | Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -665,8 +693,9 @@ export function exportCustomerListToPDF(data: ExportRow[], settings?: Settings) 
   doc.save(`customers-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportServicesToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportServicesToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Services Report', 
     `Total: ${data.length} services | Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -813,8 +842,9 @@ export function generateReturnsByReasonReport(returns: Return[]) {
     .sort((a, b) => b['Return Count'] - a['Return Count']);
 }
 
-export function exportReturnsToPDF(returns: Return[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportReturnsToPDF(returns: Return[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Returns & Refunds Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
@@ -845,8 +875,9 @@ export function exportReturnsToPDF(returns: Return[], settings?: Settings) {
   doc.save(`returns-report-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-export function exportReturnsByReasonToPDF(data: ExportRow[], settings?: Settings) {
-  const doc = new jsPDF();
+export async function exportReturnsByReasonToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
   const startY = createPDFHeader(doc, 'Returns by Reason Report', 
     `Generated: ${new Date().toLocaleDateString()}`, settings);
   
