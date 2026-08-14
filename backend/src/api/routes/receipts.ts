@@ -96,22 +96,43 @@ router.get('/', requirePermission('orders', 'read'), async (req: AuthRequest, re
     // Apply pagination
     const paginatedOrders = orders.slice(offset, offset + limit);
 
-    // Enhance with return info
-    const receiptsWithReturns = await Promise.all(
-      paginatedOrders.map(async (order) => {
-        const returns = await adapter.getReturnsByOrder(order.id);
-        const hasReturns = returns.length > 0;
-        const totalReturned = returns.reduce((sum, r) => sum + r.total, 0);
-        
-        return {
-          ...order,
-          hasReturns,
-          returnCount: returns.length,
-          totalReturned,
-          netTotal: order.total - totalReturned,
-        };
-      })
+    // Returns for the whole page in one query, then grouped in memory.
+    //
+    // This mapped over the page calling `getReturnsByOrder` per order, and each
+    // of those ran a second query for line items — around a hundred round trips
+    // to render fifty receipts, for two fields.
+    const returnsForPage = await adapter.getReturnSummariesByOrderIds(
+      paginatedOrders.map((order) => order.id)
     );
+
+    const returnsByOrder = new Map<string, typeof returnsForPage>();
+    for (const ret of returnsForPage) {
+      const key = ret.originalOrderId as string;
+      const bucket = returnsByOrder.get(key) ?? [];
+      bucket.push(ret);
+      returnsByOrder.set(key, bucket);
+    }
+
+    const receiptsWithReturns = paginatedOrders.map((order) => {
+      const returns = returnsByOrder.get(order.id) ?? [];
+
+      // Only a completed return has paid anything out. This counted every
+      // return regardless of status, so an order with a pending return reported
+      // a lower net here than the single-receipt endpoint reported for the same
+      // sale — two screens disagreeing about the day's takings.
+      const totalReturned = returns.reduce(
+        (sum, r) => (r.status === 'completed' ? sum + (r.total as number) : sum),
+        0
+      );
+
+      return {
+        ...order,
+        hasReturns: returns.length > 0,
+        returnCount: returns.length,
+        totalReturned,
+        netTotal: (order.total as number) - totalReturned,
+      };
+    });
 
     res.json({
       success: true,

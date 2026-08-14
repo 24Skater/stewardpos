@@ -135,6 +135,54 @@ describe('createReturn', () => {
     expect(forOrder).toHaveLength(1);
   });
 
+  it('carries its items when found through the order', async () => {
+    // `getReturnsByOrder` fetches items for every return in one query and groups
+    // them by return id. Asserting only on the return count — which is all this
+    // file used to do — passes just as happily when the grouping attaches the
+    // wrong items, or none at all.
+    //
+    // The caller uses `originalOrderItemId` to work out how much of each order
+    // line has already been refunded. Lose it and the same item can be returned
+    // twice.
+    const created = await makeReturn(2);
+
+    const [found] = await h.adapter.getReturnsByOrder(orderId);
+
+    expect(found.id).toBe(created.id);
+    expect(found.items).toHaveLength(1);
+    expect((found.items as Array<Record<string, unknown>>)[0]).toMatchObject({
+      originalOrderItemId: orderItemId,
+      productId,
+      variantId,
+      returnQuantity: 2,
+    });
+  });
+
+  it('groups items by their own return when an order has several', async () => {
+    // The failure this catches is one return receiving another's items, which a
+    // single-return fixture cannot express at all.
+    const first = await makeReturn(1);
+    const second = await makeReturn(3);
+
+    const forOrder = await h.adapter.getReturnsByOrder(orderId);
+    expect(forOrder).toHaveLength(2);
+
+    const byId = new Map(forOrder.map((r) => [r.id, r.items as Array<Record<string, unknown>>]));
+
+    expect(byId.get(first.id)).toHaveLength(1);
+    expect(byId.get(second.id)).toHaveLength(1);
+    expect(byId.get(first.id)![0].returnQuantity).toBe(1);
+    expect(byId.get(second.id)![0].returnQuantity).toBe(3);
+  });
+
+  it('leaves items empty for an order with no returns rather than throwing', async () => {
+    // The batched query is skipped entirely when there are no ids; an unguarded
+    // `= ANY($1)` on an empty array is the mistake that would surface here.
+    const forOrder = await h.adapter.getReturnsByOrder(orderId);
+
+    expect(forOrder).toEqual([]);
+  });
+
   it('does not restock on creation', async () => {
     // Restocking is a separate, approval-gated step. Putting damaged goods back
     // on the shelf the instant a return is recorded is the bug this separation
@@ -144,6 +192,73 @@ describe('createReturn', () => {
     await makeReturn(4);
 
     expect(await stockNow()).toBe(before);
+  });
+});
+
+describe('getReturnSummariesByOrderIds', () => {
+  it('answers for no orders without going to the database', async () => {
+    // The receipts list calls this with whatever page it holds, and an empty
+    // page is ordinary on a fresh install. `= ANY('{}')` is the failure mode.
+    expect(await h.adapter.getReturnSummariesByOrderIds([])).toEqual([]);
+  });
+
+  it('tags each return with the order it belongs to', async () => {
+    // The caller groups on `originalOrderId`. Without it every return on the
+    // page would land against the same receipt.
+    const created = await makeReturn(2);
+
+    const summaries = await h.adapter.getReturnSummariesByOrderIds([orderId]);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      id: created.id,
+      originalOrderId: orderId,
+      status: 'pending',
+    });
+    expect(summaries[0].total).toBe(10);
+  });
+
+  it('returns nothing for an order id that has no returns', async () => {
+    const summaries = await h.adapter.getReturnSummariesByOrderIds([orderId]);
+
+    expect(summaries).toEqual([]);
+  });
+
+  it('keeps returns from different orders apart', async () => {
+    // The whole point of batching is that one query serves many orders, so the
+    // case worth testing is the one a single-order fixture cannot express.
+    const other = await h.adapter.createOrder({
+      items: [
+        {
+          productId,
+          variantId,
+          nameSnapshot: `${mark} Tea`,
+          quantity: 1,
+          unitPrice: 5,
+          lineDiscount: 0,
+          lineTotal: 5,
+        },
+      ],
+      subtotal: 5,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 5,
+      paymentMethod: 'Cash',
+      payments: [{ method: 'cash', amount: 5 }],
+    });
+    const otherOrderId = String(other.id);
+
+    const mine = await makeReturn(1);
+
+    const summaries = await h.adapter.getReturnSummariesByOrderIds([orderId, otherOrderId]);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].id).toBe(mine.id);
+    expect(summaries[0].originalOrderId).toBe(orderId);
+
+    await h.query('DELETE FROM order_items WHERE order_id = $1', [otherOrderId]);
+    await h.query('DELETE FROM payments WHERE order_id = $1', [otherOrderId]);
+    await h.query('DELETE FROM orders WHERE id = $1', [otherOrderId]);
   });
 });
 

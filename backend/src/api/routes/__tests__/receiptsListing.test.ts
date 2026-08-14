@@ -16,6 +16,24 @@ const getUserByEmail = vi.fn();
 const getAllOrders = vi.fn();
 const getOrderById = vi.fn();
 const getReturnsByOrder = vi.fn();
+
+/**
+ * The batched lookup the list endpoint uses, fed from the same fixture as the
+ * per-order one the detail endpoint uses.
+ *
+ * Deliberately not an independent mock: the bug these tests exist for was the
+ * two endpoints disagreeing about the same order, and giving each its own
+ * fixture would let them drift in the test exactly as they drifted in the code.
+ */
+const getReturnSummariesByOrderIds = vi.fn(async (orderIds: string[]) => {
+  const rows: Record<string, unknown>[] = [];
+  for (const orderId of orderIds) {
+    for (const ret of await getReturnsByOrder(orderId)) {
+      rows.push({ ...ret, originalOrderId: orderId });
+    }
+  }
+  return rows;
+});
 const getReceiptEmailHistory = vi.fn();
 const searchOrders = vi.fn();
 
@@ -26,6 +44,7 @@ vi.mock('../../../services/database', () => ({
       getAllOrders,
       getOrderById,
       getReturnsByOrder,
+      getReturnSummariesByOrderIds,
       getReceiptEmailHistory,
       searchOrders,
     }),
@@ -92,6 +111,53 @@ describe('GET /api/receipts', () => {
       totalReturned: 30,
       netTotal: 70,
     });
+  });
+
+  it('counts only completed returns against netTotal, as the detail view does', async () => {
+    // The same rule the single-receipt endpoint already applies: a pending
+    // return has paid nothing out yet, so deducting it understates the day's
+    // takings. The list deducted every return regardless of status, so one
+    // order reported two different net totals depending on which screen a
+    // manager was looking at.
+    getReturnsByOrder.mockResolvedValue([{ id: 'r1', total: 40, status: 'pending' }]);
+
+    const response = await request(app).get('/api/receipts').set(auth());
+
+    expect(response.body.data[0]).toMatchObject({ netTotal: 100, totalReturned: 0 });
+  });
+
+  it('does not deduct a rejected return', async () => {
+    // A rejected return did not happen.
+    getReturnsByOrder.mockResolvedValue([{ id: 'r1', total: 40, status: 'rejected' }]);
+
+    const response = await request(app).get('/api/receipts').set(auth());
+
+    expect(response.body.data[0]).toMatchObject({ netTotal: 100 });
+  });
+
+  it('still flags an order carrying a pending return', async () => {
+    // Not deducting it must not mean hiding it — a manager needs to see that a
+    // return is outstanding against the sale.
+    getReturnsByOrder.mockResolvedValue([{ id: 'r1', total: 40, status: 'pending' }]);
+
+    const response = await request(app).get('/api/receipts').set(auth());
+
+    expect(response.body.data[0]).toMatchObject({ hasReturns: true, returnCount: 1 });
+  });
+
+  it('agrees with the single-receipt endpoint on the same order', async () => {
+    // The bug was a disagreement between two endpoints, so the regression test
+    // is the agreement itself rather than either number in isolation.
+    getReturnsByOrder.mockResolvedValue([
+      { id: 'r1', total: 40, status: 'pending' },
+      { id: 'r2', total: 25, status: 'completed' },
+    ]);
+
+    const list = await request(app).get('/api/receipts').set(auth());
+    const detail = await request(app).get('/api/receipts/o1').set(auth());
+
+    expect(list.body.data[0].netTotal).toBe(detail.body.data.netTotal);
+    expect(list.body.data[0].netTotal).toBe(75);
   });
 
   it('pages, and says whether there is more', async () => {
