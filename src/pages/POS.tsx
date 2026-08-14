@@ -986,8 +986,8 @@ export default function POS() {
                   className="pl-9 bg-background border-border"
                 />
               </div>
-              <Button variant="outline" size="icon" className="border-border">
-                <Barcode className="w-4 h-4" />
+              <Button variant="outline" size="icon" className="border-border" aria-label="Scan barcode">
+                <Barcode className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1005,7 +1005,13 @@ export default function POS() {
           </div>
 
           {/* Products Grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/*
+            `tabIndex={0}` because a scrollable region that cannot take focus
+            cannot be scrolled from the keyboard at all — axe flags this as a
+            serious violation, and on a till it means the catalog below the fold
+            is unreachable without a mouse.
+          */}
+          <div className="flex-1 overflow-y-auto p-4" tabIndex={0} role="region" aria-label="Products">
             {productsPending ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Loader2 className="w-10 h-10 text-muted-foreground/50 mb-4 animate-spin" />
@@ -1303,7 +1309,7 @@ export default function POS() {
                       ` — $${(appliedCredit.remainingAmount - creditApplied).toFixed(2)} stays on the credit`}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)}>
+                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)} aria-label="Remove the applied store credit">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -1422,8 +1428,9 @@ export default function POS() {
                         size="icon" 
                         className="h-6 w-6"
                         onClick={() => removeDiscount(index)}
+                        aria-label={`Remove the ${discount.name} discount`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
