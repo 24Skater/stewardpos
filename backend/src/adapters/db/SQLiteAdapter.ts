@@ -2426,28 +2426,66 @@ export class SQLiteAdapter {
 
       const result = returns.map(r => this.mapReturnRow(r));
 
-      // Get items for each return
-      for (const ret of result) {
+      // Items for every return in one query. See the Postgres adapter: this is
+      // on the return path, where `originalOrderItemId` is what stops the same
+      // order line being refunded twice.
+      //
+      // SQLite has no array parameter, so the placeholders are generated from
+      // the id count — still one statement, and every value still bound.
+      const returnIds = result.map(r => r.id as string);
+      const itemsByReturn = new Map<string, unknown[]>();
+
+      if (returnIds.length > 0) {
+        const placeholders = returnIds.map(() => '?').join(', ');
         const items = this.db.prepare(
-          'SELECT * FROM return_items WHERE return_id = ?'
-        ).all(ret.id) as DbRow[];
-        ret.items = items.map(item => ({
-          id: item.id,
-          // See the Postgres adapter: needed to tell how much of a given order
-          // line has already been returned.
-          originalOrderItemId: item.original_order_item_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          nameSnapshot: item.name_snapshot,
-          returnQuantity: item.return_quantity,
-          unitPrice: item.unit_price,
-          lineTotal: item.line_total,
-        }));
+          `SELECT * FROM return_items WHERE return_id IN (${placeholders})`
+        ).all(...returnIds) as DbRow[];
+
+        for (const item of items) {
+          const key = item.return_id as string;
+          const bucket = itemsByReturn.get(key) ?? [];
+          bucket.push({
+            id: item.id,
+            originalOrderItemId: item.original_order_item_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            nameSnapshot: item.name_snapshot,
+            returnQuantity: item.return_quantity,
+            unitPrice: item.unit_price,
+            lineTotal: item.line_total,
+          });
+          itemsByReturn.set(key, bucket);
+        }
+      }
+
+      for (const ret of result) {
+        ret.items = itemsByReturn.get(ret.id as string) ?? [];
       }
 
       return result;
     } catch (error) {
       logger.error('Error getting returns by order:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  /** See the Postgres adapter: returns for many orders, without their items. */
+  async getReturnSummariesByOrderIds(orderIds: string[]): Promise<DbRow[]> {
+    if (orderIds.length === 0) return [];
+
+    try {
+      const placeholders = orderIds.map(() => '?').join(', ');
+      const rows = this.db.prepare(
+        `SELECT r.*, u.name as created_by_name
+         FROM returns r
+         LEFT JOIN users u ON r.created_by = u.id
+         WHERE r.original_order_id IN (${placeholders})
+         ORDER BY r.created_at DESC`
+      ).all(...orderIds) as DbRow[];
+
+      return rows.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting returns for orders:', error);
       throw new DatabaseError('Failed to get returns');
     }
   }

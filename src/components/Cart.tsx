@@ -64,8 +64,9 @@ export default function Cart({ items, onUpdateQuantity, onRemoveItem, onCheckout
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                       onClick={() => onRemoveItem(item.productId, item.variantId)}
+                      aria-label={`Remove ${item.nameSnapshot ?? item.product?.name ?? 'item'} from the order`}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                   <div className="flex items-center gap-2 mt-3">
@@ -74,8 +75,9 @@ export default function Cart({ items, onUpdateQuantity, onRemoveItem, onCheckout
                       size="icon"
                       className="h-8 w-8 border-border"
                       onClick={() => onUpdateQuantity(item.productId, item.variantId, -1)}
+                      aria-label={`Decrease quantity of ${item.nameSnapshot ?? item.product?.name ?? 'item'}`}
                     >
-                      <Minus className="w-3 h-3" />
+                      <Minus className="w-3 h-3" aria-hidden="true" />
                     </Button>
                     <span className="text-sm font-medium min-w-[2rem] text-center text-foreground">
                       {item.quantity}
@@ -85,8 +87,9 @@ export default function Cart({ items, onUpdateQuantity, onRemoveItem, onCheckout
                       size="icon"
                       className="h-8 w-8 border-border"
                       onClick={() => onUpdateQuantity(item.productId, item.variantId, 1)}
+                      aria-label={`Increase quantity of ${item.nameSnapshot ?? item.product?.name ?? 'item'}`}
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-3 h-3" aria-hidden="true" />
                     </Button>
                     <span className="ml-auto text-sm font-semibold text-foreground">
                       ${(item.price * item.quantity).toFixed(2)}

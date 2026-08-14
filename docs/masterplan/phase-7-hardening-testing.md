@@ -422,3 +422,279 @@ gap in the tests.
 
 Every number above 58% quoted earlier in this document's history was measured
 the old way and should not be compared against these.
+
+---
+
+## Status (2026-08-14): the register's arithmetic, the bundle, and a11y
+
+### A total the cashier read and a total the customer paid
+
+The checkout dialog's headline **Total** was `calculateSubtotal() - getTotalDiscount()`.
+Tax was missing from it entirely — while `handleCompleteCheckout` posted
+`calculateTotals()`, which includes tax, and the "Still due" line rendered the
+taxed figure too. In a store with a tax rate configured, the dialog a cashier
+confirms showed **$20.00** on a sale that charged **$22.00**. There was no tax
+row in the dialog at all.
+
+Found by asserting on rendered numbers rather than on the functions behind
+them, which is the only way this one was ever going to surface: every unit test
+of the math was correct, because the math was correct. The screen was wrong.
+
+Fixed, with a tax row that appears only when the store charges tax.
+
+### The arithmetic moved out of the screen
+
+`src/lib/register-math.ts` now holds subtotal, discount stacking, totals,
+store-credit application, amount due, tender breakdown, change, quick-cash
+denominations, and the receipt lines. They were closures over `POS.tsx` state,
+which is why none had ever been executed by a test — reaching them meant
+rendering a 1,500-line component.
+
+`POS.tsx` keeps the same binding names and the same declaration order, so the
+temporal-dead-zone hazard that once replaced the register with an error boundary
+was not re-introduced. A side effect worth noting: four
+`eslint-disable react-hooks/exhaustive-deps` suppressions came out, because the
+memo dependencies became genuinely exhaustive once the functions stopped being
+redefined every render.
+
+42 tests cover it, including the float cases — a cart of $0.10 and $0.20 totals
+`0.30000000000000004`, and a register comparing floats calls a $0.30 tender
+short and refuses the sale.
+
+### POS renders in a test now
+
+`src/pages/__tests__/POS.render.test.tsx` mounts the real component with the
+query hooks and network members mocked. Eight tests: it paints, it shows the
+catalog and the store name, it logs no React error, and the checkout dialog's
+figures agree with `register-math`.
+
+This is the first unit-level thing in the repo that would have caught the TDZ
+crash. Typecheck, production build, and 241 unit tests all passed while the
+register was broken on first paint for every cashier.
+
+### The bundle a till downloads before its first sale
+
+| | Before | After |
+|---|---|---|
+| Main chunk | 1,986.76 kB | **569.02 kB** |
+| Main chunk, gzipped | 581.28 kB | **171.83 kB** |
+
+Every route except POS and Login is `React.lazy`, behind a `Suspense` fallback.
+The ten heaviest chunks are now split: `xlsx` (429 kB), `jspdf` (388 kB),
+`Dashboard` with recharts (389 kB), `html2canvas` (201 kB).
+
+`export-utils.ts` loads `jspdf`, `jspdf-autotable` and `xlsx` through dynamic
+`import()` inside the functions that use them, so the reporting stack arrives
+when a manager presses a button rather than when a cashier opens the till. The
+eleven exporters that touch those libraries are now `async`; every call site
+fires them from a click handler and ignores the result, so none needed changing.
+
+Still above the 500 kB warn threshold, but inside the 300 kB gzipped budget the
+repo's rules set for an app page.
+
+### Accessibility is in the merge gate
+
+`e2e/accessibility.spec.ts` runs axe over the register, the checkout dialog and
+login, and fails on `serious` and `critical` violations only — including
+`minor`/`moderate` on a vendored component library would fail on day one and
+teach everyone to ignore the job. It also covers keyboard operability of the
+product grid, a visible focus ring, `prefers-reduced-motion`, and horizontal
+overflow at 768/1024/1440.
+
+`playwright test` globs `e2e/`, so this needed no CI change — it is already part
+of the gate the E2E job enforces.
+
+**Not yet run.** Docker is not available on the development machine, so these
+specs are written and typechecked but have never executed. The first CI run is
+where they either pass or produce a list of real violations. Treat the a11y
+claim as unverified until then.
+
+### `setup.ts`: 24.3% → 75.7%
+
+`setupComplete.test.ts` covers the provisioning flow with `pg`, the migrator and
+the seeder mocked, so it needs no database. Function coverage is 100%; what
+remains uncovered is the SQLite branch of admin creation.
+
+The two assertions worth having:
+
+- **The founding administrator gets every `PERMISSION_RESOURCE`**, compared
+  against the list rather than a copy of it. This drifted once already, naming
+  seven resources and omitting `orders`, `returns` and `discounts`. Verified by
+  mutation: reintroducing the subset fails the test.
+- **An existing address is refused with a 409, never overwritten.** The endpoint
+  is unauthenticated by necessity; an upsert here would let anyone reset any
+  user's password by claiming their email.
+
+Plus: the probe pool is closed, the migrator is closed even when migration
+throws, config is retargeted at the database the operator typed in, the password
+never appears in a query parameter or a response body, and demo-seeding failure
+is non-fatal.
+
+### Every admin page renders now
+
+`src/pages/__tests__/adminPages.render.test.tsx` mounts all fifteen admin pages
+against a stubbed-empty backend and asserts each one paints, produces non-empty
+output, and logs no React error. The API stub is derived from the real barrel:
+every function on every `*Api` export is replaced with one resolving to an empty
+collection, so the pages run their genuine mount effects.
+
+**It found no product bugs, and that is the honest result.** Six failures on the
+first run all turned out to be the harness rather than the code:
+
+- **jsdom has no `ResizeObserver`**, which recharts constructs on mount, so
+  every page carrying a chart threw. Polyfilled in `src/test/setup.ts`. This
+  would have blocked any future test touching a chart.
+- **The stub returned `{}` for `returnsApi.stats` and `apiKeysApi.reference`**,
+  a response the server never sends — `getReturnStats` COALESCEs every aggregate
+  to 0 and returns all seven keys. Both call sites already guard correctly
+  (`{stats && …}`, `{apiDocs && …}`); the crash was my stub inventing a contract
+  violation. Fixed by modelling what an empty install actually returns, not by
+  changing the pages.
+
+Worth stating because the temptation runs the other way: it would have been easy
+to "fix" two pages that were never broken, and to record it as having found
+something.
+
+**What the coverage number means.** `src/pages/admin` goes from 0% to 69.44%
+statements, but function coverage across the frontend is 16.52% — these tests
+render, they do not click. A page that mounts cleanly and mishandles a save is
+still uncovered. The value here is specifically the first-paint crash class,
+which is the one that has actually bitten this project twice.
+
+### The query half of P7-T5
+
+`getAllOrders` already batched its order items — someone had done that
+deliberately. The audit found one genuine N+1 and one request waterfall.
+
+**`getReturnsByOrder` issued one query per return** to fetch its items, in both
+adapters. Now one query using the `= ANY($1::uuid[])` pattern `getAllOrders`
+already used, with generated placeholders in the SQLite version since SQLite has
+no array parameter. This sits on the path a cashier takes to process a return.
+
+**The existing integration test could not have caught a mistake in that.** It
+called `getReturnsByOrder` and asserted `toHaveLength(1)` on the returns — never
+touching `items`. Grouping the wrong items onto the wrong return, or attaching
+none at all, passed. Three tests were added: that items come back with the right
+`originalOrderItemId` (the field that stops an item being refunded twice), that
+two returns against one order each get their own items, and that an order with no
+returns takes the guarded empty-array path rather than an unguarded
+`= ANY($1)`.
+
+Worth stating plainly: the fix itself has **not run locally** — there is no
+Postgres here and `better-sqlite3` has no native binding. CI is where it is
+verified, and it is verified only because those assertions now exist.
+
+**A request waterfall in `AdminCustomers`** awaited quotes, then returns, then
+orders for the selected customer — three independent reads, three sequential
+round trips. Now one `Promise.all`.
+
+**The receipts list was the second N+1**, and chasing it turned up a money bug.
+`GET /api/receipts` mapped over its page calling `getReturnsByOrder` per order,
+each of which then queried line items — roughly a hundred round trips to render
+fifty receipts, for two fields. Both adapters gained
+`getReturnSummariesByOrderIds`, which fetches the page's returns in one query
+and skips the item join entirely, since nothing on that screen reads items.
+
+### Two screens disagreeing about the day's takings
+
+While batching that lookup, the two endpoints turned out to compute `netTotal`
+by different rules:
+
+- `GET /api/receipts/:id` subtracted **completed** returns only.
+- `GET /api/receipts` subtracted **every** return, whatever its status.
+
+So an order with a $40 pending return read as $60 in the receipts list and $100
+on the receipt itself. A pending return has paid nothing out; deducting it
+understates the takings, and the repo's own test suite already said so in a
+comment on the detail endpoint — the list simply never applied the rule.
+
+Confirmed before fixing: the list returned 35 where the detail returned 75 for
+the same order. Five tests now cover it, and the one that matters asserts the
+two endpoints **agree with each other** rather than checking either number
+alone, because the defect was the disagreement.
+
+Integration coverage for the new adapter method follows the same rule as the
+last one: the empty-page guard, `originalOrderId` tagging (without which every
+return on the page lands against the same receipt), and two orders kept apart —
+the case a single-order fixture cannot express. That code has not run locally;
+CI is where it is verified.
+
+### The backend is linted, for the first time
+
+`backend/eslint.config.js` exists now — flat, CommonJS, Node globals, built
+against the `@typescript-eslint` v6 that `backend/` actually resolves. Without
+it ESLint walked up to the repository root, found a browser/React config built
+for typescript-eslint v8, and crashed rather than linting anything. The script
+dropped `--ext`, which flat config rejects.
+
+The first run produced **184 errors**, splitting cleanly:
+
+- **8 `no-unused-vars`.** Five were genuinely dead — `SignOptions`,
+  `DatabaseError` and `getErrorMessage` imported and never used, and two unused
+  `next` parameters, now `_next`. Three were **false positives worth
+  understanding**: `const { keyHash, ...rest } = apiKey` is how the API-key
+  routes drop the hash before responding, so the discarded binding *is* the
+  line's purpose. That is what `ignoreRestSiblings` is for; renaming it
+  `_keyHash` would have obscured a deliberate security measure.
+- **176 `no-explicit-any`**, 159 in `SQLiteAdapter` and `PostgresAdapter`, which
+  are duck-typed against `pg` and `better-sqlite3` row shapes.
+
+The `any` rule is set to **warn**, and that is a judgement worth defending
+rather than burying. Typing eight thousand lines of adapter properly is its own
+piece of work, and it should not ride along with the change that turns linting
+on. Left as an error, `npm run lint` could never pass, and a check that always
+fails gets ignored — precisely what happened to the e2e job while it ran under
+`continue-on-error`. A green gate with a visible 176-warning backlog is worth
+more than a red one nobody reads.
+
+**Added to CI.** The backend job had no lint step, so none of this would have
+run there. It does now, before typecheck. `globals` was also promoted to a
+declared devDependency — it had been resolving only as a transitive dependency
+of ESLint.
+
+### Coverage, measured honestly
+
+The frontend config had the same moving-denominator flaw the backend fixed:
+no `all`, so only imported files counted. It also counted the spec files
+themselves as fully-covered source. Both corrected.
+
+| | Before | Now |
+|---|---|---|
+| Frontend overall | — | **46.74%** |
+| `src/pages` | 0% | **23.42%** |
+| `src/pages/admin` | 0% | **69.44%** |
+| `src/lib` | 31.8% | **39.52%** |
+| Backend overall | 37.55% | **39.18%** |
+| `backend/src/api/routes` | 80.0% | **81.03%** |
+| `setup.ts` | 24.34% | **75.65%** |
+
+Frontend: 173 tests. Backend: 662 passing, 25 skipped (the SQLite specs, which
+have no native binding locally and throw rather than skip in CI).
+
+Read the frontend figure with the caveat above: statement coverage is carried
+largely by render paths, and frontend function coverage is 16.52%.
+
+### Still open
+
+- **176 `any`s, 159 of them in the two database adapters.** See the linting
+  note below: the rule is on as a warning, and the count is the backlog.
+- **The four vendor terminal adapters at ~19%.** Live request paths need real
+  hardware (P3-T5).
+- **The admin pages render but are not driven.** Frontend function coverage is
+  16.52%: no test clicks a save, submits a form, or exercises an error path on
+  any of the fifteen pages. That is the next real piece of frontend work.
+- **P7-T5's load test is written but never run.** `scripts/loadtest-orders.mjs`
+  drives `POST /api/orders` at concurrency and gates on correctness as well as
+  latency — a 200 carrying a total of zero fails it. It needs a live stack.
+- **The list adapters are unbounded**, and cannot simply be capped.
+  `getAllOrders`, `getAllCustomers`, `getAllQuotes` and `getAllReturns` all
+  `SELECT` without a `LIMIT`. A default cap looks like the obvious fix and is
+  the wrong one: `Reports`, `AdminReports`, `AdminExports` and `Dashboard` each
+  call `ordersApi.list()` to aggregate over **every** order, so a silent cap
+  would not slow those pages down, it would make them report wrong numbers.
+  Pagination here needs the aggregation moved server-side first, which is a
+  design change beyond this phase.
+- **`Cart.tsx` computes its own subtotal** and labels it both "Subtotal" and
+  "Total", ignoring discounts and tax. A fourth implementation of cart maths
+  that will drift from `register-math`. Left alone deliberately — changing what
+  the sidebar displays is a product decision, not a hardening one.

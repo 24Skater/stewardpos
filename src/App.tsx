@@ -7,31 +7,51 @@ import { ThemeProvider } from "next-themes";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
 import RequireAuth from "@/components/RequireAuth";
+import { Suspense, lazy } from "react";
+import { Loader2 } from "lucide-react";
+
+/**
+ * The register is eager; everything else is split out.
+ *
+ * A till loads one screen and stays on it all day. Bundling the twenty admin
+ * pages into that first paint meant a cashier downloaded the reporting stack —
+ * recharts, jspdf, xlsx — before ringing a sale, on whatever connection the
+ * shop has. Login is eager too, because it is the only thing in front of POS.
+ */
 import POS from "./pages/POS";
-import Inventory from "./pages/Inventory";
-import Reports from "./pages/Reports";
-import Settings from "./pages/Settings";
-import ServicesPos from "./pages/ServicesPos";
 import Login from "./pages/Login";
-import Setup from "./pages/Setup";
-import Dashboard from "./pages/admin/Dashboard";
-import AdminInventory from "./pages/admin/AdminInventory";
-import AdminReports from "./pages/admin/AdminReports";
-import AdminExports from "./pages/admin/AdminExports";
-import AdminCustomers from "./pages/admin/AdminCustomers";
-import AdminServices from "./pages/admin/AdminServices";
-import AdminSettings from "./pages/admin/AdminSettings";
-import AdminRoles from "./pages/admin/AdminRoles";
-import AdminAudit from "./pages/admin/AdminAudit";
-import AdminComponents from "./pages/admin/AdminComponents";
-import AdminQuotes from "./pages/admin/AdminQuotes";
-import AdminApiKeys from "./pages/admin/AdminApiKeys";
-import AdminReturns from "./pages/admin/AdminReturns";
-import AdminReceipts from "./pages/admin/AdminReceipts";
-import AdminDiscounts from "./pages/admin/AdminDiscounts";
-import NotFound from "./pages/NotFound";
+
+const Setup = lazy(() => import("./pages/Setup"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Settings = lazy(() => import("./pages/Settings"));
+const ServicesPos = lazy(() => import("./pages/ServicesPos"));
+const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
+const AdminInventory = lazy(() => import("./pages/admin/AdminInventory"));
+const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
+const AdminExports = lazy(() => import("./pages/admin/AdminExports"));
+const AdminCustomers = lazy(() => import("./pages/admin/AdminCustomers"));
+const AdminServices = lazy(() => import("./pages/admin/AdminServices"));
+const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
+const AdminAudit = lazy(() => import("./pages/admin/AdminAudit"));
+const AdminComponents = lazy(() => import("./pages/admin/AdminComponents"));
+const AdminQuotes = lazy(() => import("./pages/admin/AdminQuotes"));
+const AdminApiKeys = lazy(() => import("./pages/admin/AdminApiKeys"));
+const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
+const AdminReceipts = lazy(() => import("./pages/admin/AdminReceipts"));
+const AdminDiscounts = lazy(() => import("./pages/admin/AdminDiscounts"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
+
+/** Shown while a split route's chunk is in flight. */
+const RouteFallback = () => (
+  <div className="flex h-screen items-center justify-center" role="status" aria-live="polite">
+    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    <span className="sr-only">Loading</span>
+  </div>
+);
 
 const App = () => (
   <ErrorBoundary>
@@ -42,6 +62,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <SetupGuard>
+            <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/setup" element={<Setup />} />
               <Route path="/login" element={<Login />} />
@@ -68,6 +89,7 @@ const App = () => (
               <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+            </Suspense>
             </SetupGuard>
           </BrowserRouter>
         </TooltipProvider>

@@ -19,6 +19,20 @@ import type {
 } from "@/lib/api";
 import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
 import { logger } from "@/lib/logger";
+import type { AppliedDiscount } from "@/lib/register-math";
+import {
+  amountDueAfterCredit,
+  buildPayments as buildPaymentsFor,
+  calculateDiscountAmount as discountAmountOf,
+  calculateSubtotal as subtotalOf,
+  calculateTotals as totalsOf,
+  changeDueFor,
+  creditAppliedTo,
+  getTotalDiscount as totalDiscountOf,
+  quickCashOptionsFor,
+  receiptLinesFrom as receiptLinesOf,
+  toDiscountRequests as discountRequestsOf,
+} from "@/lib/register-math";
 import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
@@ -51,16 +65,6 @@ const CARD_PROVIDER_LABELS: Record<string, string> = {
 type PosDiscountType = Omit<ApiDiscountType, 'discountType'> & {
   discountType: 'percentage' | 'fixed';
 };
-
-interface AppliedDiscount {
-  source: 'quick_discount' | 'promo_code' | 'manual' | 'employee';
-  id?: string;
-  code?: string;
-  name: string;
-  type: 'percentage' | 'fixed';
-  value: number;
-  amount: number;
-}
 
 const iconMap: Record<string, LucideIcon> = {
   'user': UserCheck,
@@ -239,154 +243,43 @@ export default function POS() {
     }
   };
 
-  const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  };
+  const calculateSubtotal = () => subtotalOf(cart);
 
-  const calculateDiscountAmount = (discount: AppliedDiscount, subtotal: number) => {
-    if (discount.type === 'percentage') {
-      return subtotal * (discount.value / 100);
-    }
-    return Math.min(discount.value, subtotal);
-  };
+  const calculateDiscountAmount = (discount: AppliedDiscount, subtotal: number) =>
+    discountAmountOf(discount, subtotal);
 
-  const getTotalDiscount = () => {
-    const subtotal = calculateSubtotal();
-    return appliedDiscounts.reduce((total, discount) => {
-      return total + calculateDiscountAmount(discount, subtotal - total);
-    }, 0);
-  };
+  const getTotalDiscount = () => totalDiscountOf(cart, appliedDiscounts);
 
-  /**
-   * The money on the current cart.
-   *
-   * Single definition so cash checkout, card authorisation, and the order posted
-   * after a card approval cannot drift apart - they previously each recomputed
-   * this, and each hard-coded a 0% tax rate regardless of store settings.
-   *
-   * Phase 3 moves this arithmetic server-side; until then the client's figures
-   * are what the backend records.
-   */
-  /**
-   * The receipt's line items, taken from the created order.
-   *
-   * Not the local cart: the totals on the receipt come from the server now, and
-   * pairing those with client-side line prices would print a receipt whose lines
-   * do not add up to its own total whenever the server repriced something.
-   * Falls back to the cart only if the response carries no items.
-   */
-  const receiptLinesFrom = (order: Order): CartItem[] =>
-    (order.items ?? []).length > 0
-      ? order.items!.map(item => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: item.unitPrice,
-          nameSnapshot: item.nameSnapshot,
-          size: item.size,
-          color: item.color,
-          notes: item.notes,
-          lineDiscount: item.lineDiscount,
-        }))
-      : [...cart];
+  // The arithmetic below lives in `@/lib/register-math`, where it can be tested
+  // without rendering this screen. These are the bindings the rest of the file
+  // reads; the reasoning for each rule is documented alongside the functions.
 
-  /** Strip an applied discount down to what the server needs to re-resolve it. */
-  const toDiscountRequests = (applied: AppliedDiscount[]) =>
-    applied.map((discount) => ({
-      source: discount.source,
-      id: discount.id,
-      code: discount.code,
-      type: discount.type,
-      value: discount.value,
-      reason: discount.source === 'manual' ? discount.name : undefined,
-    }));
+  const receiptLinesFrom = (order: Order): CartItem[] => receiptLinesOf(order, cart);
 
-  const calculateTotals = () => {
-    const subtotal = calculateSubtotal();
-    const discountTotal = getTotalDiscount();
-    const taxTotal = (subtotal - discountTotal) * taxRate;
+  const toDiscountRequests = (applied: AppliedDiscount[]) => discountRequestsOf(applied);
 
-    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal };
-  };
+  const calculateTotals = () => totalsOf(cart, appliedDiscounts, taxRate);
 
-  /**
-   * How much of the sale the applied credit can cover.
-   *
-   * Capped at the total: a $50 credit against a $12 sale spends $12 and leaves
-   * the rest on the card. The remainder stays as change on the credit, not as
-   * cash back.
-   */
-  const creditApplied = useMemo(() => {
-    if (!appliedCredit) return 0;
-    const total = Math.round(calculateTotals().total * 100);
-    return Math.min(Math.round(appliedCredit.remainingAmount * 100), total) / 100;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedCredit, cart, appliedDiscounts, taxRate]);
+  const creditApplied = useMemo(
+    () => creditAppliedTo(totalsOf(cart, appliedDiscounts, taxRate).total, appliedCredit),
+    [appliedCredit, cart, appliedDiscounts, taxRate]
+  );
 
-  /** What is still owed after the credit, and therefore due on the chosen tender. */
   const amountDue = useMemo(
-    () => Math.round((calculateTotals().total - creditApplied) * 100) / 100,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () =>
+      amountDueAfterCredit(totalsOf(cart, appliedDiscounts, taxRate).total, creditApplied),
     [creditApplied, cart, appliedDiscounts, taxRate]
   );
 
-  /**
-   * The tender breakdown to send, or `undefined` when there is nothing to split.
-   *
-   * Omitting it lets `paymentMethod` describe the whole sale, which is what
-   * every sale without a credit is.
-   */
-  const buildPayments = (method: string): PaymentRequest[] | undefined => {
-    if (!appliedCredit || creditApplied <= 0) return undefined;
+  const buildPayments = (method: string): PaymentRequest[] | undefined =>
+    buildPaymentsFor(method, appliedCredit, creditApplied, amountDue);
 
-    const payments: PaymentRequest[] = [
-      { method: 'store_credit', amount: creditApplied, reference: appliedCredit.code },
-    ];
+  const changeDue = useMemo(
+    () => changeDueFor(cashTendered, amountDue),
+    [cashTendered, amountDue]
+  );
 
-    if (amountDue > 0) {
-      payments.push({
-        method: method.toLowerCase() === 'card' ? 'card' : method.toLowerCase() === 'zelle' ? 'zelle' : 'cash',
-        amount: amountDue,
-      });
-    }
-
-    return payments;
-  };
-
-  /**
-   * Change owed, or `null` when the tender does not cover the sale.
-   *
-   * A preview only - the server recomputes it against its own total and refuses
-   * a shortfall, because the figure a cashier counts into someone's hand has to
-   * match what was actually charged.
-   */
-  const changeDue = useMemo(() => {
-    if (cashTendered === '') return null;
-    const tendered = parseFloat(cashTendered);
-    if (Number.isNaN(tendered)) return null;
-
-    // Against what is *due* - a credit may already have covered part of it.
-    const owed = Math.round(amountDue * 100);
-    const given = Math.round(tendered * 100);
-    return given < owed ? null : (given - owed) / 100;
-    // `calculateTotals` is redefined every render, so depending on it would
-    // defeat the memo entirely. Its inputs are listed instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cashTendered, amountDue, cart, appliedDiscounts, taxRate]);
-
-  /**
-   * Note denominations a customer is likely to hand over.
-   *
-   * Rounded up from the total, so a $17.42 sale offers $20 rather than a list of
-   * amounts that cannot cover it.
-   */
-  const quickCashOptions = useMemo(() => {
-    const notes = [5, 10, 20, 50, 100];
-    const above = notes.filter(note => note >= amountDue);
-
-    return [Math.ceil(amountDue), ...above].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amountDue, cart, appliedDiscounts, taxRate]);
+  const quickCashOptions = useMemo(() => quickCashOptionsFor(amountDue), [amountDue]);
 
   const applyQuickDiscount = (discount: PosDiscountType) => {
     // Check if already applied
@@ -1093,8 +986,8 @@ export default function POS() {
                   className="pl-9 bg-background border-border"
                 />
               </div>
-              <Button variant="outline" size="icon" className="border-border">
-                <Barcode className="w-4 h-4" />
+              <Button variant="outline" size="icon" className="border-border" aria-label="Scan barcode">
+                <Barcode className="w-4 h-4" aria-hidden="true" />
               </Button>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1112,7 +1005,13 @@ export default function POS() {
           </div>
 
           {/* Products Grid */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/*
+            `tabIndex={0}` because a scrollable region that cannot take focus
+            cannot be scrolled from the keyboard at all — axe flags this as a
+            serious violation, and on a till it means the catalog below the fold
+            is unreachable without a mouse.
+          */}
+          <div className="flex-1 overflow-y-auto p-4" tabIndex={0} role="region" aria-label="Products">
             {productsPending ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Loader2 className="w-10 h-10 text-muted-foreground/50 mb-4 animate-spin" />
@@ -1271,20 +1170,30 @@ export default function POS() {
               <div className="border-t pt-4">
                 <Label className="text-sm font-medium mb-2 block">Manual Discount</Label>
                 <div className="flex gap-2">
-                  <div className="flex-1 flex gap-2">
+                  {/*
+                    A pair of icon-only toggles announcing themselves as
+                    "button". `aria-pressed` because they are a toggle, not two
+                    separate actions — without it a screen reader gives no way
+                    to tell which kind of discount is currently selected.
+                  */}
+                  <div className="flex-1 flex gap-2" role="group" aria-label="Discount type">
                     <Button
                       variant={manualDiscountType === 'percentage' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setManualDiscountType('percentage')}
+                      aria-label="Percentage discount"
+                      aria-pressed={manualDiscountType === 'percentage'}
                     >
-                      <Percent className="w-4 h-4" />
+                      <Percent className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant={manualDiscountType === 'fixed' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setManualDiscountType('fixed')}
+                      aria-label="Fixed-amount discount"
+                      aria-pressed={manualDiscountType === 'fixed'}
                     >
-                      <DollarSign className="w-4 h-4" />
+                      <DollarSign className="w-4 h-4" aria-hidden="true" />
                     </Button>
                     <Input
                       type="number"
@@ -1410,7 +1319,7 @@ export default function POS() {
                       ` — $${(appliedCredit.remainingAmount - creditApplied).toFixed(2)} stays on the credit`}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)}>
+                <Button variant="ghost" size="icon" onClick={() => setAppliedCredit(null)} aria-label="Remove the applied store credit">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -1529,8 +1438,9 @@ export default function POS() {
                         size="icon" 
                         className="h-6 w-6"
                         onClick={() => removeDiscount(index)}
+                        aria-label={`Remove the ${discount.name} discount`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
@@ -1552,10 +1462,24 @@ export default function POS() {
                   <span>-${getTotalDiscount().toFixed(2)}</span>
                 </div>
               )}
+              {calculateTotals().taxTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tax</span>
+                  <span>${calculateTotals().taxTotal.toFixed(2)}</span>
+                </div>
+              )}
               <div className="border-t pt-2 flex justify-between items-center">
                 <span className="text-lg font-semibold text-foreground">Total</span>
+                {/*
+                  The figure the customer is charged, tax included.
+
+                  This read `subtotal - discount`, which dropped tax entirely
+                  while the order posted to the server carried it — so a store
+                  with a tax rate showed the cashier one number and billed
+                  another.
+                */}
                 <span className="text-2xl font-bold text-primary">
-                  ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
+                  ${calculateTotals().total.toFixed(2)}
                 </span>
               </div>
             </div>

@@ -140,19 +140,18 @@ export default function AdminCustomers() {
       setCustomerQuotes([]);
       setCustomerReturns([]);
 
-      // Load quotes
-      const quotesResponse = await quotesApi.listByCustomer(customer.id);
+      // Three independent reads, in parallel rather than one after another.
+      // None depends on the others, so awaiting them in sequence made opening a
+      // customer take three round trips instead of one.
+      const [quotesResponse, returnsResponse, ordersResponse] = await Promise.all([
+        quotesApi.listByCustomer(customer.id),
+        returnsApi.listByCustomer(customer.id),
+        customer.email ? ordersApi.listByCustomerEmail(customer.email) : Promise.resolve([]),
+      ]);
+
       setCustomerQuotes(quotesResponse);
-
-      // Load returns by customer ID
-      const returnsResponse = await returnsApi.listByCustomer(customer.id);
       setCustomerReturns(returnsResponse);
-
-      // Load orders by email if customer has an email
-      if (customer.email) {
-        const ordersResponse = await ordersApi.listByCustomerEmail(customer.email);
-        setCustomerOrders(ordersResponse);
-      }
+      setCustomerOrders(ordersResponse);
     } catch (error: unknown) {
       console.error('Error loading customer history:', error);
     } finally {

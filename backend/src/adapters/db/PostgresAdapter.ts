@@ -2440,29 +2440,75 @@ export class PostgresAdapter {
 
       const returns = result.rows.map(r => this.mapReturnRow(r));
 
-      // Get items for each return
-      for (const ret of returns) {
+      // Items for every return in one query, not one query per return.
+      //
+      // This is on the path a cashier takes to process a return: the caller uses
+      // `originalOrderItemId` to work out how much of each order line has
+      // already been refunded, which is what stops the same item being returned
+      // twice. `getAllOrders` already batches this way.
+      const returnIds = returns.map(r => r.id);
+      const itemsByReturn = new Map<string, unknown[]>();
+
+      if (returnIds.length > 0) {
         const itemsResult = await this.pool.query(
-          'SELECT * FROM return_items WHERE return_id = $1',
-          [ret.id]
+          'SELECT * FROM return_items WHERE return_id = ANY($1::uuid[])',
+          [returnIds]
         );
-        ret.items = itemsResult.rows.map(item => ({
-          id: item.id,
-          // Needed to tell how much of a specific order line has already been
-          // returned, which is what stops the same item being refunded twice.
-          originalOrderItemId: item.original_order_item_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          nameSnapshot: item.name_snapshot,
-          returnQuantity: item.return_quantity,
-          unitPrice: parseFloat(item.unit_price),
-          lineTotal: parseFloat(item.line_total),
-        }));
+
+        for (const item of itemsResult.rows) {
+          const bucket = itemsByReturn.get(item.return_id) ?? [];
+          bucket.push({
+            id: item.id,
+            originalOrderItemId: item.original_order_item_id,
+            productId: item.product_id,
+            variantId: item.variant_id,
+            nameSnapshot: item.name_snapshot,
+            returnQuantity: item.return_quantity,
+            unitPrice: parseFloat(item.unit_price),
+            lineTotal: parseFloat(item.line_total),
+          });
+          itemsByReturn.set(item.return_id, bucket);
+        }
+      }
+
+      for (const ret of returns) {
+        ret.items = itemsByReturn.get(ret.id as string) ?? [];
       }
 
       return returns;
     } catch (error) {
       logger.error('Error getting returns by order:', error);
+      throw new DatabaseError('Failed to get returns');
+    }
+  }
+
+  /**
+   * Returns against many orders at once, without their line items.
+   *
+   * The receipts list needs only each return's status and total, to work out
+   * what a sale actually kept. Calling `getReturnsByOrder` per row cost two
+   * queries per order — a hundred round trips to render a page of fifty
+   * receipts. Items are deliberately not fetched: nothing on that screen reads
+   * them, and they are the expensive half.
+   *
+   * Each row carries `originalOrderId` so the caller can group them.
+   */
+  async getReturnSummariesByOrderIds(orderIds: string[]): Promise<DbRow[]> {
+    if (orderIds.length === 0) return [];
+
+    try {
+      const result = await this.pool.query(
+        `SELECT r.*, u.name as created_by_name
+         FROM returns r
+         LEFT JOIN users u ON r.created_by = u.id
+         WHERE r.original_order_id = ANY($1::uuid[])
+         ORDER BY r.created_at DESC`,
+        [orderIds]
+      );
+
+      return result.rows.map(r => this.mapReturnRow(r));
+    } catch (error) {
+      logger.error('Error getting returns for orders:', error);
       throw new DatabaseError('Failed to get returns');
     }
   }
