@@ -238,7 +238,7 @@ router.get('/updates', requirePermission('settings', 'read'), async (req: AuthRe
  * POST /api/admin/components/update
  * Update one or more packages
  */
-router.post('/update', authorize(['admin']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/update', authorize(['admin']), async (req: AuthRequest, res: Response, _next: NextFunction) => {
   try {
     // Check admin access
     if (!req.user) {
@@ -315,7 +315,7 @@ router.post('/update', authorize(['admin']), async (req: AuthRequest, res: Respo
  * POST /api/admin/components/update-all
  * Update all packages to latest versions
  */
-router.post('/update-all', authorize(['admin']), async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.post('/update-all', authorize(['admin']), async (req: AuthRequest, res: Response, _next: NextFunction) => {
   try {
     // Check admin access
     if (!req.user) {

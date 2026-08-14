@@ -7,7 +7,7 @@ import { Migrator } from '../../services/migrator';
 import { Seeder } from '../../services/seeder';
 import config from '../../config';
 import { PERMISSION_RESOURCES } from '../middleware/authorize';
-import { ValidationError, DatabaseError, getErrorMessage } from '../../utils/errors';
+import { ValidationError, getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 
