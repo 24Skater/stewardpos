@@ -6,7 +6,6 @@ import {
   ValidationError,
   UnauthorizedError,
   ServiceUnavailableError,
-  getErrorMessage,
 } from '../../utils/errors';
 import db from '../../services/database';
 import {
