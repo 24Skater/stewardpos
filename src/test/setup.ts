@@ -36,6 +36,18 @@ const createLocalStorageMock = (): Storage => {
 
 global.localStorage = createLocalStorageMock();
 
+// jsdom implements no ResizeObserver, and recharts' ResponsiveContainer
+// constructs one on mount. Without this any page carrying a chart throws during
+// render, which is a gap in the test environment rather than anything about the
+// page.
+if (!('ResizeObserver' in global)) {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

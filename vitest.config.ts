@@ -17,12 +17,22 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      // Count every source file, not only the ones a test happened to import —
+      // the same correction made in backend/vitest.config.ts. Without it the
+      // denominator moves with the test selection, and adding a test that pulls
+      // in a large untested module looks like a regression when nothing changed.
+      all: true,
+      include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'node_modules/',
         'src/test/',
         '**/*.d.ts',
         '**/*.config.*',
         '**/mockData',
+        // The specs themselves are not the subject under measurement; leaving
+        // them in counts every test file as 100% covered source and flatters
+        // the average by exactly as much as you write tests.
+        '**/*.{test,spec}.{ts,tsx}',
       ],
     },
   },
