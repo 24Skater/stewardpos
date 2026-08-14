@@ -40,8 +40,10 @@ global.localStorage = createLocalStorageMock();
 // constructs one on mount. Without this any page carrying a chart throws during
 // render, which is a gap in the test environment rather than anything about the
 // page.
-if (!('ResizeObserver' in global)) {
-  global.ResizeObserver = class {
+const globalWithObserver = globalThis as { ResizeObserver?: typeof ResizeObserver };
+
+if (!globalWithObserver.ResizeObserver) {
+  globalWithObserver.ResizeObserver = class {
     observe() {}
     unobserve() {}
     disconnect() {}
