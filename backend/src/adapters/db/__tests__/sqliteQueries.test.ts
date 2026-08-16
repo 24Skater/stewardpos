@@ -230,20 +230,46 @@ describeSqlite('reporting aggregations on SQLite', () => {
     to: Date.parse('2001-01-31T23:59:59.999Z'),
   };
 
+  /**
+   * Its own product and variant, not the ones the rest of the file uses.
+   *
+   * Two reasons, and CI found the first of them. `order_items.variant_id` is
+   * `NOT NULL`, so a line without one fails the insert outright — the earlier
+   * order in this file carries no items at all, which is why nothing had caught
+   * it. And `createOrder` decrements stock conditionally, so selling from a
+   * variant whose stock an earlier describe has already edited would make these
+   * pass or fail depending on the order the file happens to run in.
+   */
+  let soldProductId: string;
+  let soldVariantId: string;
+
   beforeAll(async () => {
     if (!available) return;
 
+    const product = await adapter.createProduct({
+      name: 'Reporting Beans',
+      description: 'probe',
+      category: 'Drinks',
+      basePrice: 5,
+      variants: [],
+    });
+    soldProductId = String(product!.id);
+    soldVariantId = String(
+      (await adapter.createVariant(soldProductId, { sku: 'RPT-1', stock: 500 }))!.id
+    );
+
+    const line = (quantity: number) => ({
+      productId: soldProductId,
+      variantId: soldVariantId,
+      nameSnapshot: 'Reporting Beans',
+      quantity,
+      unitPrice: 5,
+      lineDiscount: 0,
+      lineTotal: 5 * quantity,
+    });
+
     const first = await adapter.createOrder({
-      items: [
-        {
-          productId,
-          nameSnapshot: 'Loose Leaf Tea',
-          quantity: 3,
-          unitPrice: 5,
-          lineDiscount: 0,
-          lineTotal: 15,
-        },
-      ],
+      items: [line(3)],
       subtotal: 15,
       discountTotal: 1,
       taxTotal: 1.12,
@@ -255,16 +281,7 @@ describeSqlite('reporting aggregations on SQLite', () => {
     // No `payments` rows on the second: the pre-`payments`-table shape, which
     // the UNION's fallback branch exists for.
     const second = await adapter.createOrder({
-      items: [
-        {
-          productId,
-          nameSnapshot: 'Loose Leaf Tea',
-          quantity: 1,
-          unitPrice: 5,
-          lineDiscount: 0,
-          lineTotal: 5,
-        },
-      ],
+      items: [line(1)],
       subtotal: 5,
       discountTotal: 0,
       taxTotal: 0,
@@ -319,7 +336,7 @@ describeSqlite('reporting aggregations on SQLite', () => {
     const top = await adapter.getTopProducts(RANGE, 5);
 
     expect(top).toEqual([
-      { productId, name: 'Loose Leaf Tea', quantity: 4, revenue: 20 },
+      { productId: soldProductId, name: 'Reporting Beans', quantity: 4, revenue: 20 },
     ]);
     expect(await adapter.getTopProducts(RANGE, 1)).toHaveLength(1);
   });
