@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
 /**
  * The PDF and spreadsheet exporters, actually executed.
@@ -15,9 +15,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /** Documents captured instead of being handed to the browser to download. */
 const saved: Array<{ name: string; bytes: Uint8Array }> = [];
-
-/** Workbook filenames, captured the same way. */
-const workbooks: string[] = [];
 
 /**
  * The real jsPDF, with only `save` intercepted.
@@ -48,16 +45,31 @@ vi.mock('jspdf', async (importOriginal) => {
   return { ...actual, default: Capturing };
 });
 
-vi.mock('xlsx', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('xlsx')>();
-  return {
-    ...actual,
-    // Everything up to the write is real: the workbook is genuinely built from
-    // the rows. Only the filesystem hand-off is stubbed.
-    writeFile: (_book: unknown, filename: string) => {
-      workbooks.push(filename);
+/** Workbook blobs captured from the download the browser would have started. */
+const workbookBlobs: Blob[] = [];
+
+/**
+ * `write-excel-file/browser` is deliberately NOT mocked.
+ *
+ * An earlier version of this file mocked it against a `{ schema, sheets }`
+ * signature the library does not have — the objects-plus-schema form covers a
+ * single sheet only. Sixteen tests passed against an API that did not exist,
+ * and typecheck was what caught it. Running the real library is the only way
+ * these assertions mean anything.
+ *
+ * Only the browser's download plumbing is stubbed, which jsdom does not
+ * implement: the workbook is genuinely built, zipped and handed over.
+ */
+beforeAll(() => {
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: (blob: Blob) => {
+      workbookBlobs.push(blob);
+      return 'blob:workbook';
     },
-  };
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: () => {} });
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 });
 
 const {
@@ -100,7 +112,7 @@ const isPdf = (bytes: Uint8Array) =>
 
 beforeEach(() => {
   saved.length = 0;
-  workbooks.length = 0;
+  workbookBlobs.length = 0;
 });
 
 describe('PDF exports', () => {
@@ -171,25 +183,116 @@ describe('PDF exports', () => {
 });
 
 describe('exportToExcel', () => {
-  it('writes a workbook under the requested name', async () => {
+  /** An xlsx file is a zip, so it starts with the zip local-file header. */
+  const isXlsx = async (blob: Blob) => {
+    const head = new Uint8Array(await blob.arrayBuffer()).slice(0, 4);
+    return head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+  };
+
+  it('produces a real workbook', async () => {
     await exportToExcel([{ name: 'Sales', data: [{ Month: 'January', Revenue: 10 }] }], 'sales.xlsx');
 
-    expect(workbooks).toEqual(['sales.xlsx']);
+    expect(workbookBlobs).toHaveLength(1);
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+    expect(workbookBlobs[0].size).toBeGreaterThan(500);
   });
 
-  it('still writes when a sheet is empty rather than throwing', async () => {
-    // A shop with nothing in one section still presses Export.
-    await exportToExcel([{ name: 'Empty', data: [] }], 'empty.xlsx');
-
-    expect(workbooks).toEqual(['empty.xlsx']);
-  });
-
-  it('truncates a sheet name to the 31 characters Excel allows', async () => {
+  it('writes a numeric column as a number, so Excel can sum it', async () => {
+    // These are the figures a shop hands its accountant. A revenue column
+    // written as text will not add up, and reads as a spreadsheet bug rather
+    // than an export one. The cell type ends up in the sheet XML inside the
+    // zip, so this asserts the derived schema by its effect.
     await exportToExcel(
-      [{ name: 'A sheet name far longer than Excel will accept', data: [{ A: 1 }] }],
+      [{ name: 'Sales', data: [{ Month: 'January', Revenue: 1234.56 }] }],
+      'sales.xlsx'
+    );
+
+    const bytes = new Uint8Array(await workbookBlobs[0].arrayBuffer());
+    // Stored uncompressed or deflated, the raw number survives somewhere in the
+    // archive only if it was written as a number rather than a shared string.
+    expect(bytes.length).toBeGreaterThan(500);
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('handles a column whose first rows are blank', async () => {
+    // Reports commonly leave early rows empty for a metric that starts later;
+    // the column type comes from the first row that actually has a value.
+    await exportToExcel(
+      [{ name: 'Sales', data: [{ Revenue: null }, { Revenue: 42 }] }],
+      'sales.xlsx'
+    );
+
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('does not fall over on a value that will not parse as a number', async () => {
+    await exportToExcel([{ name: 'Sales', data: [{ Revenue: 1 }, { Revenue: 'n/a' }] }], 'sales.xlsx');
+
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('writes a mixed workbook of text, numbers and blanks', async () => {
+    await exportToExcel(
+      [
+        {
+          name: 'Sales',
+          data: [
+            { Customer: 'Ada', Revenue: 10.5, Repeat: true, Note: null },
+            { Customer: 'Grace', Revenue: 0, Repeat: false, Note: 'paid late' },
+          ],
+        },
+      ],
+      'mixed-types.xlsx'
+    );
+
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('accepts a sheet name longer than Excel allows by truncating it', async () => {
+    // Excel rejects a sheet name over 31 characters outright, so this would
+    // produce a file that will not open.
+    await exportToExcel(
+      [{ name: 'A sheet name far longer than Excel will ever accept', data: [{ A: 1 }] }],
       'long.xlsx'
     );
 
-    expect(workbooks).toEqual(['long.xlsx']);
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('writes nothing at all when every sheet is empty', async () => {
+    // Excel rejects a workbook with no sheets, so the alternative to writing
+    // nothing is handing someone a file that will not open.
+    await exportToExcel([{ name: 'Empty', data: [] }], 'empty.xlsx');
+
+    expect(workbookBlobs).toHaveLength(0);
+  });
+
+  it('drops an empty sheet but still writes the populated ones', async () => {
+    await exportToExcel(
+      [
+        { name: 'Empty', data: [] },
+        { name: 'Sales', data: [{ Month: 'January' }] },
+      ],
+      'mixed.xlsx'
+    );
+
+    expect(workbookBlobs).toHaveLength(1);
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
+  });
+
+  it('writes several sheets into one workbook', async () => {
+    // The multi-sheet path is the one that changed shape in this migration:
+    // objects-plus-schema is single-sheet only, so more than one sheet goes
+    // through `getSheetData` instead.
+    await exportToExcel(
+      [
+        { name: 'Sales', data: [{ Month: 'January', Revenue: 10 }] },
+        { name: 'Returns', data: [{ Month: 'January', Refunded: 2 }] },
+      ],
+      'both.xlsx'
+    );
+
+    expect(workbookBlobs).toHaveLength(1);
+    expect(await isXlsx(workbookBlobs[0])).toBe(true);
   });
 });
