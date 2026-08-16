@@ -212,3 +212,137 @@ describeSqlite('variant writes on SQLite', () => {
     expect(low.length).toBeGreaterThan(0);
   });
 });
+
+describeSqlite('reporting aggregations on SQLite', () => {
+  /**
+   * The reporting SQL differs between the dialects in two places, and both are
+   * invisible without executing it: `orders.created_at` is epoch milliseconds
+   * here and a TIMESTAMP in Postgres, so the range predicate is written
+   * differently; and the daily bucket needs `strftime(..., 'unixepoch')` rather
+   * than `to_char`, which is the sort of expression that typechecks perfectly
+   * and returns nothing.
+   *
+   * Back-dated into a window the rest of this file does not touch, since these
+   * queries sum every order in range.
+   */
+  const RANGE = {
+    from: Date.parse('2001-01-01T00:00:00.000Z'),
+    to: Date.parse('2001-01-31T23:59:59.999Z'),
+  };
+
+  beforeAll(async () => {
+    if (!available) return;
+
+    const first = await adapter.createOrder({
+      items: [
+        {
+          productId,
+          nameSnapshot: 'Loose Leaf Tea',
+          quantity: 3,
+          unitPrice: 5,
+          lineDiscount: 0,
+          lineTotal: 15,
+        },
+      ],
+      subtotal: 15,
+      discountTotal: 1,
+      taxTotal: 1.12,
+      total: 15.12,
+      paymentMethod: 'Cash',
+      payments: [{ method: 'cash', amount: 15.12 }],
+    });
+
+    // No `payments` rows on the second: the pre-`payments`-table shape, which
+    // the UNION's fallback branch exists for.
+    const second = await adapter.createOrder({
+      items: [
+        {
+          productId,
+          nameSnapshot: 'Loose Leaf Tea',
+          quantity: 1,
+          unitPrice: 5,
+          lineDiscount: 0,
+          lineTotal: 5,
+        },
+      ],
+      subtotal: 5,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 5,
+      paymentMethod: 'Card',
+    });
+
+    const db = new Database(filename);
+    db.prepare('UPDATE orders SET created_at = ? WHERE id = ?').run(
+      Date.parse('2001-01-10T10:00:00.000Z'),
+      String(first.id)
+    );
+    db.prepare('UPDATE orders SET created_at = ? WHERE id = ?').run(
+      Date.parse('2001-01-11T10:00:00.000Z'),
+      String(second.id)
+    );
+    db.close();
+  });
+
+  it('sums the range', async () => {
+    const totals = await adapter.getSalesTotals(RANGE);
+
+    expect(totals).toEqual({
+      orderCount: 2,
+      gross: 20,
+      discounts: 1,
+      tax: 1.12,
+      net: 20.12,
+    });
+  });
+
+  it('returns zeroes for an empty range rather than nulls', async () => {
+    expect(await adapter.getSalesTotals({ from: 0, to: 1 })).toEqual({
+      orderCount: 0,
+      gross: 0,
+      discounts: 0,
+      tax: 0,
+      net: 0,
+    });
+  });
+
+  it('buckets by day through strftime', async () => {
+    const days = await adapter.getSalesByDay(RANGE);
+
+    expect(days).toEqual([
+      { date: '2001-01-10', orderCount: 1, gross: 15, net: 15.12 },
+      { date: '2001-01-11', orderCount: 1, gross: 5, net: 5 },
+    ]);
+  });
+
+  it('ranks products and honours the limit', async () => {
+    const top = await adapter.getTopProducts(RANGE, 5);
+
+    expect(top).toEqual([
+      { productId, name: 'Loose Leaf Tea', quantity: 4, revenue: 20 },
+    ]);
+    expect(await adapter.getTopProducts(RANGE, 1)).toHaveLength(1);
+  });
+
+  it('mixes tenders from both branches of the UNION', async () => {
+    // Repeated `?` placeholders: the values are passed twice here where Postgres
+    // reuses $1 and $2. Getting that wrong binds the wrong parameter to the
+    // fallback branch and silently returns the wrong window.
+    const mix = await adapter.getPaymentMix(RANGE);
+
+    expect(mix).toEqual([
+      { method: 'cash', count: 1, amount: 15.12 },
+      { method: 'card', count: 1, amount: 5 },
+    ]);
+  });
+
+  it('counts only completed refunds', async () => {
+    expect(await adapter.getReturnsTotals(RANGE)).toEqual({
+      returnCount: 0,
+      refunded: 0,
+      pendingCount: 0,
+      pendingAmount: 0,
+    });
+    expect(await adapter.getReturnsByReason(RANGE)).toEqual([]);
+  });
+});

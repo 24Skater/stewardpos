@@ -22,4 +22,13 @@ export const queryKeys = {
   settings: {
     all: ['settings'] as const,
   },
+  reports: {
+    all: ['reports'] as const,
+    /**
+     * Keyed on the range, so switching period re-fetches rather than showing
+     * last period's figures under this period's heading.
+     */
+    sales: (range: { from?: string; to?: string }) =>
+      ['reports', 'sales', range.from ?? '', range.to ?? ''] as const,
+  },
 } as const;

@@ -31,10 +31,26 @@ export interface ApiEndpointGroup {
   routes: ApiRoute[];
 }
 
+/**
+ * How a key authenticates, as the server states it.
+ *
+ * Typed rather than left as a bag so the screen renders the server's answer
+ * instead of restating it: the panel used to hard-code `Authorization: Bearer`,
+ * which is the *session* header, and an integrator following it got a 401 with
+ * nothing to suggest the header was wrong.
+ */
+export interface ApiAuthentication {
+  type: string;
+  header: string;
+  format: string;
+  example: string;
+  note?: string;
+}
+
 export interface ApiDocs {
   version: string;
   baseUrl: string;
-  authentication: Record<string, unknown>;
+  authentication: ApiAuthentication;
   scopes: Record<string, string>;
   rateLimiting: Record<string, unknown>;
   endpoints: ApiEndpointGroup[];

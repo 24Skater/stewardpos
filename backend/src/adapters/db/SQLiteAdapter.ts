@@ -6,6 +6,16 @@ import logger from '../../utils/logger';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { escapeLike } from './like';
 import { DbRow, asRows } from './types';
+import type {
+  AuditLogQuery,
+  PaymentMix,
+  ReportRange,
+  ReturnsByReason,
+  ReturnsTotals,
+  SalesByDay,
+  SalesTotals,
+  TopProduct,
+} from './reports.types';
 
 export interface SQLiteConfig {
   filename: string;
@@ -1712,46 +1722,69 @@ export class SQLiteAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<DbRow[]> {
+  /**
+   * See the Postgres counterpart. `audit_logs.timestamp` is epoch milliseconds
+   * here, so the date filters compare the parameter directly rather than going
+   * through `to_timestamp`.
+   */
+  async getAuditLogs(options?: AuditLogQuery): Promise<{ logs: DbRow[]; total: number }> {
     try {
-      let query = `
-        SELECT al.*, u.name as user_name, u.email as user_email
-        FROM audit_logs al
-        LEFT JOIN users u ON al.user_id = u.id
-      `;
+      const conditions: string[] = [];
       const params: unknown[] = [];
 
       if (options?.userId) {
-        query += ' WHERE al.user_id = ?';
+        conditions.push('al.user_id = ?');
         params.push(options.userId);
       }
-
-      query += ' ORDER BY al.timestamp DESC';
-
-      if (options?.limit) {
-        query += ' LIMIT ?';
-        params.push(options.limit);
+      if (options?.entity) {
+        conditions.push('al.entity = ?');
+        params.push(options.entity);
+      }
+      if (options?.action) {
+        conditions.push('al.action = ?');
+        params.push(options.action);
+      }
+      if (options?.from !== undefined) {
+        conditions.push('al.timestamp >= ?');
+        params.push(options.from);
+      }
+      if (options?.to !== undefined) {
+        conditions.push('al.timestamp <= ?');
+        params.push(options.to);
       }
 
-      if (options?.offset) {
-        query += ' OFFSET ?';
-        params.push(options.offset);
-      }
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-      const logs = this.db.prepare(query).all(...params) as DbRow[];
+      const counted = this.db
+        .prepare(`SELECT COUNT(*) as total FROM audit_logs al ${where}`)
+        .get(...params) as DbRow;
 
-      return logs.map((l) => ({
-        id: l.id,
-        timestamp: l.timestamp,
-        userId: l.user_id,
-        userName: l.user_name,
-        userEmail: l.user_email,
-        action: l.action,
-        entity: l.entity,
-        entityId: l.entity_id,
-        before: l.before ? JSON.parse(l.before) : null,
-        after: l.after ? JSON.parse(l.after) : null,
-      }));
+      const logs = this.db
+        .prepare(
+          `SELECT al.*, u.name as user_name, u.email as user_email
+           FROM audit_logs al
+           LEFT JOIN users u ON al.user_id = u.id
+           ${where}
+           ORDER BY al.timestamp DESC
+           LIMIT ? OFFSET ?`
+        )
+        .all(...params, options?.limit ?? 50, options?.offset ?? 0) as DbRow[];
+
+      return {
+        total: Number(counted.total ?? 0),
+        logs: logs.map((l) => ({
+          id: l.id,
+          timestamp: l.timestamp,
+          userId: l.user_id,
+          userName: l.user_name,
+          userEmail: l.user_email,
+          action: l.action,
+          entity: l.entity,
+          entityId: l.entity_id,
+          before: l.before ? JSON.parse(l.before) : null,
+          after: l.after ? JSON.parse(l.after) : null,
+        })),
+      };
     } catch (error) {
       logger.error('Error getting audit logs:', error);
       throw new DatabaseError('Failed to get audit logs');
@@ -3508,6 +3541,199 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error getting discount stats:', error);
       throw new DatabaseError('Failed to get discount stats');
+    }
+  }
+
+  // ===== Reporting Aggregations =====
+  //
+  // The Postgres counterparts of these, with the two dialect differences that
+  // matter spelled out:
+  //
+  //  - `orders.created_at` is an INTEGER of epoch milliseconds here and a
+  //    TIMESTAMP there, so the range predicate compares the parameter directly
+  //    instead of going through `to_timestamp`.
+  //  - Day bucketing needs `strftime(..., 'unixepoch')`, which yields a UTC
+  //    date. That matches the Postgres side, where `to_char` renders a
+  //    `TIMESTAMP` written by `CURRENT_TIMESTAMP` in the database server's
+  //    timezone — UTC in every image this project ships. Both therefore bucket
+  //    by UTC days, so a store several hours behind it will see an evening sale
+  //    counted against the following day. Changing that is a store-timezone
+  //    setting, not a dialect fix, and it has to change in both adapters at once
+  //    or the two databases will disagree about which day a sale belongs to.
+  //
+  // `FILTER (WHERE ...)` is avoided in favour of `SUM(CASE ...)`, as elsewhere
+  // in this adapter.
+
+  async getSalesTotals(range: ReportRange): Promise<SalesTotals> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT
+             COUNT(*) as order_count,
+             COALESCE(SUM(subtotal), 0) as gross,
+             COALESCE(SUM(discount_total), 0) as discounts,
+             COALESCE(SUM(tax_total), 0) as tax,
+             COALESCE(SUM(total), 0) as net
+           FROM orders
+           WHERE created_at >= ? AND created_at <= ?`
+        )
+        .get(range.from, range.to) as DbRow;
+
+      return {
+        orderCount: Number(row.order_count ?? 0),
+        gross: Number(row.gross ?? 0),
+        discounts: Number(row.discounts ?? 0),
+        tax: Number(row.tax ?? 0),
+        net: Number(row.net ?? 0),
+      };
+    } catch (error) {
+      logger.error('Error getting sales totals:', error);
+      throw new DatabaseError('Failed to get sales totals');
+    }
+  }
+
+  async getSalesByDay(range: ReportRange): Promise<SalesByDay[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT
+             strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') as date,
+             COUNT(*) as order_count,
+             COALESCE(SUM(subtotal), 0) as gross,
+             COALESCE(SUM(total), 0) as net
+           FROM orders
+           WHERE created_at >= ? AND created_at <= ?
+           GROUP BY 1
+           ORDER BY 1`
+        )
+        .all(range.from, range.to) as DbRow[];
+
+      return rows.map((row) => ({
+        date: String(row.date),
+        orderCount: Number(row.order_count ?? 0),
+        gross: Number(row.gross ?? 0),
+        net: Number(row.net ?? 0),
+      }));
+    } catch (error) {
+      logger.error('Error getting sales by day:', error);
+      throw new DatabaseError('Failed to get sales by day');
+    }
+  }
+
+  async getTopProducts(range: ReportRange, limit: number): Promise<TopProduct[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT
+             oi.product_id as product_id,
+             MIN(oi.name_snapshot) as name,
+             COALESCE(SUM(oi.quantity), 0) as quantity,
+             COALESCE(SUM(oi.line_total), 0) as revenue
+           FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+           WHERE o.created_at >= ? AND o.created_at <= ?
+           GROUP BY oi.product_id
+           ORDER BY revenue DESC, quantity DESC
+           LIMIT ?`
+        )
+        .all(range.from, range.to, limit) as DbRow[];
+
+      return rows.map((row) => ({
+        productId: String(row.product_id),
+        name: String(row.name),
+        quantity: Number(row.quantity ?? 0),
+        revenue: Number(row.revenue ?? 0),
+      }));
+    } catch (error) {
+      logger.error('Error getting top products:', error);
+      throw new DatabaseError('Failed to get top products');
+    }
+  }
+
+  async getPaymentMix(range: ReportRange): Promise<PaymentMix[]> {
+    try {
+      // The range parameters appear twice because the UNION reads `orders`
+      // twice; `?` is positional, so the values are passed twice to match.
+      const rows = this.db
+        .prepare(
+          `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
+           FROM (
+             SELECT LOWER(p.method) as method, p.amount as amount
+             FROM payments p
+             JOIN orders o ON o.id = p.order_id
+             WHERE o.created_at >= ? AND o.created_at <= ?
+             UNION ALL
+             SELECT LOWER(o.payment_method) as method, o.total as amount
+             FROM orders o
+             WHERE o.created_at >= ? AND o.created_at <= ?
+               AND NOT EXISTS (SELECT 1 FROM payments p2 WHERE p2.order_id = o.id)
+           )
+           GROUP BY method
+           ORDER BY amount DESC, method`
+        )
+        .all(range.from, range.to, range.from, range.to) as DbRow[];
+
+      return rows.map((row) => ({
+        method: String(row.method),
+        count: Number(row.count ?? 0),
+        amount: Number(row.amount ?? 0),
+      }));
+    } catch (error) {
+      logger.error('Error getting payment mix:', error);
+      throw new DatabaseError('Failed to get payment mix');
+    }
+  }
+
+  async getReturnsTotals(range: ReportRange): Promise<ReturnsTotals> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT
+             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as return_count,
+             COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as refunded,
+             SUM(CASE WHEN status IN ('pending', 'approved') THEN 1 ELSE 0 END) as pending_count,
+             COALESCE(SUM(CASE WHEN status IN ('pending', 'approved') THEN total ELSE 0 END), 0) as pending_amount
+           FROM returns
+           WHERE created_at >= ? AND created_at <= ?`
+        )
+        .get(range.from, range.to) as DbRow;
+
+      return {
+        returnCount: Number(row.return_count ?? 0),
+        refunded: Number(row.refunded ?? 0),
+        pendingCount: Number(row.pending_count ?? 0),
+        pendingAmount: Number(row.pending_amount ?? 0),
+      };
+    } catch (error) {
+      logger.error('Error getting returns totals:', error);
+      throw new DatabaseError('Failed to get returns totals');
+    }
+  }
+
+  async getReturnsByReason(range: ReportRange): Promise<ReturnsByReason[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT
+             COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
+             COUNT(*) as return_count,
+             COALESCE(SUM(total), 0) as refunded
+           FROM returns
+           WHERE status = 'completed'
+             AND created_at >= ? AND created_at <= ?
+           GROUP BY 1
+           ORDER BY refunded DESC, reason_code`
+        )
+        .all(range.from, range.to) as DbRow[];
+
+      return rows.map((row) => ({
+        reasonCode: String(row.reason_code),
+        returnCount: Number(row.return_count ?? 0),
+        refunded: Number(row.refunded ?? 0),
+      }));
+    } catch (error) {
+      logger.error('Error getting returns by reason:', error);
+      throw new DatabaseError('Failed to get returns by reason');
     }
   }
 

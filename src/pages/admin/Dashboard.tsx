@@ -1,23 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { customersApi, discountsApi, ordersApi, productsApi, quotesApi, servicesApi } from '@/lib/api';
+import { customersApi, discountsApi, productsApi, quotesApi, reportsApi, servicesApi } from '@/lib/api';
 import type { Customer } from '@/lib/api';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-interface Order {
-  id: string;
-  createdAt: number;
-  total: number;
-}
-
-interface Product {
-  id: string;
-  variants: { enabled: boolean; stock: number }[];
-}
+import { periodRange, toDateInput } from '@/lib/report-range';
 
 interface Quote {
   id: string;
@@ -25,12 +15,6 @@ interface Quote {
   status: string;
   total: number;
   customerName?: string;
-}
-
-interface Service {
-  id: string;
-  name: string;
-  isActive: boolean;
 }
 
 export default function Dashboard() {
@@ -55,8 +39,15 @@ export default function Dashboard() {
 
   const loadStats = async () => {
     try {
-      const [ordersResponse, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse, lowStockResponse] = await Promise.all([
-        ordersApi.list(),
+      // Today's takings and the weekly series come from the reporting API,
+      // summed by the database. This screen used to download every order the
+      // shop had ever taken to work out two tiles and a chart.
+      const week = periodRange('7days');
+      const today = periodRange('today');
+
+      const [todaySummary, weekByDay, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse, lowStockResponse] = await Promise.all([
+        reportsApi.salesSummary(today),
+        reportsApi.salesByDay(week),
         productsApi.list(),
         quotesApi.list(),
         servicesApi.list(),
@@ -67,20 +58,15 @@ export default function Dashboard() {
 
       const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };
 
-      const orders = ordersResponse ? ordersResponse : [];
       const products = productsResponse ? productsResponse : [];
       const quotes = quotesResponse ? quotesResponse : [];
       const services = servicesResponse ? servicesResponse : [];
       const customers = customersResponse ? customersResponse : [];
       const lowStockItems = lowStockResponse ? lowStockResponse : [];
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayTimestamp = today.getTime();
-
-      // POS Sales stats
-      const todayOrders = orders.filter(o => o.createdAt >= todayTimestamp);
-      const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
+      // The same instant the sales tiles were asked about, so "today" means one
+      // thing on this screen rather than two.
+      const todayTimestamp = Date.parse(`${today.from}T00:00:00.000Z`);
 
       // Low stock, counted by product rather than by variant, so a shirt that is
       // low in three sizes reads as one thing to reorder.
@@ -97,8 +83,8 @@ export default function Dashboard() {
       const pendingQuotes = quotes.filter(q => ['draft', 'sent', 'accepted'].includes(q.status)).length;
 
       setStats({
-        todaySales,
-        todayOrders: todayOrders.length,
+        todaySales: todaySummary.net,
+        todayOrders: todaySummary.orderCount,
         lowStock,
         totalProducts: products.length,
         todayServiceRevenue,
@@ -112,30 +98,41 @@ export default function Dashboard() {
       // Recent quotes
       setRecentQuotes(quotes.slice(0, 5));
 
-      // Generate last 7 days data for charts
+      // Sales come from `sales-by-day`; service revenue is still derived from
+      // the quotes list, which has no reporting endpoint because Services &
+      // Quotes is deferred scope (D2).
+      //
+      // Every day in the week is emitted, not only the days the server returned
+      // rows for. A grouped query has nothing to say about a day with no sales,
+      // and a chart that simply omits those days draws a flat line through a
+      // closed Sunday instead of showing the shop was shut.
+      const salesForDay = new Map(weekByDay.map((day) => [day.date, day]));
+
       const chartData = [];
       for (let i = 6; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        date.setHours(0, 0, 0, 0);
-        
-        const dayStart = date.getTime();
-        const dayEnd = dayStart + 24 * 60 * 60 * 1000;
-        
-        const dayOrders = orders.filter(o => o.createdAt >= dayStart && o.createdAt < dayEnd);
-        const daySales = dayOrders.reduce((sum, o) => sum + o.total, 0);
-        
-        const dayQuotes = quotes.filter(q => q.createdAt >= dayStart && q.createdAt < dayEnd && q.status === 'completed');
-        const dayServices = dayQuotes.reduce((sum, q) => sum + q.total, 0);
-        
+        const dayStart = Date.parse(`${toDateInput(Date.now() - i * 86400000)}T00:00:00.000Z`);
+        const key = toDateInput(dayStart);
+        const day = salesForDay.get(key);
+
+        const dayQuotes = quotes.filter(
+          (q) =>
+            q.createdAt >= dayStart &&
+            q.createdAt < dayStart + 86400000 &&
+            q.status === 'completed'
+        );
+
         chartData.push({
-          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          sales: parseFloat(daySales.toFixed(2)),
-          orders: dayOrders.length,
-          services: parseFloat(dayServices.toFixed(2)),
+          date: new Date(dayStart).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'UTC',
+          }),
+          sales: day?.net ?? 0,
+          orders: day?.orderCount ?? 0,
+          services: parseFloat(dayQuotes.reduce((sum, q) => sum + q.total, 0).toFixed(2)),
         });
       }
-      
+
       setSalesData(chartData);
     } catch (error) {
       console.error('Error loading dashboard stats:', error);
@@ -256,16 +253,16 @@ export default function Dashboard() {
                     <XAxis 
                       dataKey="date" 
                       className="text-xs"
-                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      tick={{ fill: 'var(--st-muted)' }}
                     />
                     <YAxis 
                       className="text-xs"
-                      tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                      tick={{ fill: 'var(--st-muted)' }}
                     />
                     <Tooltip 
                       contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
+                        backgroundColor: 'var(--st-surface)',
+                        border: '1px solid var(--st-border)',
                         borderRadius: '8px'
                       }}
                     />
@@ -273,14 +270,14 @@ export default function Dashboard() {
                     <Line 
                       type="monotone" 
                       dataKey="sales" 
-                      stroke="hsl(var(--primary))" 
+                      stroke="var(--st-primary)" 
                       strokeWidth={2}
                       name="POS Sales ($)"
                     />
                     <Line 
                       type="monotone" 
                       dataKey="services" 
-                      stroke="#8b5cf6" 
+                      stroke="var(--st-link)" 
                       strokeWidth={2}
                       name="Service Revenue ($)"
                     />
@@ -331,23 +328,23 @@ export default function Dashboard() {
                   <XAxis 
                     dataKey="date" 
                     className="text-xs"
-                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    tick={{ fill: 'var(--st-muted)' }}
                   />
                   <YAxis 
                     className="text-xs"
-                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    tick={{ fill: 'var(--st-muted)' }}
                   />
                   <Tooltip 
                     contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
+                      backgroundColor: 'var(--st-surface)',
+                      border: '1px solid var(--st-border)',
                       borderRadius: '8px'
                     }}
                   />
                   <Legend />
                   <Bar 
                     dataKey="orders" 
-                    fill="hsl(var(--primary))"
+                    fill="var(--st-primary)"
                     name="POS Orders"
                     radius={[8, 8, 0, 0]}
                   />

@@ -188,12 +188,15 @@ describe('audit log', () => {
       entityId: '00000000-0000-0000-0000-00000000beef',
     });
 
-    const logs = await h.adapter.getAuditLogs({ userId: String(user.id) });
+    const { logs, total } = await h.adapter.getAuditLogs({ userId: String(user.id) });
     expect(logs).toHaveLength(1);
+    expect(total).toBe(1);
     expect(logs[0]).toMatchObject({ action: 'create', entity: 'product' });
   });
 
-  it('pages', async () => {
+  it('pages, and reports the total it paged out of', async () => {
+    // The total is counted before the LIMIT, which is the only way a caller can
+    // tell a full page from the last one.
     const user = await makeUser(`${mark}-i@example.com`, []);
     for (const entity of ['product', 'order', 'customer']) {
       await h.adapter.createAuditLog({
@@ -206,6 +209,97 @@ describe('audit log', () => {
     }
 
     const page = await h.adapter.getAuditLogs({ userId: String(user.id), limit: 2 });
-    expect(page).toHaveLength(2);
+    expect(page.logs).toHaveLength(2);
+    expect(page.total).toBe(3);
+
+    const second = await h.adapter.getAuditLogs({ userId: String(user.id), limit: 2, offset: 2 });
+    expect(second.logs).toHaveLength(1);
+    expect(second.total).toBe(3);
+  });
+
+  it('filters by entity', async () => {
+    const user = await makeUser(`${mark}-j@example.com`, []);
+    for (const entity of ['product', 'product', 'order']) {
+      await h.adapter.createAuditLog({
+        userId: user.id,
+        userEmail: String(user.email),
+        action: 'update',
+        entity,
+        entityId: '00000000-0000-0000-0000-00000000cafe',
+      });
+    }
+
+    const products = await h.adapter.getAuditLogs({ userId: String(user.id), entity: 'product' });
+    expect(products.total).toBe(2);
+    expect(products.logs.every((log) => log.entity === 'product')).toBe(true);
+  });
+
+  it('filters by action', async () => {
+    const user = await makeUser(`${mark}-k@example.com`, []);
+    for (const action of ['create', 'delete']) {
+      await h.adapter.createAuditLog({
+        userId: user.id,
+        userEmail: String(user.email),
+        action,
+        entity: 'product',
+        entityId: '00000000-0000-0000-0000-00000000cafe',
+      });
+    }
+
+    const deletes = await h.adapter.getAuditLogs({ userId: String(user.id), action: 'delete' });
+    expect(deletes.total).toBe(1);
+    expect(deletes.logs[0]).toMatchObject({ action: 'delete' });
+  });
+
+  it('filters by date, which is how "what changed on Tuesday" is answered', async () => {
+    const user = await makeUser(`${mark}-l@example.com`, []);
+    const log = await h.adapter.createAuditLog({
+      userId: user.id,
+      userEmail: String(user.email),
+      action: 'update',
+      entity: 'settings',
+      entityId: '00000000-0000-0000-0000-000000000000',
+    });
+    await h.query('UPDATE audit_logs SET timestamp = $2 WHERE id = $1', [
+      String(log.id),
+      '2001-01-10T10:00:00.000Z',
+    ]);
+
+    const inRange = await h.adapter.getAuditLogs({
+      userId: String(user.id),
+      from: Date.parse('2001-01-01T00:00:00.000Z'),
+      to: Date.parse('2001-01-31T23:59:59.999Z'),
+    });
+    const outOfRange = await h.adapter.getAuditLogs({
+      userId: String(user.id),
+      from: Date.parse('2002-01-01T00:00:00.000Z'),
+      to: Date.parse('2002-01-31T23:59:59.999Z'),
+    });
+
+    expect(inRange.total).toBe(1);
+    expect(outOfRange.total).toBe(0);
+    expect(outOfRange.logs).toEqual([]);
+  });
+
+  it('combines filters rather than letting the last one win', async () => {
+    const user = await makeUser(`${mark}-m@example.com`, []);
+    for (const [action, entity] of [['create', 'product'], ['delete', 'product'], ['delete', 'order']]) {
+      await h.adapter.createAuditLog({
+        userId: user.id,
+        userEmail: String(user.email),
+        action,
+        entity,
+        entityId: '00000000-0000-0000-0000-00000000cafe',
+      });
+    }
+
+    const both = await h.adapter.getAuditLogs({
+      userId: String(user.id),
+      action: 'delete',
+      entity: 'product',
+    });
+
+    expect(both.total).toBe(1);
+    expect(both.logs[0]).toMatchObject({ action: 'delete', entity: 'product' });
   });
 });

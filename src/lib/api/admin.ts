@@ -30,6 +30,11 @@ export interface AuditQuery {
   limit?: number;
   offset?: number;
   userId?: string;
+  entity?: string;
+  action?: string;
+  /** Epoch milliseconds; both ends inclusive, as the reporting endpoints read them. */
+  from?: number;
+  to?: number;
 }
 
 /**
@@ -61,12 +66,13 @@ export const adminApi = {
   },
 
   /**
-   * Audit log.
+   * Audit log, filtered and paged by the server.
    *
-   * Accepts `limit`/`offset` but returns no total, so a caller cannot know
-   * whether more rows exist beyond asking for one more than it needs.
+   * Returns the envelope's `meta` alongside the page: the total is what lets a
+   * caller page at all, and its absence is why this screen used to pull the
+   * newest hundred entries and filter them in the browser.
    */
-  audit: (query?: AuditQuery) => apiClient.get<AuditLog[]>(`/api/admin/audit${qs(query)}`),
+  audit: (query?: AuditQuery) => apiClient.getList<AuditLog[]>(`/api/admin/audit${qs(query)}`),
 
   /**
    * Wipe and reseed. **Development only** — the server refuses in production.

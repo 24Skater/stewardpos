@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { apiKeysApi, type ApiKeyScope } from '@/lib/api';
+import { apiKeysApi, type ApiDocs, type ApiKeyScope } from '@/lib/api';
 import { Key, Plus, Trash2, Copy, Eye, EyeOff, Code, BookOpen, Shield, Clock, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -45,17 +45,6 @@ interface ApiRoute {
 interface ApiEndpointGroup {
   group: string;
   routes: ApiRoute[];
-}
-
-interface ApiDocs {
-  version: string;
-  baseUrl: string;
-  authentication: Record<string, unknown>;
-  scopes: Record<string, string>;
-  rateLimiting: Record<string, unknown>;
-  endpoints: ApiEndpointGroup[];
-  examples: Record<string, unknown>;
-  errors: Record<string, string>;
 }
 
 /** The scopes the backend accepts, in ascending order of privilege. */
@@ -347,11 +336,26 @@ export default function AdminApiKeys() {
                           <Shield className="w-4 h-4" />
                           Authentication
                         </h3>
+                        {/*
+                          Read from the server's own reference rather than
+                          restated here. This panel said `Authorization: Bearer`,
+                          which is how a signed-in *session* authenticates — keys
+                          go in `X-API-Key`, and an integrator following this got
+                          a 401 with nothing pointing at the header.
+                        */}
                         <div className="bg-muted p-4 rounded-lg">
-                          <p className="text-sm mb-2">All API requests require authentication via Bearer token:</p>
+                          <p className="text-sm mb-2">
+                            Send your key in the{' '}
+                            <code className="font-mono">{apiDocs.authentication.header}</code> header:
+                          </p>
                           <code className="block bg-card p-3 rounded text-sm">
-                            Authorization: Bearer spk_xxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+                            {apiDocs.authentication.example}
                           </code>
+                          {apiDocs.authentication.note && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {apiDocs.authentication.note}
+                            </p>
+                          )}
                         </div>
                       </div>
 

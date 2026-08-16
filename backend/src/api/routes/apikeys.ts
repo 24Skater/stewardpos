@@ -228,22 +228,34 @@ router.get('/docs/reference', async (_req: AuthRequest, res: Response) => {
   const docs = {
     version: '1.0.0',
     baseUrl: '/api',
+    // `X-API-Key`, not `Authorization: Bearer`.
+    //
+    // This said Bearer, which is how a *session* authenticates — the middleware
+    // reads API keys from `X-API-Key` and treats a Bearer value as a JWT. An
+    // integrator following this got a 401 with nothing to suggest the header was
+    // the problem, and the documentation was the only thing telling them so.
     authentication: {
-      type: 'Bearer Token',
-      header: 'Authorization',
-      format: 'Bearer <api_key>',
-      example: 'Authorization: Bearer spk_abc12345_...',
+      type: 'API key',
+      header: 'X-API-Key',
+      format: '<api_key>',
+      example: 'X-API-Key: spk_abc12345_...',
+      note: 'Authorization: Bearer carries a user session token, not an API key.',
     },
     scopes: {
       read: 'Read access to products, orders, customers, quotes, services',
       write: 'Create and update resources',
       delete: 'Delete resources',
-      admin: 'Full administrative access',
+      admin: 'Full administrative access. Cannot manage API keys.',
     },
+    // Per client address, not per key: the limiter in front of `/api/` keys on
+    // the caller's IP and has no knowledge of which key was presented. Claiming
+    // a per-key budget invited an integrator to size their retry logic against a
+    // limit that does not exist.
     rateLimiting: {
       header: 'X-RateLimit-Remaining',
       windowMs: 900000,
-      description: 'Rate limit is per API key, configurable per key',
+      description:
+        'Applied per client address across all of /api, shared with session traffic from the same address.',
     },
     endpoints: [
       {
