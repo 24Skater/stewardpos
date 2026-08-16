@@ -3,6 +3,16 @@ import logger from '../../utils/logger';
 import { escapeLike } from './like';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
+import type {
+  AuditLogQuery,
+  PaymentMix,
+  ReportRange,
+  ReturnsByReason,
+  ReturnsTotals,
+  SalesByDay,
+  SalesTotals,
+  TopProduct,
+} from './reports.types';
 
 export interface PostgresConfig {
   host: string;
@@ -1712,47 +1722,80 @@ export class PostgresAdapter {
     }
   }
 
-  async getAuditLogs(options?: { limit?: number; offset?: number; userId?: string }): Promise<DbRow[]> {
+  /**
+   * A page of the audit trail, with the total it was drawn from.
+   *
+   * The count is what makes this paginable: without it a caller cannot tell a
+   * short last page from the end of the log, and the screen above this was
+   * loading the newest hundred rows and filtering them in the browser — a
+   * search box that looked like it searched the audit log and searched one page
+   * of it.
+   *
+   * Filters are applied in SQL for the same reason. `WHERE` is assembled from a
+   * list of conditions rather than by appending, so adding one cannot depend on
+   * whether it happens to be first.
+   */
+  async getAuditLogs(options?: AuditLogQuery): Promise<{ logs: DbRow[]; total: number }> {
     try {
-      let query = `
-        SELECT al.*, u.name as user_name, u.email as user_email
-        FROM audit_logs al
-        LEFT JOIN users u ON al.user_id = u.id
-      `;
+      const conditions: string[] = [];
       const params: unknown[] = [];
-      let paramIndex = 1;
 
       if (options?.userId) {
-        query += ` WHERE al.user_id = $${paramIndex++}`;
         params.push(options.userId);
+        conditions.push(`al.user_id = $${params.length}`);
+      }
+      if (options?.entity) {
+        params.push(options.entity);
+        conditions.push(`al.entity = $${params.length}`);
+      }
+      if (options?.action) {
+        params.push(options.action);
+        conditions.push(`al.action = $${params.length}`);
+      }
+      if (options?.from !== undefined) {
+        params.push(options.from);
+        conditions.push(`al.timestamp >= to_timestamp($${params.length} / 1000.0)`);
+      }
+      if (options?.to !== undefined) {
+        params.push(options.to);
+        conditions.push(`al.timestamp <= to_timestamp($${params.length} / 1000.0)`);
       }
 
-      query += ' ORDER BY al.timestamp DESC';
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-      if (options?.limit) {
-        query += ` LIMIT $${paramIndex++}`;
-        params.push(options.limit);
-      }
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*) as total FROM audit_logs al ${where}`,
+        params
+      );
 
-      if (options?.offset) {
-        query += ` OFFSET $${paramIndex++}`;
-        params.push(options.offset);
-      }
+      const limit = options?.limit ?? 50;
+      const offset = options?.offset ?? 0;
 
-      const result = await this.pool.query(query, params);
+      const result = await this.pool.query(
+        `SELECT al.*, u.name as user_name, u.email as user_email
+         FROM audit_logs al
+         LEFT JOIN users u ON al.user_id = u.id
+         ${where}
+         ORDER BY al.timestamp DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      );
 
-      return result.rows.map((l) => ({
-        id: l.id,
-        timestamp: new Date(l.timestamp).getTime(),
-        userId: l.user_id,
-        userName: l.user_name,
-        userEmail: l.user_email,
-        action: l.action,
-        entity: l.entity,
-        entityId: l.entity_id,
-        before: l.before,
-        after: l.after,
-      }));
+      return {
+        logs: result.rows.map((l) => ({
+          id: l.id,
+          timestamp: new Date(l.timestamp).getTime(),
+          userId: l.user_id,
+          userName: l.user_name,
+          userEmail: l.user_email,
+          action: l.action,
+          entity: l.entity,
+          entityId: l.entity_id,
+          before: l.before,
+          after: l.after,
+        })),
+        total: parseInt(countResult.rows[0].total, 10),
+      };
     } catch (error) {
       logger.error('Error getting audit logs:', error);
       throw new DatabaseError('Failed to get audit logs');
@@ -3565,6 +3608,202 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting discount stats:', error);
       throw new DatabaseError('Failed to get discount stats');
+    }
+  }
+
+  // ===== Reporting Aggregations =====
+  //
+  // Summed in SQL rather than in the API. The reports screens used to fetch
+  // every order and add them up in the browser, which is why the list adapters
+  // still have no LIMIT: capping them would not have slowed those pages down,
+  // it would have made them report a fraction of the day's takings as the whole.
+  //
+  // Timestamps are compared with `to_timestamp(ms / 1000.0)`, matching
+  // `getDiscountStats` and the way the row mappers read `created_at` back. Both
+  // ends are inclusive; the service decides what instant a date means.
+
+  async getSalesTotals(range: ReportRange): Promise<SalesTotals> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           COUNT(*) as order_count,
+           COALESCE(SUM(subtotal), 0) as gross,
+           COALESCE(SUM(discount_total), 0) as discounts,
+           COALESCE(SUM(tax_total), 0) as tax,
+           COALESCE(SUM(total), 0) as net
+         FROM orders
+         WHERE created_at >= to_timestamp($1 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)`,
+        [range.from, range.to]
+      );
+
+      const row = result.rows[0];
+      return {
+        orderCount: parseInt(row.order_count, 10),
+        gross: parseFloat(row.gross),
+        discounts: parseFloat(row.discounts),
+        tax: parseFloat(row.tax),
+        net: parseFloat(row.net),
+      };
+    } catch (error) {
+      logger.error('Error getting sales totals:', error);
+      throw new DatabaseError('Failed to get sales totals');
+    }
+  }
+
+  async getSalesByDay(range: ReportRange): Promise<SalesByDay[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           to_char(created_at, 'YYYY-MM-DD') as date,
+           COUNT(*) as order_count,
+           COALESCE(SUM(subtotal), 0) as gross,
+           COALESCE(SUM(total), 0) as net
+         FROM orders
+         WHERE created_at >= to_timestamp($1 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)
+         GROUP BY 1
+         ORDER BY 1`,
+        [range.from, range.to]
+      );
+
+      return result.rows.map((row) => ({
+        date: row.date as string,
+        orderCount: parseInt(row.order_count, 10),
+        gross: parseFloat(row.gross),
+        net: parseFloat(row.net),
+      }));
+    } catch (error) {
+      logger.error('Error getting sales by day:', error);
+      throw new DatabaseError('Failed to get sales by day');
+    }
+  }
+
+  async getTopProducts(range: ReportRange, limit: number): Promise<TopProduct[]> {
+    try {
+      // `name_snapshot`, not a join to `products`: the name as sold is what the
+      // report is about, and a product renamed or deleted since must not change
+      // or vanish from a period that has already been reported on. MIN() picks
+      // one deterministically when a product was renamed mid-range.
+      const result = await this.pool.query(
+        `SELECT
+           oi.product_id,
+           MIN(oi.name_snapshot) as name,
+           COALESCE(SUM(oi.quantity), 0) as quantity,
+           COALESCE(SUM(oi.line_total), 0) as revenue
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE o.created_at >= to_timestamp($1 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)
+         GROUP BY oi.product_id
+         ORDER BY revenue DESC, quantity DESC
+         LIMIT $3`,
+        [range.from, range.to, limit]
+      );
+
+      return result.rows.map((row) => ({
+        productId: row.product_id as string,
+        name: row.name as string,
+        quantity: parseInt(row.quantity, 10),
+        revenue: parseFloat(row.revenue),
+      }));
+    } catch (error) {
+      logger.error('Error getting top products:', error);
+      throw new DatabaseError('Failed to get top products');
+    }
+  }
+
+  async getPaymentMix(range: ReportRange): Promise<PaymentMix[]> {
+    try {
+      // Two sources, deliberately. `payments` carries the split-tender breakdown
+      // and is the truth for anything sold since it existed, but orders taken
+      // before that migration have no rows there at all — reading only
+      // `payments` would report a shop's entire history before the upgrade as
+      // having been paid by nothing. Those orders fall back to their own
+      // denormalised `payment_method`, and the NOT EXISTS keeps a split sale
+      // from being counted twice.
+      const result = await this.pool.query(
+        `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
+         FROM (
+           SELECT LOWER(p.method) as method, p.amount as amount
+           FROM payments p
+           JOIN orders o ON o.id = p.order_id
+           WHERE o.created_at >= to_timestamp($1 / 1000.0)
+             AND o.created_at <= to_timestamp($2 / 1000.0)
+           UNION ALL
+           SELECT LOWER(o.payment_method) as method, o.total as amount
+           FROM orders o
+           WHERE o.created_at >= to_timestamp($1 / 1000.0)
+             AND o.created_at <= to_timestamp($2 / 1000.0)
+             AND NOT EXISTS (SELECT 1 FROM payments p2 WHERE p2.order_id = o.id)
+         ) mix
+         GROUP BY method
+         ORDER BY amount DESC, method`,
+        [range.from, range.to]
+      );
+
+      return result.rows.map((row) => ({
+        method: row.method as string,
+        count: parseInt(row.count, 10),
+        amount: parseFloat(row.amount),
+      }));
+    } catch (error) {
+      logger.error('Error getting payment mix:', error);
+      throw new DatabaseError('Failed to get payment mix');
+    }
+  }
+
+  async getReturnsTotals(range: ReportRange): Promise<ReturnsTotals> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'completed') as return_count,
+           COALESCE(SUM(total) FILTER (WHERE status = 'completed'), 0) as refunded,
+           COUNT(*) FILTER (WHERE status IN ('pending', 'approved')) as pending_count,
+           COALESCE(SUM(total) FILTER (WHERE status IN ('pending', 'approved')), 0) as pending_amount
+         FROM returns
+         WHERE created_at >= to_timestamp($1 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)`,
+        [range.from, range.to]
+      );
+
+      const row = result.rows[0];
+      return {
+        returnCount: parseInt(row.return_count, 10),
+        refunded: parseFloat(row.refunded),
+        pendingCount: parseInt(row.pending_count, 10),
+        pendingAmount: parseFloat(row.pending_amount),
+      };
+    } catch (error) {
+      logger.error('Error getting returns totals:', error);
+      throw new DatabaseError('Failed to get returns totals');
+    }
+  }
+
+  async getReturnsByReason(range: ReportRange): Promise<ReturnsByReason[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
+           COUNT(*) as return_count,
+           COALESCE(SUM(total), 0) as refunded
+         FROM returns
+         WHERE status = 'completed'
+           AND created_at >= to_timestamp($1 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)
+         GROUP BY 1
+         ORDER BY refunded DESC, reason_code`,
+        [range.from, range.to]
+      );
+
+      return result.rows.map((row) => ({
+        reasonCode: row.reason_code as string,
+        returnCount: parseInt(row.return_count, 10),
+        refunded: parseFloat(row.refunded),
+      }));
+    } catch (error) {
+      logger.error('Error getting returns by reason:', error);
+      throw new DatabaseError('Failed to get returns by reason');
     }
   }
 

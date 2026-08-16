@@ -1,21 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ordersApi, quotesApi } from '@/lib/api';
+import { quotesApi } from '@/lib/api';
 import { DollarSign, ShoppingCart, Briefcase, FileText } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-
-interface Order {
-  id: string;
-  createdAt: number;
-  total: number;
-  taxTotal: number;
-  items: { nameSnapshot: string; quantity: number; lineTotal: number }[];
-}
+import ReportRangePicker from '@/components/ReportRangePicker';
+import SalesReport, { money } from '@/components/reports/SalesReport';
+import { useSalesReport } from '@/hooks/queries';
+import { describeRange, periodRange, type ReportPeriod } from '@/lib/report-range';
+import { getErrorMessage } from '@/lib/errors';
 
 interface Quote {
   id: string;
@@ -28,114 +24,86 @@ interface Quote {
 }
 
 export default function AdminReports() {
-  const [period, setPeriod] = useState<'today' | '7days' | '30days'>('today');
-  const [salesStats, setSalesStats] = useState({
-    grossSales: 0,
-    orderCount: 0,
-    avgTicket: 0,
-    taxCollected: 0,
-  });
+  const [period, setPeriod] = useState<ReportPeriod>('today');
+  const [range, setRange] = useState(() => periodRange('today'));
+
+  /**
+   * Product sales come from the reporting API — summed by the database over the
+   * whole period, rather than by downloading every order and adding them up
+   * here, which is what this screen used to do.
+   */
+  const { data, isLoading, error } = useSalesReport(range);
+
   const [serviceStats, setServiceStats] = useState({
     grossRevenue: 0,
     quoteCount: 0,
     completedCount: 0,
     avgQuoteValue: 0,
   });
-  const [topProducts, setTopProducts] = useState<{ name: string; qty: number; gross: number }[]>([]);
   const [topServices, setTopServices] = useState<{ name: string; qty: number; gross: number }[]>([]);
   const [recentQuotes, setRecentQuotes] = useState<Quote[]>([]);
 
+  /**
+   * Services still aggregate client-side.
+   *
+   * Quotes have no reporting endpoint: the Services & Quotes module is deferred
+   * backlog (D2), so building SQL aggregates for it would be building out scope
+   * this version has decided not to ship. The tab is left as it was rather than
+   * half-migrated.
+   */
+  const rangeBounds = useMemo(() => {
+    const from = range.from ? Date.parse(`${range.from}T00:00:00.000Z`) : 0;
+    const to = range.to ? Date.parse(`${range.to}T23:59:59.999Z`) : Date.now();
+    return { from, to };
+  }, [range.from, range.to]);
+
   useEffect(() => {
-    loadReports();
-  }, [period]);
+    const loadServices = async () => {
+      try {
+        const quotes = (await quotesApi.list()) ?? [];
+        const inRange = quotes.filter(
+          (q) => q.createdAt >= rangeBounds.from && q.createdAt <= rangeBounds.to
+        );
+        const completed = inRange.filter((q) => q.status === 'completed');
 
-  const getStartDate = () => {
-    const now = Date.now();
-    switch (period) {
-      case 'today': {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return today.getTime();
+        setServiceStats({
+          grossRevenue: completed.reduce((sum, q) => sum + q.total, 0),
+          quoteCount: inRange.length,
+          completedCount: completed.length,
+          avgQuoteValue:
+            inRange.length > 0
+              ? inRange.reduce((sum, q) => sum + q.total, 0) / inRange.length
+              : 0,
+        });
+
+        const serviceMap = new Map<string, { name: string; qty: number; gross: number }>();
+        completed.forEach((quote) => {
+          quote.items?.forEach((item) => {
+            const existing = serviceMap.get(item.description) || {
+              name: item.description,
+              qty: 0,
+              gross: 0,
+            };
+            existing.qty += item.quantity;
+            existing.gross += item.lineTotal;
+            serviceMap.set(item.description, existing);
+          });
+        });
+        setTopServices(
+          Array.from(serviceMap.values()).sort((a, b) => b.gross - a.gross).slice(0, 10)
+        );
+        setRecentQuotes(quotes.slice(0, 10));
+      } catch {
+        // A quotes failure must not blank the sales tab, which is the reason
+        // most people open this screen.
+        setServiceStats({ grossRevenue: 0, quoteCount: 0, completedCount: 0, avgQuoteValue: 0 });
+        setTopServices([]);
+        setRecentQuotes([]);
       }
-      case '7days':
-        return now - 7 * 24 * 60 * 60 * 1000;
-      case '30days':
-        return now - 30 * 24 * 60 * 60 * 1000;
-    }
-  };
+    };
 
-  const loadReports = async () => {
-    try {
-      const [ordersResponse, quotesResponse] = await Promise.all([
-        ordersApi.list(),
-        quotesApi.list(),
-      ]);
-
-      const orders = ordersResponse ? ordersResponse : [];
-      const quotes = quotesResponse ? quotesResponse : [];
-      const startDate = getStartDate();
-
-      // Filter by period
-      const filteredOrders = orders.filter(o => o.createdAt >= startDate);
-      const filteredQuotes = quotes.filter(q => q.createdAt >= startDate);
-
-      // Sales stats
-      const grossSales = filteredOrders.reduce((sum, o) => sum + o.total, 0);
-      const salesTax = filteredOrders.reduce((sum, o) => sum + o.taxTotal, 0);
-      const orderCount = filteredOrders.length;
-      const avgTicket = orderCount > 0 ? grossSales / orderCount : 0;
-
-      setSalesStats({
-        grossSales,
-        orderCount,
-        avgTicket,
-        taxCollected: salesTax,
-      });
-
-      // Top products
-      const productMap = new Map<string, { name: string; qty: number; gross: number }>();
-      filteredOrders.forEach(order => {
-        order.items?.forEach(item => {
-          const existing = productMap.get(item.nameSnapshot) || { name: item.nameSnapshot, qty: 0, gross: 0 };
-          existing.qty += item.quantity;
-          existing.gross += item.lineTotal;
-          productMap.set(item.nameSnapshot, existing);
-        });
-      });
-      setTopProducts(Array.from(productMap.values()).sort((a, b) => b.gross - a.gross).slice(0, 10));
-
-      // Service stats
-      const completedQuotes = filteredQuotes.filter(q => q.status === 'completed');
-      const grossRevenue = completedQuotes.reduce((sum, q) => sum + q.total, 0);
-      const quoteCount = filteredQuotes.length;
-      const completedCount = completedQuotes.length;
-      const avgQuoteValue = quoteCount > 0 ? filteredQuotes.reduce((sum, q) => sum + q.total, 0) / quoteCount : 0;
-
-      setServiceStats({
-        grossRevenue,
-        quoteCount,
-        completedCount,
-        avgQuoteValue,
-      });
-
-      // Top services
-      const serviceMap = new Map<string, { name: string; qty: number; gross: number }>();
-      completedQuotes.forEach(quote => {
-        quote.items?.forEach(item => {
-          const existing = serviceMap.get(item.description) || { name: item.description, qty: 0, gross: 0 };
-          existing.qty += item.quantity;
-          existing.gross += item.lineTotal;
-          serviceMap.set(item.description, existing);
-        });
-      });
-      setTopServices(Array.from(serviceMap.values()).sort((a, b) => b.gross - a.gross).slice(0, 10));
-
-      // Recent quotes
-      setRecentQuotes(quotes.slice(0, 10));
-    } catch (error) {
-      console.error('Error loading reports:', error);
-    }
-  };
+    void loadServices();
+  }, [rangeBounds]);
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -153,22 +121,19 @@ export default function AdminReports() {
     <ProtectedRoute>
       <AdminLayout>
         <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-foreground">Reports</h1>
-              <p className="text-muted-foreground">Sales & service analytics</p>
+              <p className="text-muted-foreground">{describeRange(range)}</p>
             </div>
-            <div className="flex gap-2">
-              <Button variant={period === 'today' ? 'default' : 'outline'} onClick={() => setPeriod('today')}>
-                Today
-              </Button>
-              <Button variant={period === '7days' ? 'default' : 'outline'} onClick={() => setPeriod('7days')}>
-                Last 7 Days
-              </Button>
-              <Button variant={period === '30days' ? 'default' : 'outline'} onClick={() => setPeriod('30days')}>
-                Last 30 Days
-              </Button>
-            </div>
+            <ReportRangePicker
+              period={period}
+              range={range}
+              onChange={(nextPeriod, nextRange) => {
+                setPeriod(nextPeriod);
+                setRange(nextRange);
+              }}
+            />
           </div>
 
           <Tabs defaultValue="sales" className="space-y-6">
@@ -185,81 +150,11 @@ export default function AdminReports() {
 
             {/* Product Sales Tab */}
             <TabsContent value="sales" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Gross Sales</CardTitle>
-                    <DollarSign className="w-4 h-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${salesStats.grossSales.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Orders</CardTitle>
-                    <ShoppingCart className="w-4 h-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{salesStats.orderCount}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Avg Ticket</CardTitle>
-                    <FileText className="w-4 h-4 text-purple-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${salesStats.avgTicket.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Tax Collected</CardTitle>
-                    <DollarSign className="w-4 h-4 text-orange-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${salesStats.taxCollected.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top 10 Products</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Quantity Sold</TableHead>
-                        <TableHead>Gross Revenue</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {topProducts.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                            No sales data for this period
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        topProducts.map((item, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>{item.qty}</TableCell>
-                            <TableCell>${item.gross.toFixed(2)}</TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+              <SalesReport
+                data={data ?? null}
+                loading={isLoading}
+                error={error ? getErrorMessage(error, 'The report could not be loaded') : null}
+              />
             </TabsContent>
 
             {/* Services Tab */}
@@ -271,7 +166,7 @@ export default function AdminReports() {
                     <DollarSign className="w-4 h-4 text-green-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">${serviceStats.grossRevenue.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">{money(serviceStats.grossRevenue)}</div>
                   </CardContent>
                 </Card>
 
@@ -301,7 +196,7 @@ export default function AdminReports() {
                     <DollarSign className="w-4 h-4 text-orange-600" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">${serviceStats.avgQuoteValue.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">{money(serviceStats.avgQuoteValue)}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -332,7 +227,7 @@ export default function AdminReports() {
                             <TableRow key={idx}>
                               <TableCell className="font-medium">{item.name}</TableCell>
                               <TableCell>{item.qty}</TableCell>
-                              <TableCell>${item.gross.toFixed(2)}</TableCell>
+                              <TableCell>{money(item.gross)}</TableCell>
                             </TableRow>
                           ))
                         )}
@@ -367,7 +262,7 @@ export default function AdminReports() {
                             <TableRow key={quote.id}>
                               <TableCell className="font-medium">{quote.customerName || '—'}</TableCell>
                               <TableCell>{getStatusBadge(quote.status)}</TableCell>
-                              <TableCell>${quote.total.toFixed(2)}</TableCell>
+                              <TableCell>{money(quote.total)}</TableCell>
                               <TableCell>{new Date(quote.createdAt).toLocaleDateString()}</TableCell>
                             </TableRow>
                           ))

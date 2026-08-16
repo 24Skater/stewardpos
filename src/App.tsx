@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
+import StoreBranding from "./components/StoreBranding";
 import RequireAuth from "@/components/RequireAuth";
 import { Suspense, lazy } from "react";
 import { Loader2 } from "lucide-react";
@@ -58,6 +59,8 @@ const App = () => (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
         <TooltipProvider>
+          {/* Applies the store's brand colour and favicon to every screen. */}
+          <StoreBranding />
           <Toaster />
           <Sonner />
           <BrowserRouter>
