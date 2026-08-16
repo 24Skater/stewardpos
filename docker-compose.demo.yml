@@ -55,7 +55,12 @@ services:
     restart: unless-stopped
     environment:
       # Server
-      NODE_ENV: production
+      # A demo is not a production install, and saying so matters now that the
+      # label carries weight: this profile ships a published administrator
+      # (admin@demo.local / DemoPass!1) and a placeholder JWT secret, and the
+      # backend refuses both under NODE_ENV=production. Which is correct — the
+      # mislabelling was the bug.
+      NODE_ENV: development
       PORT: 3001
       HOST: 0.0.0.0
       
