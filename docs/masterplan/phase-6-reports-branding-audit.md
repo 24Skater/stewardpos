@@ -127,6 +127,24 @@ nothing; letting both branches match would count split sales twice. The
 `NOT EXISTS` fallback is covered by an integration test that asserts the mix
 sums to the net.
 
+### SQLite sums money in floating point, and CI found it
+
+The SQLite spec skips locally (no native binding on Windows) and throws in CI, so
+its SQL only ever executes there — and it earned its keep twice on this branch.
+The second finding is the substantive one.
+
+Money is `DECIMAL(10,2)` in Postgres, where a `SUM` is exact. In SQLite it is
+`REAL` — IEEE floating point. Summing $15.12 and $5.00 yields
+`20.119999999999997`, which reaches a report card as
+"$20.119999999999997" and, worse, does not reconcile against the same period read
+from Postgres. Every money aggregate in the SQLite adapter's reporting queries is
+now `ROUND(..., 2)`, restoring the DECIMAL semantics the rest of the system
+assumes, with a test that names the case.
+
+(The first finding was duller and still worth having: `order_items.variant_id` is
+`NOT NULL`, and the fixture wrote lines without one. Nothing had caught it
+because the only other order in that file carries no items at all.)
+
 ### Day bucketing follows the database server's timezone
 
 Worth knowing before someone files it as a bug. Postgres stores `created_at` as

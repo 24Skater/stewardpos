@@ -313,6 +313,18 @@ describeSqlite('reporting aggregations on SQLite', () => {
     });
   });
 
+  it('sums money to the cent despite REAL storage', async () => {
+    // The reason every money aggregate here is wrapped in ROUND. Money is
+    // DECIMAL(10,2) in Postgres, where a SUM is exact, but REAL here — IEEE
+    // floating point. $15.12 + $5.00 comes out as 20.119999999999997, which
+    // reaches a report card as "$20.119999999999997" and does not reconcile
+    // against the same figures read from Postgres.
+    const totals = await adapter.getSalesTotals(RANGE);
+
+    expect(totals.net).toBe(20.12);
+    expect(String(totals.net)).not.toMatch(/\d{6}/);
+  });
+
   it('returns zeroes for an empty range rather than nulls', async () => {
     expect(await adapter.getSalesTotals({ from: 0, to: 1 })).toEqual({
       orderCount: 0,
