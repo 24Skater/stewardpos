@@ -1,0 +1,49 @@
+# Release Drafter configuration.
+#
+# The workflow (.github/workflows/release-drafter.yml) has existed since July and
+# has failed on every single push to main — "Configuration file
+# .github/release-drafter.yml is not found". The action was added without the
+# file it reads, so no release note has ever been drafted.
+#
+# Categories are keyed on labels because that is all the action can see here: it
+# runs on `push` to main, and the `autolabeler` feature needs a `pull_request`
+# event to apply labels in the first place. PRs in this repository are not
+# labelled today, so in practice everything lands under "Changes" — which is
+# still a usable draft listing every merged PR, and is a great deal more than
+# the nothing produced until now. Labelling a PR will sort it.
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: 'Fixes'
+    labels:
+      - 'bug'
+  - title: 'Features'
+    labels:
+      - 'enhancement'
+  - title: 'Documentation'
+    labels:
+      - 'documentation'
+
+exclude-labels:
+  - 'duplicate'
+  - 'invalid'
+  - 'wontfix'
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+
+# Characters that would otherwise be read as markdown in a PR title. Titles here
+# routinely carry backticks and asterisks.
+change-title-escapes: '\<*_&`'
+
+version-resolver:
+  minor:
+    labels:
+      - 'enhancement'
+  default: patch
+
+template: |
+  ## Changes
+
+  $CHANGES
