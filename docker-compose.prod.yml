@@ -1,0 +1,196 @@
+# StewardPOS — production stack.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Standalone, not an overlay on docker-compose.yml. That is deliberate: the base
+# file is a development stack and publishes Postgres, MinIO and the backend on
+# host ports. An overlay inherits those unless every one is overridden, and
+# forgetting one exposes a database to the internet. A separate file cannot
+# inherit a mistake.
+#
+# Only Caddy publishes ports. Everything else talks over the internal network,
+# so there is no host-level path to Postgres, MinIO or the API except through
+# TLS on 443.
+#
+# Fill .env from .env.prod.example first — the backend refuses to start in
+# production on the placeholder secrets this repository ships.
+
+services:
+  # TLS termination and the only way in.
+  #
+  # Caddy obtains and renews Let's Encrypt certificates by itself given a domain
+  # that resolves to this host and ports 80/443 reachable. No cron, no certbot
+  # renewal hook to forget.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN must be set to the public hostname, e.g. pos.example.org}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set; Let's Encrypt uses it for expiry warnings}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and account keys. Losing this volume means re-issuing certs
+      # and, often enough, hitting Let's Encrypt's rate limits while doing it.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - stewardpos
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No `ports:`. The database is reachable only from this network; back it up
+    # with scripts/backup.sh, which runs pg_dump inside the container.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stewardpos_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stewardpos
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - stewardpos
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+
+      DB_ADAPTER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-stewardpos}
+      DB_USER: ${POSTGRES_USER:-stewardpos_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a value you generated}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+
+      # One origin. The SPA and the API are served from the same hostname, so
+      # this is the only value CORS ever needs to allow.
+      CORS_ORIGIN: https://${DOMAIN}
+
+      # Exactly one proxy sits in front of the API: Caddy routes /api straight
+      # to this service rather than through the frontend's nginx. Getting this
+      # number wrong is not cosmetic — too low and every client shares one
+      # rate-limit bucket; too high and a client can spoof its address past the
+      # limits with a forged X-Forwarded-For.
+      TRUST_PROXY: 1
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-3000}
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: ${RATE_LIMIT_MAX_LOGIN_ATTEMPTS:-10}
+
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: /app/logs/app.log
+
+      # Never on a real install. The seed writes an administrator whose password
+      # is published in this repository; the backend refuses it in production
+      # regardless, and this states the intent as well.
+      AUTO_SEED: "false"
+
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-stewardpos}
+      MINIO_PUBLIC_HOST: ${DOMAIN}
+
+      EMAIL_ADAPTER: ${EMAIL_ADAPTER:-console}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@${DOMAIN}}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    volumes:
+      - backend_logs:/app/logs
+      # Uploads live on a volume rather than in the image: MinIO is optional and
+      # the disk path is the default, so this is where a shop's product photos
+      # and receipt logos actually are. It is in the backup script for that
+      # reason.
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    networks:
+      - stewardpos
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Empty on purpose: the SPA then calls `/api/...` relative to whatever
+        # origin served it, which is the same origin. Baking an absolute URL in
+        # would tie the built image to one hostname and break the moment the
+        # domain changes.
+        VITE_API_BASE_URL: ""
+    restart: unless-stopped
+    environment:
+      - VITE_APP_ENV=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    networks:
+      - stewardpos
+
+volumes:
+  postgres_data:
+  minio_data:
+  backend_logs:
+  backend_uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  stewardpos:
+    driver: bridge

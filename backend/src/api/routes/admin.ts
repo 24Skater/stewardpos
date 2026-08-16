@@ -598,8 +598,11 @@ router.post('/reset-database', authorize(['admin']), async (req: AuthRequest, re
       `);
     }
 
-    // Re-seed the database
-    await seeder.seed();
+    // Forced: this has just emptied the tables on purpose, and the retained
+    // demo administrator would otherwise make the database look "not empty".
+    // The production refusal inside the seeder still applies, as does the one
+    // at the top of this route.
+    await seeder.seed(true);
     await seeder.close();
 
     logger.info('Database reset completed successfully');

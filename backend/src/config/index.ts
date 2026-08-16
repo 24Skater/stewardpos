@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { assertProductionSecrets } from './secrets';
 
 // Load environment variables
 dotenv.config();
@@ -110,6 +111,16 @@ const configSchema = z.object({
   logging: z.object({
     level: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
     file: z.string().optional(),
+    /**
+     * Rotation, in megabytes per file and files retained.
+     *
+     * The file transport had neither, so `/app/logs/app.log` grew without bound
+     * on a Docker volume. A busy shop writes a line per request; left alone
+     * that is a disk-full outage months after install, with nothing having
+     * changed to cause it.
+     */
+    maxSizeMb: z.coerce.number().int().min(1).default(20),
+    maxFiles: z.coerce.number().int().min(1).default(5),
   }),
 });
 
@@ -151,7 +162,7 @@ function buildConfig(): AppConfig {
 
     email: {
       adapter: (process.env.EMAIL_ADAPTER as any) || 'console',
-      from: process.env.EMAIL_FROM || 'noreply@persona-pos.local',
+      from: process.env.EMAIL_FROM || 'noreply@stewardpos.local',
       smtp: {
         host: process.env.SMTP_HOST,
         port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : undefined,
@@ -190,6 +201,8 @@ function buildConfig(): AppConfig {
     logging: {
       level: (process.env.LOG_LEVEL as any) || 'info',
       file: process.env.LOG_FILE,
+      maxSizeMb: parseInt(process.env.LOG_MAX_SIZE_MB || '20', 10),
+      maxFiles: parseInt(process.env.LOG_MAX_FILES || '5', 10),
     },
   };
 }
@@ -200,12 +213,19 @@ let config: AppConfig;
 try {
   const rawConfig = buildConfig();
   config = configSchema.parse(rawConfig);
+
+  // After the shape is valid, before anything uses it: a production install must
+  // not be running on the secrets this repository publishes. The length check
+  // above passes `CHANGE_THIS_MIN_32_CHARACTERS_SECRET` happily.
+  assertProductionSecrets(process.env);
 } catch (error) {
   console.error('❌ Configuration validation failed:');
   if (error instanceof z.ZodError) {
     error.errors.forEach((err) => {
       console.error(`  - ${err.path.join('.')}: ${err.message}`);
     });
+  } else if (error instanceof Error) {
+    console.error(error.message);
   }
   process.exit(1);
 }
