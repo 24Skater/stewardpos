@@ -176,18 +176,87 @@ export function exportToCSV(data: ExportRow[], filename: string) {
   link.click();
 }
 
+/** Excel refuses a sheet name longer than this. */
+const MAX_SHEET_NAME = 31;
+
+/**
+ * The type a column should be written as, taken from its first real value.
+ *
+ * Report rows are keyed by human-readable labels built at runtime ("Total
+ * Revenue"), so there is no static schema to declare — it is derived from the
+ * data, the same way `exportToCSV` derives its header row.
+ *
+ * Deriving the type rather than defaulting everything to text matters because
+ * these are the figures a shop hands its accountant: a revenue column written
+ * as strings will not sum in Excel, which reads as a spreadsheet bug rather
+ * than an export one.
+ */
+function columnType(column: string, rows: ExportRow[]): 'number' | 'boolean' | 'string' {
+  const sample = rows.find((row) => row[column] !== null && row[column] !== undefined)?.[column];
+
+  if (typeof sample === 'number') return 'number';
+  if (typeof sample === 'boolean') return 'boolean';
+  return 'string';
+}
+
+/** One cell, typed to match its column, or blank. */
+function cellFor(raw: ExportRow[string], type: ReturnType<typeof columnType>) {
+  if (raw === null || raw === undefined || raw === '') return null;
+
+  if (type === 'number') {
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    // A value that will not parse is left blank rather than written as a
+    // number cell containing NaN, which Excel shows as an error.
+    return Number.isFinite(n) ? { value: n, type: Number as NumberConstructor } : null;
+  }
+
+  if (type === 'boolean') {
+    return typeof raw === 'boolean' ? { value: raw, type: Boolean as BooleanConstructor } : null;
+  }
+
+  return { value: String(raw), type: String as StringConstructor };
+}
+
+/**
+ * Write one or more report sheets to a workbook.
+ *
+ * Backed by `write-excel-file` rather than SheetJS. `xlsx` on npm stops at
+ * 0.18.5 and carries two high advisories — prototype pollution and a ReDoS —
+ * with fixes published only to the vendor's own CDN. Nothing here ever *reads*
+ * a spreadsheet, which is where both advisories live, but a dependency that
+ * cannot be patched from npm is not worth keeping for five lines of use.
+ */
 export async function exportToExcel(sheets: { name: string; data: ExportRow[] }[], filename: string) {
-  const XLSX = await import('xlsx');
-  const workbook = XLSX.utils.book_new();
-  
-  sheets.forEach(sheet => {
-    if (sheet.data.length > 0) {
-      const worksheet = XLSX.utils.json_to_sheet(sheet.data);
-      XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.substring(0, 31)); // Excel limit
-    }
+  // The browser entry point specifically: it hands the workbook to the browser
+  // as a download. `write-excel-file` publishes no bare export, only subpaths,
+  // and the node one writes to a filesystem this code does not have.
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+
+  // A sheet with no rows has no columns to describe either. Excel rejects a
+  // workbook with no sheets at all, so an export with nothing in it writes
+  // nothing rather than handing someone a corrupt file.
+  const populated = sheets.filter((sheet) => sheet.data.length > 0);
+  if (populated.length === 0) return;
+
+  // Rows are built directly rather than through the objects-plus-schema form,
+  // because that form covers a single sheet only — a multi-sheet workbook takes
+  // rendered rows, and these exports routinely carry more than one sheet.
+  const workbook = populated.map((sheet) => {
+    const columns = Object.keys(sheet.data[0]);
+    const types = columns.map((column) => columnType(column, sheet.data));
+
+    return {
+      sheet: sheet.name.substring(0, MAX_SHEET_NAME),
+      data: [
+        columns.map((column) => ({ value: column, fontWeight: 'bold' as const })),
+        ...sheet.data.map((row) => columns.map((column, i) => cellFor(row[column], types[i]))),
+      ],
+    };
   });
-  
-  XLSX.writeFile(workbook, filename);
+
+  // v4's browser entry returns `{ toBlob, toFile }` rather than taking a
+  // `fileName` option the way earlier majors did.
+  await writeXlsxFile(workbook).toFile(filename);
 }
 
 function createPDFHeader(doc: jsPDF, title: string, subtitle?: string, settings?: Settings) {
