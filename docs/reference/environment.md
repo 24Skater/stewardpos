@@ -91,17 +91,49 @@ are stored as relative URLs.
 | Setting | DEV | QA | PROD |
 |---------|-----|-----|------|
 | NODE_ENV | development | production | production |
-| LOG_LEVEL | debug | info | warn |
+| LOG_LEVEL | debug | info | info |
 | AUTO_SEED | true | false | false |
-| Rate Limit | 1000/10min | 200/15min | 100/15min |
+| RATE_LIMIT_MAX_REQUESTS | 3000 | 3000 | 3000 |
+| RATE_LIMIT_MAX_LOGIN_ATTEMPTS | 10 | 10 | 10 |
+| TRUST_PROXY | 1 | 1 | 1 |
+
+**The rate limit is not "stricter in production".** This table used to say
+100 per 15 minutes there, which is what the compose files shipped. Measured
+against the running app, opening the register costs about 24 API calls and each
+sale adds about 3 — and every terminal in a shop shares one public IP. That is
+roughly 25 sales per quarter-hour for an entire store before 429s begin.
+Brute force is bounded separately by `RATE_LIMIT_MAX_LOGIN_ATTEMPTS`, which
+counts failures only; that is what "stricter" should mean.
+
+`TRUST_PROXY` must equal the number of reverse proxies actually in front of the
+API. Too low and every client shares one bucket, because they all appear to come
+from the proxy. Too high and a forged `X-Forwarded-For` walks straight past the
+limits. The production stack puts exactly one (Caddy) in front of the backend.
+
+## Logging
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info`, `debug` |
+| `LOG_FILE` | unset | Omit to log to stdout only |
+| `LOG_MAX_SIZE_MB` | `20` | Size at which the file rotates |
+| `LOG_MAX_FILES` | `5` | How many are kept |
+
+Total on disk is `LOG_MAX_SIZE_MB × LOG_MAX_FILES` — 100 MB by default. Before
+these existed the file had no bound at all and grew for the life of the install.
 
 ## Security Checklist (Production)
 
-- [ ] JWT_SECRET is 32+ characters (use: `openssl rand -base64 32`)
-- [ ] All passwords are strong (32+ characters)
-- [ ] CORS_ORIGIN set to production domain only
+- [ ] JWT_SECRET is 32+ characters and generated, not edited (`openssl rand -base64 32`)
+- [ ] All passwords are strong and generated
+- [ ] CORS_ORIGIN set to the production domain only
 - [ ] AUTO_SEED=false
-- [ ] LOG_LEVEL=warn
+- [ ] TRUST_PROXY matches the number of proxies in front of the API
+
+The first three are enforced: the backend **refuses to start** in production if
+`JWT_SECRET`, `DB_PASSWORD` or `MINIO_SECRET_KEY` is one of the placeholders
+this repository ships. A skipped line fails loudly at boot rather than quietly
+for the life of the install.
 - [ ] Email provider configured
 - [ ] External storage configured (S3/Azure)
 - [ ] SSL/TLS certificates configured

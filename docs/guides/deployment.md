@@ -107,7 +107,7 @@ docker-compose -f docker-compose.yml -f docker-compose.qa.yml up -d
 
 ### Production
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Environment Configuration
@@ -202,7 +202,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml ps
 docker-compose -f docker-compose.yml -f docker-compose.qa.yml ps
 
 # Production
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 ```
 
 ### View Logs
@@ -214,7 +214,7 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
 docker-compose -f docker-compose.yml -f docker-compose.qa.yml logs -f
 
 # Production
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 ```
 
 ### Update Services
