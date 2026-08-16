@@ -457,8 +457,13 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
     if (setupData.demoMode) {
       logger.info('Seeding demo data...');
       try {
+        // Forced: the wizard has just created the operator's own administrator,
+        // so the database is no longer empty — but a demo install is asking for
+        // the sample catalog on purpose. A production install is refused inside
+        // the seeder regardless, which is what stops a demo-mode tick from
+        // planting admin@demo.local on a live shop.
         const seeder = new Seeder();
-        await seeder.seed();
+        await seeder.seed(true);
         await seeder.close();
       } catch (error: unknown) {
         logger.warn('Demo seeding failed (non-critical):', error);

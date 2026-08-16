@@ -1,0 +1,62 @@
+# StewardPOS — reverse proxy and TLS.
+#
+# Used by docker-compose.prod.yml. Caddy obtains and renews Let's Encrypt
+# certificates automatically for {$DOMAIN}, provided the domain resolves to this
+# host and ports 80 and 443 are reachable from the internet.
+{
+	email {$ACME_EMAIL}
+
+	# Uncomment while testing to use Let's Encrypt's staging CA. Its certificates
+	# are not trusted by browsers, but its rate limits are far looser — worth it
+	# if you are getting DNS or firewall wrong repeatedly, since the production
+	# CA will lock you out for hours.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The API and uploaded files go straight to the backend rather than through
+	# the frontend's nginx.
+	#
+	# Not a shortcut — it fixes the hop count. Routing them through nginx would
+	# put two proxies in front of Express, and `TRUST_PROXY` has to equal the
+	# number of proxies exactly: too low and every client shares one rate-limit
+	# bucket, too high and a forged X-Forwarded-For walks past the limits. One
+	# hop is the number that is hard to get wrong.
+	handle /api/* {
+		reverse_proxy backend:3001
+	}
+
+	handle /uploads/* {
+		reverse_proxy backend:3001
+	}
+
+	# Everything else is the single-page app.
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	# Product photos and receipt logos are the large things here.
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		# Caddy serves HTTPS only, so committing to it is safe. Two years with
+		# preload is the standard eligibility bar; drop `preload` if you are not
+		# ready to submit the domain.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Nothing downstream needs to know what is serving this.
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

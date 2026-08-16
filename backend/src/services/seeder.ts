@@ -26,7 +26,69 @@ export class Seeder {
     }
   }
 
-  async seed(): Promise<void> {
+  /**
+   * How many users already exist.
+   *
+   * "Empty" is defined as having no users rather than no rows anywhere: a
+   * database that has been through the setup wizard has an administrator and
+   * roles but may have no products yet, and seeding a demo catalog over a real
+   * install is the mild version of this mistake. The sharp version is the
+   * administrator.
+   */
+  private async userCount(): Promise<number> {
+    if (this.adapter === 'postgres') {
+      const result = await this.pgPool!.query('SELECT COUNT(*) as count FROM users');
+      return parseInt(result.rows[0].count, 10);
+    }
+
+    const row = this.sqliteDb!.prepare('SELECT COUNT(*) as count FROM users').get() as {
+      count: number;
+    };
+    return Number(row.count ?? 0);
+  }
+
+  /**
+   * Seed a database that has never been used.
+   *
+   * Two guards, both of which exist because of what this actually writes: an
+   * administrator called `admin@demo.local` whose password is published in this
+   * repository, plus a demo catalog.
+   *
+   * **It refuses in production.** `AUTO_SEED` lives in a `.env` file, one line
+   * away from the settings an operator is editing anyway, and a shop that sets
+   * it to `true` on a live install would be handed a working account with known
+   * credentials. That is the same defect as the "Reset Data" button this phase
+   * already documents, arriving by a different route. Real installs create their
+   * administrator through the setup wizard.
+   *
+   * **It refuses a database that already has users.** Seeding is meant to be a
+   * first-boot convenience; running it again over a shop's own accounts is not
+   * a convenience.
+   *
+   * `force` bypasses the empty-database check only — for the demo profile, the
+   * "Reset Demo Data" action and the test fixtures, all of which deliberately
+   * reseed a database that already has rows. **It does not bypass the production
+   * refusal**, because there is no caller for which creating a publicly-known
+   * administrator on a live install is the right outcome.
+   */
+  async seed(force = false): Promise<void> {
+    if (config.nodeEnv === 'production') {
+      logger.warn(
+        'Refusing to seed a production database: the seed creates admin@demo.local with a ' +
+          'password published in this repository. Use the setup wizard to create the first ' +
+          'administrator.'
+      );
+      return;
+    }
+
+    if (!force) {
+      const existing = await this.userCount();
+      if (existing > 0) {
+        logger.info(`Database already has ${existing} user(s); skipping seed.`);
+        return;
+      }
+    }
+
     logger.info('Seeding database...');
 
     try {

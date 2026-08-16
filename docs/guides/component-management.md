@@ -122,8 +122,8 @@ docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml 
 docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml up -d
 
 # For production
-docker-compose -f docker-compose.yml -f environments/prod/docker-compose.prod.yml build
-docker-compose -f docker-compose.yml -f environments/prod/docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### Security
