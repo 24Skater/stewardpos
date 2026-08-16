@@ -3563,6 +3563,15 @@ export class SQLiteAdapter {
   //
   // `FILTER (WHERE ...)` is avoided in favour of `SUM(CASE ...)`, as elsewhere
   // in this adapter.
+  //
+  // **Every money aggregate is `ROUND(..., 2)`, and that is not cosmetic.**
+  // Money is `DECIMAL(10, 2)` in Postgres, where a SUM is exact, but `REAL` here
+  // — IEEE floating point. Summing $15.12 and $5.00 in REAL yields
+  // 20.119999999999997, which reaches a report card as "$20.119999999999997"
+  // and, worse, fails to reconcile against the same figures from Postgres. The
+  // column type is the constraint; re-rounding each sum to the cent is what
+  // restores the DECIMAL semantics the rest of the system assumes. Found by
+  // executing these queries in CI, which is the entire reason this spec exists.
 
   async getSalesTotals(range: ReportRange): Promise<SalesTotals> {
     try {
@@ -3570,10 +3579,10 @@ export class SQLiteAdapter {
         .prepare(
           `SELECT
              COUNT(*) as order_count,
-             COALESCE(SUM(subtotal), 0) as gross,
-             COALESCE(SUM(discount_total), 0) as discounts,
-             COALESCE(SUM(tax_total), 0) as tax,
-             COALESCE(SUM(total), 0) as net
+             ROUND(COALESCE(SUM(subtotal), 0), 2) as gross,
+             ROUND(COALESCE(SUM(discount_total), 0), 2) as discounts,
+             ROUND(COALESCE(SUM(tax_total), 0), 2) as tax,
+             ROUND(COALESCE(SUM(total), 0), 2) as net
            FROM orders
            WHERE created_at >= ? AND created_at <= ?`
         )
@@ -3599,8 +3608,8 @@ export class SQLiteAdapter {
           `SELECT
              strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') as date,
              COUNT(*) as order_count,
-             COALESCE(SUM(subtotal), 0) as gross,
-             COALESCE(SUM(total), 0) as net
+             ROUND(COALESCE(SUM(subtotal), 0), 2) as gross,
+             ROUND(COALESCE(SUM(total), 0), 2) as net
            FROM orders
            WHERE created_at >= ? AND created_at <= ?
            GROUP BY 1
@@ -3628,7 +3637,7 @@ export class SQLiteAdapter {
              oi.product_id as product_id,
              MIN(oi.name_snapshot) as name,
              COALESCE(SUM(oi.quantity), 0) as quantity,
-             COALESCE(SUM(oi.line_total), 0) as revenue
+             ROUND(COALESCE(SUM(oi.line_total), 0), 2) as revenue
            FROM order_items oi
            JOIN orders o ON o.id = oi.order_id
            WHERE o.created_at >= ? AND o.created_at <= ?
@@ -3656,7 +3665,7 @@ export class SQLiteAdapter {
       // twice; `?` is positional, so the values are passed twice to match.
       const rows = this.db
         .prepare(
-          `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
+          `SELECT method, COUNT(*) as count, ROUND(COALESCE(SUM(amount), 0), 2) as amount
            FROM (
              SELECT LOWER(p.method) as method, p.amount as amount
              FROM payments p
@@ -3690,9 +3699,9 @@ export class SQLiteAdapter {
         .prepare(
           `SELECT
              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as return_count,
-             COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as refunded,
+             ROUND(COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0), 2) as refunded,
              SUM(CASE WHEN status IN ('pending', 'approved') THEN 1 ELSE 0 END) as pending_count,
-             COALESCE(SUM(CASE WHEN status IN ('pending', 'approved') THEN total ELSE 0 END), 0) as pending_amount
+             ROUND(COALESCE(SUM(CASE WHEN status IN ('pending', 'approved') THEN total ELSE 0 END), 0), 2) as pending_amount
            FROM returns
            WHERE created_at >= ? AND created_at <= ?`
         )
@@ -3717,7 +3726,7 @@ export class SQLiteAdapter {
           `SELECT
              COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
              COUNT(*) as return_count,
-             COALESCE(SUM(total), 0) as refunded
+             ROUND(COALESCE(SUM(total), 0), 2) as refunded
            FROM returns
            WHERE status = 'completed'
              AND created_at >= ? AND created_at <= ?
