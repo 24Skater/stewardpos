@@ -468,24 +468,62 @@ router.put('/settings', requirePermission('settings', 'write'), async (req: Auth
 // ===== Audit Logs =====
 
 /**
+ * The audit trail's filters.
+ *
+ * Everything arrives as a string on the query, so the numbers are coerced here
+ * and the failure is a 400. `limit` is capped rather than refused: a caller
+ * asking for everything gets a page, not an error, and the server does not have
+ * to hold an unbounded result set to answer.
+ */
+const AUDIT_LIMIT_DEFAULT = 50;
+const AUDIT_LIMIT_MAX = 200;
+
+const auditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(AUDIT_LIMIT_MAX).default(AUDIT_LIMIT_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0),
+  userId: z.string().min(1).optional(),
+  entity: z.string().min(1).optional(),
+  action: z.string().min(1).optional(),
+  /** Epoch milliseconds, both ends inclusive. */
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
+});
+
+/**
  * GET /api/admin/audit
- * Get audit logs
+ *
+ * Filterable by who, what, which action and when, and paginated with a real
+ * total. The screen above this used to fetch the newest hundred rows and filter
+ * them in the browser, which meant its search box searched one page of the log
+ * while looking like it searched the log.
  */
 router.get('/audit', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const adapter = db.getAdapter();
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-    const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
-    const userId = req.query.userId as string | undefined;
+    const query = auditQuerySchema.parse(req.query);
 
-    const logs = await adapter.getAuditLogs({ limit, offset, userId });
+    if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+      throw new ValidationError('The start of the range must not be after its end');
+    }
+
+    const { logs, total } = await db.getAdapter().getAuditLogs(query);
 
     res.json({
       success: true,
       data: logs,
+      meta: {
+        total,
+        limit: query.limit,
+        offset: query.offset,
+        page: Math.floor(query.offset / query.limit) + 1,
+        hasMore: query.offset + logs.length < total,
+      },
     });
   } catch (error) {
-    next(error);
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors[0].message));
+    } else {
+      next(error);
+    }
   }
 });
 

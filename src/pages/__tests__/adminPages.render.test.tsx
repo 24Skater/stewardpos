@@ -48,7 +48,57 @@ const EMPTY_SHAPES: Record<string, unknown> = {
     totalDiscountCount: 0,
     totalDiscountAmount: 0,
   },
-  'apiKeysApi.reference': { scopes: {}, errors: {}, endpoints: [] },
+  // The API reference is static content the server always returns in full; the
+  // page reads `authentication.header` from it rather than restating the header
+  // itself, so an `{}` stub would model a response the server never sends.
+  'apiKeysApi.reference': {
+    version: '1.0.0',
+    baseUrl: '/api',
+    authentication: {
+      type: 'API key',
+      header: 'X-API-Key',
+      format: '<api_key>',
+      example: 'X-API-Key: spk_abc12345_...',
+    },
+    scopes: {},
+    rateLimiting: {},
+    errors: {},
+    endpoints: [],
+    examples: {},
+  },
+  // `getList` endpoints resolve to `{ data, meta }`, not to a bare array. The
+  // generic list stub would hand the page an `undefined` payload — a shape the
+  // server never sends, so the resulting crash would say nothing about the page.
+  'adminApi.audit': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
+  // The reporting endpoints COALESCE every aggregate, so an empty range comes
+  // back as a complete object of zeroes rather than as `{}`. Stubbing them bare
+  // would crash the report cards on `undefined.toLocaleString` and prove only
+  // that the stub was wrong.
+  'reportsApi.salesSummary': {
+    from: 0,
+    to: 0,
+    orderCount: 0,
+    gross: 0,
+    discounts: 0,
+    tax: 0,
+    net: 0,
+    refunds: 0,
+    netAfterRefunds: 0,
+    avgTicket: 0,
+    pendingRefunds: 0,
+  },
+  'reportsApi.salesByDay': [],
+  'reportsApi.topProducts': [],
+  'reportsApi.paymentMix': [],
+  'reportsApi.returnsSummary': {
+    from: 0,
+    to: 0,
+    returnCount: 0,
+    refunded: 0,
+    pendingCount: 0,
+    pendingAmount: 0,
+    byReason: [],
+  },
 };
 
 /**

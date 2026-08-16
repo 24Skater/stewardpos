@@ -104,13 +104,27 @@ describe('typed API SDK', () => {
     expect(lastCall()[0]).toBe('/api/receipts?limit=1');
   });
 
-  it('returns a bare array for a list endpoint that sends no meta', async () => {
+  it('carries the audit total, which is what makes the log pageable', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      mockResponse({ success: true, data: [{ id: 'a1' }], meta: { total: 137, limit: 1, offset: 0 } })
+    );
+
+    const { data, meta } = await adminApi.audit({ limit: 1, entity: 'product' });
+
+    expect(data).toHaveLength(1);
+    expect(meta?.total).toBe(137);
+    expect(lastCall()[0]).toBe('/api/admin/audit?limit=1&entity=product');
+  });
+
+  it('still yields the page when a list endpoint sends no meta', async () => {
+    // `meta` is optional on the envelope; a caller must get the rows either way
+    // rather than an undefined payload.
     vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ success: true, data: [{ id: 'a1' }] }));
 
-    const logs = await adminApi.audit({ limit: 1 });
+    const { data, meta } = await adminApi.audit({ limit: 1 });
 
-    expect(logs).toHaveLength(1);
-    expect(lastCall()[0]).toBe('/api/admin/audit?limit=1');
+    expect(data).toHaveLength(1);
+    expect(meta).toBeUndefined();
   });
 
   it('sends multipart uploads without a hand-set Content-Type', async () => {

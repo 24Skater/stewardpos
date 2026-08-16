@@ -26,9 +26,16 @@ import {
   ordersApi,
   productsApi,
   quotesApi,
+  reportsApi,
   returnsApi,
   servicesApi,
 } from '@/lib/api';
+import {
+  exportSalesSummaryToCSV,
+  exportSalesSummaryToExcel,
+  exportSalesSummaryToPDF,
+} from '@/lib/export-sales-summary';
+import { useSettings } from '@/hooks/queries';
 import { 
   exportToCSV,
   exportToExcel,
@@ -127,6 +134,9 @@ interface Return {
 }
 
 export default function AdminExports() {
+  // Store identity for the PDF header: an exported report that does not say
+  // which shop it came from is not much use once it leaves the building.
+  const { data: settings } = useSettings();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
@@ -193,6 +203,37 @@ export default function AdminExports() {
       const filteredQuotes = filterByDateRange(quotes);
       
       switch (reportType) {
+        case 'sales-summary': {
+          // Fetched at export time for the range currently on screen, rather
+          // than aggregated from the loaded orders. That is the whole point of
+          // this report: it is the same payload the Reports page renders, so
+          // the exported totals are the screen's totals by construction and not
+          // by two implementations happening to agree.
+          const range = { from: startDate || undefined, to: endDate || undefined };
+          const [summary, byDay, topProducts, paymentMix, returnsSummary] = await Promise.all([
+            reportsApi.salesSummary(range),
+            reportsApi.salesByDay(range),
+            reportsApi.topProducts({ ...range, limit: 100 }),
+            reportsApi.paymentMix(range),
+            reportsApi.returnsSummary(range),
+          ]);
+
+          const payload = { summary, byDay, topProducts, paymentMix, returns: returnsSummary };
+
+          if (format === 'pdf') {
+            await exportSalesSummaryToPDF(payload, {
+              storeName: settings?.storeName,
+              storeEmail: settings?.storeEmail,
+              storePhone: settings?.storePhone,
+            });
+          } else if (format === 'excel') {
+            await exportSalesSummaryToExcel(payload);
+          } else {
+            exportSalesSummaryToCSV(payload);
+          }
+          break;
+        }
+
         case 'sales-mom': {
           const data = generateSalesMoMReport(filteredOrders);
           if (format === 'pdf') {
@@ -541,6 +582,23 @@ export default function AdminExports() {
             {/* Sales Reports Tab */}
             <TabsContent value="sales" className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
+                <Card className="md:col-span-2 border-primary/40">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-primary" />
+                      Sales Summary
+                    </CardTitle>
+                    <CardDescription>
+                      Gross, discounts, tax, net, refunds, daily takings, top products and tender
+                      split — the same figures the Reports screen shows, taken from the same
+                      server-computed source so the paper and the screen cannot disagree.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="sales-summary" formats={['pdf', 'excel', 'csv']} />
+                  </CardContent>
+                </Card>
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
