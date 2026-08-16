@@ -52,7 +52,18 @@ services:
     restart: unless-stopped
     environment:
       # Server
-      NODE_ENV: ${NODE_ENV:-production}
+      # Development, because that is what this stack is.
+      #
+      # It defaulted to `production`, which was never true of it: the CORS
+      # origins are localhost, every port is published to the host, and the
+      # database password and JWT secret are placeholders committed to this
+      # repository. The label only became load-bearing once production started
+      # meaning something — the backend now refuses to boot on those
+      # placeholders, and the seeder refuses to create the demo administrator —
+      # at which point this file could not start its own stack.
+      #
+      # Set NODE_ENV=production here only if you have also set real secrets.
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 3001
       HOST: 0.0.0.0
       

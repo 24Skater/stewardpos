@@ -29,11 +29,38 @@ const transports: winston.transport[] = [
   }),
 ];
 
+/**
+ * The rotation settings for the log file.
+ *
+ * Exported so the numbers can be asserted without writing files. The transport
+ * previously had none: `/app/logs/app.log` sat on a Docker volume and grew for
+ * the life of the install. A shop writing a line per request fills a disk
+ * eventually, and it happens months after anything changed, which makes it a
+ * miserable thing to diagnose.
+ *
+ * `tailable` keeps the newest entries in the file everyone tails — without it
+ * winston rotates by appending an index to the *new* file, so `app.log` becomes
+ * the oldest one and `docker compose logs`-style habits show stale lines.
+ */
+export function fileTransportOptions(): {
+  filename: string;
+  maxsize: number;
+  maxFiles: number;
+  tailable: boolean;
+} {
+  return {
+    filename: config.logging.file as string,
+    maxsize: config.logging.maxSizeMb * 1024 * 1024,
+    maxFiles: config.logging.maxFiles,
+    tailable: true,
+  };
+}
+
 // Add file transport if configured
 if (config.logging.file) {
   transports.push(
     new winston.transports.File({
-      filename: config.logging.file,
+      ...fileTransportOptions(),
       format: logFormat,
     })
   );

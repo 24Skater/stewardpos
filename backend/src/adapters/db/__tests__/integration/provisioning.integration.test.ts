@@ -179,7 +179,10 @@ describe('seeding twice', () => {
     const { Seeder } = await import('../../../../services/seeder');
     const second = new Seeder();
     closables.push(second);
-    await second.seed();
+    // Forced, so this still tests what it was written to test. Without it the
+    // seeder would simply decline — the database is no longer empty — and the
+    // assertion below would pass without the inserts having run twice.
+    await second.seed(true);
 
     const { rows } = await db.query('SELECT COUNT(*)::int AS count FROM users WHERE email = $1', [
       'admin@demo.local',

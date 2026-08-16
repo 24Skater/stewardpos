@@ -1,64 +1,31 @@
-# Production Environment
+# Production
 
-This directory contains the production environment configuration.
+**The production stack is not here.** It is `docker-compose.prod.yml` in the
+repository root, and the guide is
+[`docs/guides/install-vps.md`](../../docs/guides/install-vps.md):
 
-## Files
-
-- `docker-compose.prod.yml` - Docker Compose overrides for production
-- `deploy-prod.sh` - Linux/Mac deployment script
-- `deploy-prod.ps1` - Windows PowerShell deployment script
-- `.env.prod` - Environment variables (create from `.env.prod.example` in root)
-
-## Quick Start
-
-1. Copy environment template from root:
-   ```bash
-   cp ../.env.prod.example .env.prod
-   ```
-
-2. **CRITICAL**: Edit `.env.prod` with STRONG, UNIQUE values:
-   - Generate JWT_SECRET: `openssl rand -base64 32`
-   - Use strong passwords (min 32 characters)
-   - Set CORS_ORIGIN to your production domain
-   - Configure email/SMS providers
-   - Set up external storage (S3, Azure, etc.)
-
-3. Deploy:
-   ```bash
-   # Linux/Mac
-   ./deploy-prod.sh
-   
-   # Windows
-   .\deploy-prod.ps1
-   ```
-
-## Security Checklist
-
-- [ ] JWT_SECRET is 32+ characters
-- [ ] All passwords are strong (32+ characters)
-- [ ] CORS_ORIGIN set to production domain only
-- [ ] AUTO_SEED=false
-- [ ] LOG_LEVEL=warn
-- [ ] Email provider configured
-- [ ] External storage configured
-- [ ] SSL/TLS certificates configured
-- [ ] Backups configured
-- [ ] Monitoring set up
-
-## Usage
-
-Deploy from this directory:
 ```bash
-docker-compose -f ../../docker-compose.yml -f docker-compose.prod.yml up -d
+cp .env.prod.example .env      # from the repository root
+# fill it in
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Or use the deployment scripts which handle this automatically.
+## Why this directory is nearly empty
 
-## Important Notes
+It used to hold a `docker-compose.prod.yml` that *overlaid* the development
+stack, and that arrangement was the problem rather than a detail of it.
 
-- **Never** commit `.env.prod` to version control
-- Use managed database services in production (AWS RDS, Azure Database, etc.)
-- Use external S3-compatible storage (AWS S3, DigitalOcean Spaces, etc.)
-- Set up proper monitoring and alerting
-- Configure regular backups
+An overlay inherits everything it does not override, and the base stack
+publishes Postgres, MinIO and the API on host ports because that is what a
+developer wants. The prod overlay overrode some of those and not others, so
+following this directory's instructions put a database on the public internet,
+listening on 5432, behind whatever password the operator had set. It also had no
+TLS at all.
 
+The stack in the root is standalone for exactly that reason: it cannot inherit a
+mistake. Only Caddy publishes ports, it terminates TLS with automatic
+certificates, and the backend refuses to start on the placeholder secrets this
+repository ships.
+
+`environments/dev/` and `environments/qa/` are still overlays, which is fine —
+neither is exposed to the internet.

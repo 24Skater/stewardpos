@@ -54,7 +54,7 @@ This demo setup is **NOT** suitable for production. For production deployments, 
 
 - **Development**: See `environments/dev/`
 - **QA/Staging**: See `environments/qa/`
-- **Production**: See `environments/prod/`
+- **Production**: `docker-compose.prod.yml` in the repository root — see [install-vps.md](./install-vps.md)
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for full deployment guide.
 

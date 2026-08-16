@@ -115,3 +115,18 @@ The thing worth testing is not that one org sees its own rows. It is that it
 does **not** see another's. Any test for org scoping needs at least two orgs
 with overlapping data, asserting on absence as well as presence — a single-org
 test passes just as happily against code that ignores `org_id` entirely.
+
+---
+
+## Verified against the schema
+
+The table list above was checked against `backend/migrations/postgres/014_org_tenancy.sql`
+on 2026-08-16: twenty tables, each gaining a nullable `org_id` and an index, plus
+the fixed default organisation. It matches.
+
+What has not changed is the important part — **no query filters on `org_id` yet**.
+The column is the foundation, not the feature. See the ordering above before
+assuming any of this is enforced.
+
+For running the single-tenant install this describes, see
+[install-vps.md](./install-vps.md).
