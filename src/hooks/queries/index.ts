@@ -8,3 +8,4 @@ export {
 } from './useProducts';
 export { useCreateOrder, useOrder, useOrders } from './useOrders';
 export { useSettings, useUpdateSettings } from './useSettings';
+export { useSalesReport } from './useReports';

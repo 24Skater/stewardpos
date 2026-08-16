@@ -21,6 +21,7 @@ export { productsApi } from './products';
 export { categoriesApi } from './categories';
 export { quotesApi } from './quotes';
 export { receiptsApi } from './receipts';
+export { reportsApi } from './reports';
 export { returnsApi } from './returns';
 export { servicesApi } from './services';
 export { storeCreditsApi } from './storeCredits';
@@ -30,6 +31,7 @@ export { uploadApi } from './upload';
 
 export type { CreateUserRequest, UpdateUserRequest, RoleInput, AuditQuery } from './admin';
 export type {
+  ApiAuthentication,
   ApiDocs,
   ApiEndpointGroup,
   ApiKey,
@@ -56,6 +58,16 @@ export type {
 } from './components';
 export type { DrawerSession, DrawerSessionStatus } from './drawer';
 export type { ReceiptEmailLog, ReceiptSearchQuery } from './receipts';
+export type {
+  PaymentMix,
+  ReportRangeQuery,
+  ReturnsByReason,
+  ReturnsSummary,
+  SalesByDay,
+  SalesSummary,
+  TopProduct,
+  TopProductsQuery,
+} from './reports';
 export type {
   CreateReturnItem,
   CreateReturnRequest,

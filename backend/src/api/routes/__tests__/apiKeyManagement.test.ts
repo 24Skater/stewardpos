@@ -196,3 +196,38 @@ describe('who may manage keys', () => {
     expect((await request(app).get(BASE)).status).toBe(401);
   });
 });
+
+describe('the published reference', () => {
+  it('names the header that actually authenticates a key', async () => {
+    // It said `Authorization: Bearer`, which is how a *session* authenticates —
+    // the middleware reads keys from `X-API-Key` and parses a Bearer value as a
+    // JWT. An integrator following the reference got a 401 and no indication
+    // that the header was the problem. This is what stops it drifting back.
+    const response = await request(app).get(`${BASE}/docs/reference`).set(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.authentication.header).toBe('X-API-Key');
+    expect(response.body.data.authentication.example).toMatch(/^X-API-Key:/);
+  });
+
+  it('does not promise a per-key rate limit, because there is not one', async () => {
+    // The limiter in front of /api keys on the caller's address and never sees
+    // which key was presented; sizing retries against a per-key budget would be
+    // sizing them against a limit that does not exist.
+    const response = await request(app).get(`${BASE}/docs/reference`).set(auth());
+
+    expect(response.body.data.rateLimiting.description).not.toMatch(/per API key/i);
+    expect(response.body.data.rateLimiting.description).toMatch(/per client address/i);
+  });
+
+  it('lists the scopes a key can be granted', async () => {
+    const response = await request(app).get(`${BASE}/docs/reference`).set(auth());
+
+    expect(Object.keys(response.body.data.scopes).sort()).toEqual([
+      'admin',
+      'delete',
+      'read',
+      'write',
+    ]);
+  });
+});

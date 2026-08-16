@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { useQueryClient } from '@tanstack/react-query';
 import { adminApi, terminalApi } from '@/lib/api';
+import { queryKeys } from '@/hooks/queries';
 import type {
   PaymentMethodsConfig,
   Settings,
@@ -16,6 +18,7 @@ import type {
 import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import BrandingSettings from '@/components/settings/BrandingSettings';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -49,7 +52,7 @@ const timezones = [
 export default function AdminSettings() {
   const [settings, setSettings] = useState<Settings>({
     taxRateDefault: 0.08,
-    storeName: 'Persona Store',
+    storeName: '',
     storeEmail: '',
     storePhone: '',
     timezone: 'UTC',
@@ -77,6 +80,7 @@ export default function AdminSettings() {
   const [readers, setReaders] = useState<Array<{ id: string; label: string; status: string }>>([]);
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     loadSettings();
@@ -130,7 +134,11 @@ export default function AdminSettings() {
           terminalCredentials: terminalCreds,
         },
       };
-      const response = await adminApi.settings.update(payload);
+      await adminApi.settings.update(payload);
+      // The brand colour and favicon are applied from the shared settings query,
+      // so without this a store saves a new colour and sees the old one until it
+      // reloads — which reads as the setting not working.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
       toast({ title: 'Settings saved successfully' });
     } catch (error: unknown) {
       toast({
@@ -230,10 +238,19 @@ export default function AdminSettings() {
           <Tabs defaultValue="general" className="space-y-4">
             <TabsList>
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="branding">Branding</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="auth">Authentication</TabsTrigger>
               <TabsTrigger value="database">Database</TabsTrigger>
             </TabsList>
+
+            {/* Branding: colour, marks, and receipt wording. */}
+            <TabsContent value="branding" className="space-y-4">
+              <BrandingSettings
+                settings={settings}
+                onChange={(patch) => setSettings({ ...settings, ...patch })}
+              />
+            </TabsContent>
 
             {/* General Settings */}
             <TabsContent value="general" className="space-y-4">

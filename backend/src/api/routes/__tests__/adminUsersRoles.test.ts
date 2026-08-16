@@ -87,7 +87,7 @@ beforeEach(() => {
   createRole.mockResolvedValue({ id: 'r2', name: 'Bench' });
   updateRole.mockResolvedValue({ id: 'r1', name: 'Renamed' });
   deleteRole.mockResolvedValue(true);
-  getAuditLogs.mockResolvedValue([{ id: 'a1', action: 'create' }]);
+  getAuditLogs.mockResolvedValue({ logs: [{ id: 'a1', action: 'create' }], total: 1 });
   createAuditLog.mockResolvedValue({});
 });
 
