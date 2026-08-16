@@ -256,6 +256,29 @@ Logs were checked for what they carry: method, path, status, duration, client IP
 user agent, and errors with stack traces. No request bodies, passwords, tokens
 or API keys. A customer email appears only where a receipt was sent to it.
 
+### The guards found a mislabelled environment, via CI
+
+Worth recording, because the failure was instructive.
+
+The secret check and the seeder guard are both correct, and between them they
+refused to start **this repository's own development stack**. CI caught it in
+the E2E job, which could no longer sign in as `admin@demo.local`.
+
+The cause was that `docker-compose.yml` defaulted `NODE_ENV` to `production`
+while also defaulting `JWT_SECRET` to `CHANGE_THIS_MIN_32_CHARACTERS_SECRET` and
+`DB_PASSWORD` to `stewardpos_secure_password_123`. A stack whose CORS origins are
+localhost, whose every port is published to the host and whose credentials are
+committed to this repository is not production; the label had simply never meant
+anything, so nothing had contradicted it. `docker-compose.demo.yml` said the same
+while shipping a published administrator and asking to be seeded.
+
+Both now say `development`, which is what they are. The QA overlay keeps
+`production` and is expected to carry real secrets.
+
+`config/__tests__/composeDefaults.test.ts` pins the relationship in both
+directions: every self-starting compose file must survive its own defaults, and
+the production file must default no secret at all.
+
 ### The environment reference was documenting a fixed defect
 
 `docs/reference/environment.md` still listed the production rate limit as
@@ -282,7 +305,7 @@ with an index at `docs/guides/README.md`:
 
 ```
 backend   typecheck OK   lint 0 errors (176 `any` warnings, the known backlog)
-          748 passed | 32 skipped      build OK
+          757 passed | 32 skipped      build OK
           271 integration passed against a real Postgres
 frontend  typecheck OK   lint 0 errors
           255 passed                   build OK
