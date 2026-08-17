@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS locations (
   address TEXT, city VARCHAR(100), state VARCHAR(50), zip VARCHAR(20),
   timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
   status VARCHAR(20) NOT NULL DEFAULT 'active',   -- active | retired
-  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
-  updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_org_slug ON locations(org_id, slug);
 
@@ -53,10 +53,10 @@ CREATE TABLE IF NOT EXISTS registers (
   terminal_provider VARCHAR(30),                    -- null | square | clover | stripe
   terminal_device_id VARCHAR(255),                  -- per-register reader binding
   status VARCHAR(20) NOT NULL DEFAULT 'pending',    -- pending | active | disabled | retired
-  last_seen_at BIGINT,
+  last_seen_at TIMESTAMP,
   created_by UUID REFERENCES users(id),
-  created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
-  updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_registers_loc_number
   ON registers(location_id, register_number);
