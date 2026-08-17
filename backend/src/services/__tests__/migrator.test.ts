@@ -172,7 +172,7 @@ describeSqlite('014_org_tenancy', () => {
   });
 });
 
-describeSqlite('migration 015: locations and registers', () => {
+describeSqlite('015_registers', () => {
   it('creates the locations and registers tables', () => {
     const present = tables();
     expect(present).toContain('locations');
@@ -191,20 +191,62 @@ describeSqlite('migration 015: locations and registers', () => {
     }
   });
 
+  it('defaults every register to a fully capable, pending till', () => {
+    // A name-only roll-call would still pass if someone "fixed"
+    // has_cash_drawer to DEFAULT FALSE while chasing an unrelated bug — every
+    // new register would then lose its drawer and refuse cash tender with
+    // this suite still green. These defaults are the security posture of a
+    // register, so they're pinned directly, the same way 013 and 014 pin
+    // nullability rather than just column presence.
+    const info = (db.prepare('PRAGMA table_info(registers)').all() as Array<{
+      name: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>);
+    const column = (name: string) => info.find((c) => c.name === name)!;
+
+    for (const flag of ['has_cash_drawer', 'accepts_cash', 'can_refund']) {
+      const col = column(flag);
+      expect(col.notnull, `${flag} is nullable`).toBe(1);
+      expect(col.dflt_value, `${flag} does not default to true`).toBe('1');
+    }
+
+    const noSale = column('can_open_drawer_no_sale');
+    expect(noSale.notnull, 'can_open_drawer_no_sale is nullable').toBe(1);
+    expect(noSale.dflt_value, 'can_open_drawer_no_sale does not default to false').toBe('0');
+
+    const idle = column('idle_lock_seconds');
+    expect(idle.notnull, 'idle_lock_seconds is nullable').toBe(1);
+    expect(idle.dflt_value, 'idle_lock_seconds default drifted').toBe('300');
+
+    const status = column('status');
+    expect(status.notnull, 'status is nullable').toBe(1);
+    expect(status.dflt_value, 'status does not default to pending').toBe("'pending'");
+
+    const type = column('type');
+    expect(type.notnull, 'type is nullable').toBe(1);
+    expect(type.dflt_value, 'type does not default to fixed').toBe("'fixed'");
+  });
+
   it('backfills one location and one register so existing history is attributable', () => {
     const loc = db.prepare("SELECT * FROM locations WHERE slug = 'main'").get() as
-      { id: string; timezone: string } | undefined;
+      { id: string; org_id: string; timezone: string } | undefined;
     expect(loc).toBeDefined();
     expect(loc!.timezone).toBe('UTC');
+    // The default org, explicitly — org_id is the column most likely to go
+    // silently NULL now that it's NOT NULL only by migration-time backfill,
+    // not by a schema default.
+    expect(loc!.org_id).toBe('00000000-0000-0000-0000-000000000001');
 
     const regs = db.prepare('SELECT * FROM registers').all() as Array<{
-      display_code: string; register_number: number; status: string; location_id: string;
+      display_code: string; register_number: number; status: string; location_id: string; org_id: string;
     }>;
     expect(regs).toHaveLength(1);
     expect(regs[0].display_code).toBe('MAIN-01');
     expect(regs[0].register_number).toBe(1);
     expect(regs[0].status).toBe('active');
     expect(regs[0].location_id).toBe(loc!.id);
+    expect(regs[0].org_id).toBe('00000000-0000-0000-0000-000000000001');
   });
 
   it('defaults org policy to a 6-digit PIN and an unlimited register cap', () => {
@@ -215,12 +257,34 @@ describeSqlite('migration 015: locations and registers', () => {
   });
 
   it('declares the uniqueness the estate depends on', () => {
-    const idx = (db.prepare(
-      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('registers','locations')"
-    ).all() as Array<{ name: string }>).map((r) => r.name);
-    expect(idx).toContain('idx_registers_loc_number');
-    expect(idx).toContain('idx_registers_display_code');
-    expect(idx).toContain('idx_locations_org_slug');
+    // Reading names off sqlite_master only proves an index exists under that
+    // name — it would stay green if someone edited
+    // `CREATE UNIQUE INDEX idx_registers_display_code` down to a plain
+    // `CREATE INDEX`, or reordered its columns to (display_code, org_id).
+    // PRAGMA index_list carries the `unique` flag and PRAGMA index_info
+    // carries column order, which is what the uniqueness this migration
+    // promises actually rests on.
+    const uniqueColumns = (table: string, indexName: string): string[] => {
+      const list = db.prepare(`PRAGMA index_list(${table})`).all() as Array<{
+        name: string;
+        unique: number;
+      }>;
+      const entry = list.find((i) => i.name === indexName);
+      expect(entry, `${indexName} does not exist on ${table}`).toBeTruthy();
+      expect(entry!.unique, `${indexName} is not a unique index`).toBe(1);
+
+      return (db.prepare(`PRAGMA index_info(${indexName})`).all() as Array<{ name: string }>).map(
+        (c) => c.name
+      );
+    };
+
+    expect(uniqueColumns('registers', 'idx_registers_loc_number')).toEqual([
+      'location_id', 'register_number',
+    ]);
+    expect(uniqueColumns('registers', 'idx_registers_display_code')).toEqual([
+      'org_id', 'display_code',
+    ]);
+    expect(uniqueColumns('locations', 'idx_locations_org_slug')).toEqual(['org_id', 'slug']);
   });
 });
 
