@@ -4804,4 +4804,28 @@ export class PostgresAdapter {
     }
   }
 
+  /**
+   * The org-level register policy: how many registers it may enrol, and how
+   * long a cashier's PIN must be. Lives on `organizations` — see migration
+   * 015 — so this is a narrow projection of that row rather than a new table.
+   */
+  async getOrgPolicy(orgId: string): Promise<{ maxRegisters: number | null; pinLength: number } | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT max_registers, pin_length FROM organizations WHERE id = $1',
+        [orgId]
+      );
+      if (result.rows.length === 0) return null;
+
+      const row = result.rows[0];
+      return {
+        maxRegisters: row.max_registers == null ? null : Number(row.max_registers),
+        pinLength: Number(row.pin_length),
+      };
+    } catch (error) {
+      logger.error('Error getting org policy:', error);
+      throw new DatabaseError('Failed to get organization policy');
+    }
+  }
+
 }
