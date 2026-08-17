@@ -201,9 +201,26 @@ Receipts print `display_code` and the cashier's name. The receipt branding surfa
 
 ### 3.2 Migration 015 — `locations` and `registers`
 
-Written here in full because it is the foundation every later task depends on. SQLite shown; the
-Postgres counterpart is semantically identical with `TEXT`→`TEXT`/`UUID`, `INTEGER` epoch→`BIGINT`,
-`REAL`→`DECIMAL(10,2)`, and `INTEGER 0/1`→`BOOLEAN`, following the existing pairs.
+Written here in full because it is the foundation every later task depends on. SQLite shown.
+
+**Postgres conversion rules — verified against the existing pairs, follow exactly:**
+
+| SQLite | Postgres | Why |
+|---|---|---|
+| `TEXT` id / FK | `UUID`, `PRIMARY KEY DEFAULT uuid_generate_v4()` | Matches `001` onward |
+| `TEXT` short string | `VARCHAR(n)` | Matches existing column sizing |
+| `INTEGER` epoch-ms timestamp | **`TIMESTAMP ... DEFAULT CURRENT_TIMESTAMP`** — *not* `BIGINT` | See warning below |
+| `REAL` money | `DECIMAL(10,2)` | House money rule |
+| `INTEGER 0/1` flag | `BOOLEAN ... DEFAULT TRUE/FALSE` | Matches existing flags |
+| `INSERT OR IGNORE` | `INSERT ... ON CONFLICT (id) DO NOTHING` | Matches existing backfills |
+
+> ⚠️ **Never use `BIGINT` for a timestamp on the Postgres side.** SQLite stores epoch-ms integers and
+> Postgres stores `TIMESTAMP`; the adapter reconciles them at the boundary with
+> `new Date(row.created_at).getTime()` (`PostgresAdapter.ts:77,123,377,…` — the pattern is universal).
+> `pg` returns `int8` as a **JavaScript string**, so a `BIGINT` column makes that call
+> `new Date("1755400000000")` → `Invalid Date`, silently. Every timestamp column in this plan —
+> `created_at`, `updated_at`, `last_seen_at`, `enrolled_at`, `revoked_at`, `started_at`, `ended_at`,
+> `pin_set_at`, `pin_locked_until` — is `TIMESTAMP` in Postgres and `INTEGER` in SQLite.
 
 ```sql
 -- backend/migrations/sqlite/015_registers.sql
@@ -486,12 +503,11 @@ behaviour change to the POS yet. Safe to ship alone.
 
 - [ ] **Step 3: Write both migration files**
 
-  Create `backend/migrations/sqlite/015_registers.sql` exactly as §3.2. Create
-  `backend/migrations/postgres/015_registers.sql` as its counterpart: `INTEGER` epoch columns become
-  `BIGINT`, `INTEGER NOT NULL DEFAULT 1` booleans become `BOOLEAN NOT NULL DEFAULT TRUE`,
-  `strftime('%s','now') * 1000` becomes `(EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT`, and
-  `INSERT OR IGNORE` becomes `INSERT ... ON CONFLICT DO NOTHING`. Head both files with the
-  cross-reference comment the existing pairs use.
+  Create `backend/migrations/sqlite/015_registers.sql` exactly as §3.2, and
+  `backend/migrations/postgres/015_registers.sql` as its counterpart using the conversion table in
+  §3.2 — in particular timestamps are `TIMESTAMP DEFAULT CURRENT_TIMESTAMP`, **never** `BIGINT`
+  (read the warning; it is a silent `Invalid Date` bug, not a style preference). Head both files with
+  the cross-reference comment the existing pairs use.
 
 - [ ] **Step 4: Run both suites**
 
