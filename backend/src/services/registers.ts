@@ -55,12 +55,16 @@ export function slugify(name: string): string {
  * production with SQLSTATE 22001. The *slug* is truncated to make room —
  * never the number, which is the part that actually disambiguates the
  * register.
+ *
+ * Trailing hyphens are trimmed after the cut, not before: truncating
+ * `long-name-here` can land the slice directly on a separator, and
+ * `LONG-NAME--01` on a printed receipt reads as a typo rather than a code.
  */
 export function buildDisplayCode(locationSlug: string, registerNumber: number): string {
   const slug = slugify(locationSlug);
   const suffix = `-${String(registerNumber).padStart(2, '0')}`;
   const maxSlugLength = Math.max(0, MAX_DISPLAY_CODE_LENGTH - suffix.length);
-  const truncatedSlug = slug.slice(0, maxSlugLength);
+  const truncatedSlug = slug.slice(0, maxSlugLength).replace(LEADING_OR_TRAILING_HYPHENS, '');
 
   return `${truncatedSlug}${suffix}`.toUpperCase();
 }
