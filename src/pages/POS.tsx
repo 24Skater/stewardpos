@@ -937,9 +937,21 @@ export default function POS() {
               <SettingsIcon className="w-4 h-4 mr-1" />
               Settings
             </Button>
-            <Button 
-              variant="default" 
-              onClick={() => navigate('/login')}
+            {/*
+              `/admin`, not `/login`.
+
+              This sent every cashier to the sign-in page instead of the admin
+              dashboard — and because nothing had set `?next=`, signing in
+              returned them to the register. The button appeared to do nothing
+              except make you log in again.
+
+              Routing to the destination is also what makes the guard work:
+              `RequireAuth` sends an unauthenticated visitor to
+              `/login?next=/admin` and Login brings them back afterwards.
+            */}
+            <Button
+              variant="default"
+              onClick={() => navigate('/admin')}
               className="bg-primary hover:bg-primary/90"
               size="sm"
             >
