@@ -44,12 +44,19 @@ async function makeLocation(orgId: string, label: string): Promise<string> {
 }
 
 /**
- * Removes everything this file creates, ordered by dependency: registers
- * before locations (the composite FK), locations before organizations.
- * Matched on `mark` rather than a TRUNCATE, since this database is shared
- * with whatever else the suite is doing.
+ * Removes everything this file creates, ordered by dependency:
+ * cash_drawer_sessions and orders before registers (both FK to it),
+ * registers before locations (the composite FK), locations before
+ * organizations. Matched on `mark` rather than a TRUNCATE, since this
+ * database is shared with whatever else the suite is doing.
  */
 async function cleanup(): Promise<void> {
+  await h.query(
+    `DELETE FROM cash_drawer_sessions
+     WHERE register_id IN (SELECT id FROM registers WHERE display_code LIKE $1 OR name LIKE $1)`,
+    [`${mark}%`]
+  );
+  await h.query('DELETE FROM orders WHERE customer_email LIKE $1', [`${mark}%`]);
   await h.query('DELETE FROM registers WHERE display_code LIKE $1 OR name LIKE $1', [`${mark}%`]);
   await h.query('DELETE FROM locations WHERE slug LIKE $1', [`${mark}%`]);
   await h.query('DELETE FROM organizations WHERE slug LIKE $1', [`${mark}%`]);
@@ -472,5 +479,122 @@ describe('getRegisters', () => {
     const statusOnly = await h.adapter.getRegisters({ orgId: orgAId, status: 'active' });
     expect(statusOnly.length).toBe(2);
     expect(statusOnly.every((r) => r.status === 'active')).toBe(true);
+  });
+});
+
+/**
+ * Migration 016's constraints, against a real Postgres.
+ *
+ * 011's `idx_drawer_one_open` was a single global partial unique index on
+ * `(status)` — at most one open drawer in the *entire installation*,
+ * regardless of which register it was on. That made running more than one
+ * register at a time physically impossible: Register 2 could not open a
+ * drawer while Register 1 had one open. 016 replaces it with
+ * `idx_drawer_one_open_per_register` on `(register_id, status)`, which is
+ * the behaviour these tests exist to prove actually holds against a real
+ * database, not just a review of the SQL.
+ */
+describe('idx_drawer_one_open_per_register (016)', () => {
+  it('lets two different registers each hold an open drawer session simultaneously', async () => {
+    const regA = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} DrawerA`, register_number: 71,
+      display_code: `${mark}-DRAWER-01`,
+    });
+    const regB = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locASiblingId, name: `${mark} DrawerB`, register_number: 71,
+      display_code: `${mark}-DRAWER-02`,
+    });
+    if (typeof regA === 'string' || typeof regB === 'string') {
+      throw new Error(`expected register rows, got ${regA} / ${regB}`);
+    }
+
+    // Under 011's global constraint, the second of these two inserts would
+    // have been rejected outright. Under 016 they're on different
+    // registers, so both succeed.
+    await expect(
+      h.query(
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        [regA.id]
+      )
+    ).resolves.toBeDefined();
+
+    await expect(
+      h.query(
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        [regB.id]
+      )
+    ).resolves.toBeDefined();
+  });
+
+  it('still rejects a second open session on the SAME register', async () => {
+    const reg = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} DrawerSame`, register_number: 72,
+      display_code: `${mark}-DRAWER-03`,
+    });
+    if (typeof reg === 'string') throw new Error(`expected a register row, got ${reg}`);
+
+    await h.query(
+      `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+      [reg.id]
+    );
+
+    // Same register, still open: the per-register uniqueness must still
+    // fire, or two sessions could both claim to own the same till at once.
+    await expect(
+      h.query(
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        [reg.id]
+      )
+    ).rejects.toThrow();
+  });
+});
+
+/**
+ * The cross-tenant misattribution risk 016's backfill exists to avoid: a
+ * naive backfill pointing every historical row at the one register 015
+ * seeded would have attributed org B's entire order history to org A's
+ * (or the default org's) till.
+ *
+ * Migration 016 already ran against this database once, gated by
+ * `schema_migrations` — it cannot be re-run to prove this against orgAId /
+ * orgBId, which are created fresh per test and did not exist when it ran.
+ * What CAN be proven live is the invariant its backfill logic is supposed to
+ * guarantee: re-executing that exact backfill UPDATE (copied verbatim from
+ * `016_register_attribution.sql`, scoped with `AND id = $1` so it cannot
+ * touch any other row in this shared database) resolves a row to its OWN
+ * org's register — never the default org's, and never a sibling org's.
+ */
+describe('per-org register backfill invariant (016)', () => {
+  it("attributes a new organisation's order to its OWN register, not the default org's", async () => {
+    const register = await h.adapter.createRegister({
+      org_id: orgBId, location_id: locBId, name: `${mark} OrgBReg`, register_number: 81,
+      display_code: `${mark}-ORGB-01`,
+    });
+    if (typeof register === 'string') throw new Error(`expected a register row, got ${register}`);
+
+    const { rows } = await h.query(
+      `INSERT INTO orders (subtotal, total, payment_method, org_id, customer_email)
+       VALUES (1, 1, 'card', $1, $2) RETURNING id`,
+      [orgBId, `${mark}@example.com`]
+    );
+    const orderId = String(rows[0].id);
+
+    await h.query(
+      `UPDATE orders
+       SET register_id = (
+         SELECT r.id FROM registers r
+         WHERE r.org_id = COALESCE(orders.org_id, '00000000-0000-0000-0000-000000000001')
+         ORDER BY r.register_number ASC, r.created_at ASC, r.id ASC
+         LIMIT 1
+       )
+       WHERE register_id IS NULL AND id = $1`,
+      [orderId]
+    );
+
+    const { rows: after } = await h.query('SELECT register_id FROM orders WHERE id = $1', [orderId]);
+    expect(after[0].register_id).toBe(register.id);
+    // The default org's 015-seeded register — the value a hardcoded-id
+    // backfill would have wrongly assigned to every org's history.
+    expect(after[0].register_id).not.toBe('00000000-0000-0000-0000-0000000000b1');
   });
 });
