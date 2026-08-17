@@ -42,8 +42,21 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 
 # Health check
+#
+# `127.0.0.1`, not `localhost`.
+#
+# nginx listens on 0.0.0.0:80 — IPv4 only — while `localhost` inside the
+# container resolves to ::1 first. The check therefore connected to an address
+# nothing was listening on and reported "connection refused" for a container
+# that was serving requests perfectly well.
+#
+# It had never once passed. Nothing gates on it, so the only symptom was a
+# frontend permanently marked `unhealthy` in `docker compose ps` — which is
+# worse than it sounds, because docs/guides/operations.md tells operators to
+# read exactly that, and a health indicator that is always red teaches people to
+# ignore health indicators.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
