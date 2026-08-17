@@ -315,7 +315,7 @@ export default function AdminSettings() {
                         value={settings.timezone}
                         onValueChange={(value) => setSettings({ ...settings, timezone: value })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="timezone">
                           <SelectValue placeholder="Select timezone" />
                         </SelectTrigger>
                         <SelectContent>
@@ -537,8 +537,8 @@ export default function AdminSettings() {
                           {settings.config?.paymentMethods?.card?.provider === 'stripe' && (
                             <div className="space-y-3">
                               <div>
-                                <Label>Secret Key</Label>
-                                <Input
+                                <Label htmlFor="settings-secret-key">Secret Key</Label>
+                                <Input id="settings-secret-key"
                                   type="password"
                                   placeholder="sk_live_••••••••"
                                   value={terminalCreds.stripeSecretKey || ''}
@@ -546,16 +546,16 @@ export default function AdminSettings() {
                                 />
                               </div>
                               <div>
-                                <Label>Terminal Location ID</Label>
-                                <Input
+                                <Label htmlFor="settings-terminal-location-id">Terminal Location ID</Label>
+                                <Input id="settings-terminal-location-id"
                                   placeholder="tml_xxxxxxxxxxxx"
                                   value={terminalCreds.stripeTerminalLocationId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeTerminalLocationId: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label>Reader ID</Label>
-                                <Input
+                                <Label htmlFor="settings-reader-id">Reader ID</Label>
+                                <Input id="settings-reader-id"
                                   placeholder="tmr_xxxxxxxxxxxx"
                                   value={terminalCreds.stripeReaderId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
@@ -580,8 +580,8 @@ export default function AdminSettings() {
                           {settings.config?.paymentMethods?.card?.provider === 'square' && (
                             <div className="space-y-3">
                               <div>
-                                <Label>Access Token</Label>
-                                <Input
+                                <Label htmlFor="settings-access-token">Access Token</Label>
+                                <Input id="settings-access-token"
                                   type="password"
                                   placeholder="EAAAxxxxxxxx"
                                   value={terminalCreds.squareAccessToken || ''}
@@ -589,16 +589,16 @@ export default function AdminSettings() {
                                 />
                               </div>
                               <div>
-                                <Label>Location ID</Label>
-                                <Input
+                                <Label htmlFor="settings-location-id">Location ID</Label>
+                                <Input id="settings-location-id"
                                   placeholder="Lxxxxxxxxx"
                                   value={terminalCreds.squareLocationId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, squareLocationId: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label>Device ID</Label>
-                                <Input
+                                <Label htmlFor="settings-device-id">Device ID</Label>
+                                <Input id="settings-device-id"
                                   placeholder="Dxxxxxxxxx"
                                   value={terminalCreds.squareDeviceId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
@@ -623,8 +623,8 @@ export default function AdminSettings() {
                           {settings.config?.paymentMethods?.card?.provider === 'clover' && (
                             <div className="space-y-3">
                               <div>
-                                <Label>API Token</Label>
-                                <Input
+                                <Label htmlFor="settings-api-token">API Token</Label>
+                                <Input id="settings-api-token"
                                   type="password"
                                   placeholder="••••••••••••"
                                   value={terminalCreds.cloverApiToken || ''}
@@ -632,16 +632,16 @@ export default function AdminSettings() {
                                 />
                               </div>
                               <div>
-                                <Label>Merchant ID</Label>
-                                <Input
+                                <Label htmlFor="settings-merchant-id">Merchant ID</Label>
+                                <Input id="settings-merchant-id"
                                   placeholder="xxxxxxxxx"
                                   value={terminalCreds.cloverMerchantId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverMerchantId: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label>Device ID</Label>
-                                <Input
+                                <Label htmlFor="settings-device-id-2">Device ID</Label>
+                                <Input id="settings-device-id-2"
                                   placeholder="xxxxxxxxx"
                                   value={terminalCreds.cloverDeviceId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverDeviceId: e.target.value })}
@@ -654,8 +654,8 @@ export default function AdminSettings() {
                           {settings.config?.paymentMethods?.card?.provider === 'verifone' && (
                             <div className="space-y-3">
                               <div>
-                                <Label>API Key</Label>
-                                <Input
+                                <Label htmlFor="settings-api-key">API Key</Label>
+                                <Input id="settings-api-key"
                                   type="password"
                                   placeholder="••••••••••••"
                                   value={terminalCreds.verifoneApiKey || ''}
@@ -663,16 +663,16 @@ export default function AdminSettings() {
                                 />
                               </div>
                               <div>
-                                <Label>Merchant ID</Label>
-                                <Input
+                                <Label htmlFor="settings-merchant-id-2">Merchant ID</Label>
+                                <Input id="settings-merchant-id-2"
                                   placeholder="xxxxxxxxx"
                                   value={terminalCreds.verifoneMerchantId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneMerchantId: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label>Terminal ID / IP</Label>
-                                <Input
+                                <Label htmlFor="settings-terminal-id-ip">Terminal ID / IP</Label>
+                                <Input id="settings-terminal-id-ip"
                                   placeholder="192.168.1.x or terminal ID"
                                   value={terminalCreds.verifoneTerminalId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneTerminalId: e.target.value })}
@@ -685,8 +685,8 @@ export default function AdminSettings() {
                           {settings.config?.paymentMethods?.card?.provider === 'dejavoo' && (
                             <div className="space-y-3">
                               <div>
-                                <Label>API Key</Label>
-                                <Input
+                                <Label htmlFor="settings-api-key-2">API Key</Label>
+                                <Input id="settings-api-key-2"
                                   type="password"
                                   placeholder="••••••••••••"
                                   value={terminalCreds.dejavooApiKey || ''}
@@ -694,16 +694,16 @@ export default function AdminSettings() {
                                 />
                               </div>
                               <div>
-                                <Label>Merchant ID</Label>
-                                <Input
+                                <Label htmlFor="settings-merchant-id-3">Merchant ID</Label>
+                                <Input id="settings-merchant-id-3"
                                   placeholder="xxxxxxxxx"
                                   value={terminalCreds.dejavooMerchantId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooMerchantId: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label>Terminal ID</Label>
-                                <Input
+                                <Label htmlFor="settings-terminal-id">Terminal ID</Label>
+                                <Input id="settings-terminal-id"
                                   placeholder="xxxxxxxxx"
                                   value={terminalCreds.dejavooTerminalId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooTerminalId: e.target.value })}

@@ -640,13 +640,14 @@ export default function AdminDiscounts() {
                                   <IconComponent className="w-5 h-5" />
                                 </div>
                                 <div className="flex gap-1">
-                                  <Button variant="ghost" size="icon" onClick={() => openEditDiscountType(dt)}>
+                                  <Button variant="ghost" size="icon" aria-label={`Edit ${dt.name}`} onClick={() => openEditDiscountType(dt)}>
                                     <Pencil className="w-4 h-4" />
                                   </Button>
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
                                     className="text-destructive"
+                                    aria-label={`Delete ${dt.name}`}
                                     onClick={() => deleteDiscountType.mutate(dt.id)}
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -758,13 +759,14 @@ export default function AdminDiscounts() {
                               </TableCell>
                               <TableCell>
                                 <div className="flex gap-1">
-                                  <Button variant="ghost" size="icon" onClick={() => openEditPromoCode(pc)}>
+                                  <Button variant="ghost" size="icon" aria-label={`Edit ${pc.code}`} onClick={() => openEditPromoCode(pc)}>
                                     <Pencil className="w-4 h-4" />
                                   </Button>
                                   <Button 
                                     variant="ghost" 
                                     size="icon" 
                                     className="text-destructive"
+                                    aria-label={`Delete ${pc.code}`}
                                     onClick={() => deletePromoCode.mutate(pc.id)}
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -843,13 +845,14 @@ export default function AdminDiscounts() {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" onClick={() => openEditEmployeeDiscount(ed)}>
+                                <Button variant="ghost" size="icon" aria-label="Edit employee discount" onClick={() => openEditEmployeeDiscount(ed)}>
                                   <Pencil className="w-4 h-4" />
                                 </Button>
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
                                   className="text-destructive"
+                                  aria-label="Remove employee discount"
                                   onClick={() => deleteEmployeeDiscount.mutate(ed.userId)}
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -878,16 +881,16 @@ export default function AdminDiscounts() {
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Name *</Label>
-                    <Input
+                    <Label htmlFor="discounts-name">Name *</Label>
+                    <Input id="discounts-name"
                       value={discountTypeForm.name}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, name: e.target.value})}
                       placeholder="Senior Discount"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Internal Code</Label>
-                    <Input
+                    <Label htmlFor="discounts-internal-code">Internal Code</Label>
+                    <Input id="discounts-internal-code"
                       value={discountTypeForm.code}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, code: e.target.value.toUpperCase()})}
                       placeholder="SENIOR"
@@ -895,8 +898,8 @@ export default function AdminDiscounts() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
+                  <Label htmlFor="discounts-description">Description</Label>
+                  <Textarea id="discounts-description"
                     value={discountTypeForm.description}
                     onChange={(e) => setDiscountTypeForm({...discountTypeForm, description: e.target.value})}
                     placeholder="10% discount for customers 65+"
@@ -917,8 +920,8 @@ export default function AdminDiscounts() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Discount Value *</Label>
-                    <Input
+                    <Label htmlFor="discounts-discount-value">Discount Value *</Label>
+                    <Input id="discounts-discount-value"
                       type="number"
                       value={discountTypeForm.discountValue}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, discountValue: parseFloat(e.target.value) || 0})}
@@ -927,16 +930,16 @@ export default function AdminDiscounts() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Min Purchase ($)</Label>
-                    <Input
+                    <Label htmlFor="discounts-min-purchase">Min Purchase ($)</Label>
+                    <Input id="discounts-min-purchase"
                       type="number"
                       value={discountTypeForm.minPurchase}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, minPurchase: parseFloat(e.target.value) || 0})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Max Discount Cap ($)</Label>
-                    <Input
+                    <Label htmlFor="discounts-max-discount-cap">Max Discount Cap ($)</Label>
+                    <Input id="discounts-max-discount-cap"
                       type="number"
                       value={discountTypeForm.maxDiscount}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, maxDiscount: e.target.value})}
@@ -964,8 +967,8 @@ export default function AdminDiscounts() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Display Order</Label>
-                    <Input
+                    <Label htmlFor="discounts-display-order">Display Order</Label>
+                    <Input id="discounts-display-order"
                       type="number"
                       value={discountTypeForm.displayOrder}
                       onChange={(e) => setDiscountTypeForm({...discountTypeForm, displayOrder: parseInt(e.target.value) || 0})}
@@ -1026,16 +1029,16 @@ export default function AdminDiscounts() {
               <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Promo Code *</Label>
-                    <Input
+                    <Label htmlFor="discounts-promo-code">Promo Code *</Label>
+                    <Input id="discounts-promo-code"
                       value={promoCodeForm.code}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, code: e.target.value.toUpperCase().replace(/\s/g, '')})}
                       placeholder="SAVE20"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Display Name *</Label>
-                    <Input
+                    <Label htmlFor="discounts-display-name">Display Name *</Label>
+                    <Input id="discounts-display-name"
                       value={promoCodeForm.name}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, name: e.target.value})}
                       placeholder="Summer Sale 20%"
@@ -1043,8 +1046,8 @@ export default function AdminDiscounts() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
+                  <Label htmlFor="discounts-description-2">Description</Label>
+                  <Textarea id="discounts-description-2"
                     value={promoCodeForm.description}
                     onChange={(e) => setPromoCodeForm({...promoCodeForm, description: e.target.value})}
                     placeholder="Get 20% off your summer purchase"
@@ -1066,8 +1069,8 @@ export default function AdminDiscounts() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Discount Value *</Label>
-                    <Input
+                    <Label htmlFor="discounts-discount-value-2">Discount Value *</Label>
+                    <Input id="discounts-discount-value-2"
                       type="number"
                       value={promoCodeForm.discountValue}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, discountValue: parseFloat(e.target.value) || 0})}
@@ -1076,16 +1079,16 @@ export default function AdminDiscounts() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Min Purchase ($)</Label>
-                    <Input
+                    <Label htmlFor="discounts-min-purchase-2">Min Purchase ($)</Label>
+                    <Input id="discounts-min-purchase-2"
                       type="number"
                       value={promoCodeForm.minPurchase}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, minPurchase: parseFloat(e.target.value) || 0})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Max Discount Cap ($)</Label>
-                    <Input
+                    <Label htmlFor="discounts-max-discount-cap-2">Max Discount Cap ($)</Label>
+                    <Input id="discounts-max-discount-cap-2"
                       type="number"
                       value={promoCodeForm.maxDiscount}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, maxDiscount: e.target.value})}
@@ -1095,16 +1098,16 @@ export default function AdminDiscounts() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Start Date *</Label>
-                    <Input
+                    <Label htmlFor="discounts-start-date">Start Date *</Label>
+                    <Input id="discounts-start-date"
                       type="datetime-local"
                       value={promoCodeForm.startsAt}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, startsAt: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>End Date</Label>
-                    <Input
+                    <Label htmlFor="discounts-end-date">End Date</Label>
+                    <Input id="discounts-end-date"
                       type="datetime-local"
                       value={promoCodeForm.expiresAt}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, expiresAt: e.target.value})}
@@ -1113,8 +1116,8 @@ export default function AdminDiscounts() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Max Total Uses</Label>
-                    <Input
+                    <Label htmlFor="discounts-max-total-uses">Max Total Uses</Label>
+                    <Input id="discounts-max-total-uses"
                       type="number"
                       value={promoCodeForm.maxUses}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, maxUses: e.target.value})}
@@ -1122,8 +1125,8 @@ export default function AdminDiscounts() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Uses Per Customer</Label>
-                    <Input
+                    <Label htmlFor="discounts-uses-per-customer">Uses Per Customer</Label>
+                    <Input id="discounts-uses-per-customer"
                       type="number"
                       value={promoCodeForm.maxUsesPerCustomer}
                       onChange={(e) => setPromoCodeForm({...promoCodeForm, maxUsesPerCustomer: parseInt(e.target.value) || 1})}
@@ -1204,8 +1207,8 @@ export default function AdminDiscounts() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Discount Percentage *</Label>
-                    <Input
+                    <Label htmlFor="discounts-discount-percentage">Discount Percentage *</Label>
+                    <Input id="discounts-discount-percentage"
                       type="number"
                       min="0"
                       max="100"
@@ -1214,8 +1217,8 @@ export default function AdminDiscounts() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Monthly Cap ($)</Label>
-                    <Input
+                    <Label htmlFor="discounts-monthly-cap">Monthly Cap ($)</Label>
+                    <Input id="discounts-monthly-cap"
                       type="number"
                       value={employeeDiscountForm.maxDiscountAmount}
                       onChange={(e) => setEmployeeDiscountForm({...employeeDiscountForm, maxDiscountAmount: e.target.value})}
@@ -1224,8 +1227,8 @@ export default function AdminDiscounts() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Require Manager Approval Above ($)</Label>
-                  <Input
+                  <Label htmlFor="discounts-require-manager-approval-above">Require Manager Approval Above ($)</Label>
+                  <Input id="discounts-require-manager-approval-above"
                     type="number"
                     value={employeeDiscountForm.requiresManagerApprovalAbove}
                     onChange={(e) => setEmployeeDiscountForm({...employeeDiscountForm, requiresManagerApprovalAbove: e.target.value})}
