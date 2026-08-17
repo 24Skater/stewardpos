@@ -351,6 +351,99 @@ describe('updateRegister', () => {
     expect(updated.registerNumber).toBe(51);
     expect(updated.name).toBe(`${mark} Renamed`);
   });
+
+  /**
+   * The regression this whole change exists to fix: COALESCE cannot tell
+   * "clear this" from "leave this alone" once both arrive as a bound NULL.
+   * An admin unbinding a dead card reader sends `terminal_provider: null`
+   * and `terminal_device_id: null` and expects the register to actually
+   * come back unbound.
+   */
+  it('clears terminal_provider and terminal_device_id when sent explicit null (card-reader unbind)', async () => {
+    const created = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Bound`, register_number: 52,
+      display_code: `${mark}-UPD-02`, terminal_provider: 'square', terminal_device_id: 'reader-123',
+    });
+    if (typeof created === 'string') throw new Error(`expected a register row, got ${created}`);
+    expect(created.terminalProvider).toBe('square');
+    expect(created.terminalDeviceId).toBe('reader-123');
+
+    const updated = await h.adapter.updateRegister(created.id, {
+      terminal_provider: null,
+      terminal_device_id: null,
+    });
+    if (updated === null || updated === 'duplicate_code') {
+      throw new Error(`expected a register row, got ${updated}`);
+    }
+
+    expect(updated.terminalProvider).toBeNull();
+    expect(updated.terminalDeviceId).toBeNull();
+  });
+
+  it('clears placement when sent explicit null, but leaves it untouched when the key is omitted', async () => {
+    const created = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Placed`, register_number: 53,
+      display_code: `${mark}-UPD-03`, placement: '1st floor coffee shop',
+    });
+    if (typeof created === 'string') throw new Error(`expected a register row, got ${created}`);
+    expect(created.placement).toBe('1st floor coffee shop');
+
+    // Omitting the key entirely must leave the existing value alone — the
+    // behavior COALESCE gave for free, which the dynamic SET clause must
+    // not regress.
+    const untouched = await h.adapter.updateRegister(created.id, { name: `${mark} Placed Renamed` });
+    if (untouched === null || untouched === 'duplicate_code') {
+      throw new Error(`expected a register row, got ${untouched}`);
+    }
+    expect(untouched.placement).toBe('1st floor coffee shop');
+
+    const cleared = await h.adapter.updateRegister(created.id, { placement: null });
+    if (cleared === null || cleared === 'duplicate_code') {
+      throw new Error(`expected a register row, got ${cleared}`);
+    }
+    expect(cleared.placement).toBeNull();
+  });
+
+  it('does not null out name when sent explicit null (NOT NULL column guard)', async () => {
+    const created = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Guarded`, register_number: 54,
+      display_code: `${mark}-UPD-04`,
+    });
+    if (typeof created === 'string') throw new Error(`expected a register row, got ${created}`);
+
+    const updated = await h.adapter.updateRegister(created.id, { name: null, placement: 'Kiosk' });
+    if (updated === null || updated === 'duplicate_code') {
+      throw new Error(`expected a register row, got ${updated}`);
+    }
+
+    // name is NOT NULL: the explicit null is refused, not written.
+    expect(updated.name).toBe(`${mark} Guarded`);
+    // The rest of the payload is still applied.
+    expect(updated.placement).toBe('Kiosk');
+  });
+});
+
+describe('updateLocation', () => {
+  it('clears address when sent explicit null, but leaves it untouched when the key is omitted', async () => {
+    const created = await h.adapter.createLocation({
+      org_id: orgAId, name: `${mark} With Address`, slug: `${mark}-with-address`,
+      address: '123 Main St',
+    });
+    if (typeof created === 'string') throw new Error(`expected a location row, got ${created}`);
+    expect(created.address).toBe('123 Main St');
+
+    const untouched = await h.adapter.updateLocation(created.id, { name: `${mark} Renamed` });
+    if (untouched === null || untouched === 'duplicate_slug') {
+      throw new Error(`expected a location row, got ${untouched}`);
+    }
+    expect(untouched.address).toBe('123 Main St');
+
+    const cleared = await h.adapter.updateLocation(created.id, { address: null });
+    if (cleared === null || cleared === 'duplicate_slug') {
+      throw new Error(`expected a location row, got ${cleared}`);
+    }
+    expect(cleared.address).toBeNull();
+  });
 });
 
 describe('getRegisters', () => {
