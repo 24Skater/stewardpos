@@ -138,6 +138,58 @@ export function mapVariantRow(row: DbRow): DbRow {
   };
 }
 
+/** Turn a `locations` row into the camelCase DTO the API publishes. */
+function mapLocation(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    orgId: String(row.org_id),
+    name: row.name,
+    slug: row.slug,
+    address: row.address ?? null,
+    city: row.city ?? null,
+    state: row.state ?? null,
+    zip: row.zip ?? null,
+    timezone: row.timezone,
+    status: row.status,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+/**
+ * Turn a `registers` row into the camelCase DTO the API publishes.
+ *
+ * The five flag columns are coerced through `Boolean(...)` rather than
+ * passed through raw: SQLite stores them as `0`/`1`, and the Postgres
+ * adapter's equivalent mapper must produce the exact same JSON shape from
+ * its native `true`/`false` columns, or the same register serializes
+ * differently per environment.
+ */
+function mapRegister(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    orgId: String(row.org_id),
+    locationId: String(row.location_id),
+    name: row.name,
+    registerNumber: Number(row.register_number),
+    displayCode: row.display_code,
+    placement: row.placement ?? null,
+    type: row.type,
+    hasCashDrawer: Boolean(row.has_cash_drawer),
+    acceptsCash: Boolean(row.accepts_cash),
+    canRefund: Boolean(row.can_refund),
+    canOpenDrawerNoSale: Boolean(row.can_open_drawer_no_sale),
+    requireSignIn: Boolean(row.require_sign_in),
+    idleLockSeconds: Number(row.idle_lock_seconds),
+    terminalProvider: row.terminal_provider ?? null,
+    terminalDeviceId: row.terminal_device_id ?? null,
+    status: row.status,
+    lastSeenAt: row.last_seen_at == null ? null : Number(row.last_seen_at),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -4162,6 +4214,399 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error deleting variant:', error);
       throw new DatabaseError('Failed to delete variant');
+    }
+  }
+
+  // Location Operations
+
+  /** Active locations first, then alphabetical. Each row carries a count of its non-retired registers. */
+  async getLocations(orgId: string): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT l.*,
+                  (SELECT COUNT(*) FROM registers r
+                   WHERE r.location_id = l.id AND r.status <> 'retired') AS register_count
+           FROM locations l
+           WHERE l.org_id = ?
+           ORDER BY CASE WHEN l.status = 'active' THEN 0 ELSE 1 END, l.name ASC`
+        )
+        .all(orgId) as DbRow[];
+
+      return rows.map((row) => ({ ...mapLocation(row), registerCount: Number(row.register_count) }));
+    } catch (error) {
+      logger.error('Error getting locations:', error);
+      throw new DatabaseError('Failed to get locations');
+    }
+  }
+
+  async getLocationById(id: string): Promise<DbRow | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as DbRow | undefined;
+      return row ? mapLocation(row) : null;
+    } catch (error) {
+      logger.error('Error getting location by id:', error);
+      throw new DatabaseError('Failed to get location');
+    }
+  }
+
+  async createLocation(payload: Record<string, unknown>): Promise<DbRow | 'duplicate_slug'> {
+    try {
+      const orgId = String(payload.org_id);
+      const slug = String(payload.slug);
+
+      const clash = this.db
+        .prepare('SELECT id FROM locations WHERE org_id = ? AND slug = ?')
+        .get(orgId, slug);
+      if (clash) return 'duplicate_slug';
+
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      this.db
+        .prepare(
+          `INSERT INTO locations (id, org_id, name, slug, address, city, state, zip, timezone, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          orgId,
+          String(payload.name),
+          slug,
+          (payload.address as string | undefined) ?? null,
+          (payload.city as string | undefined) ?? null,
+          (payload.state as string | undefined) ?? null,
+          (payload.zip as string | undefined) ?? null,
+          (payload.timezone as string | undefined) ?? 'UTC',
+          (payload.status as string | undefined) ?? 'active',
+          now,
+          now
+        );
+
+      const row = this.db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as DbRow;
+      return mapLocation(row);
+    } catch (error) {
+      logger.error('Error creating location:', error);
+      throw new DatabaseError('Failed to create location');
+    }
+  }
+
+  /**
+   * Partial update. Only columns present in `payload` are touched — COALESCE
+   * against the existing value covers anything the caller omitted, the same
+   * convention `updateProduct` uses above.
+   */
+  async updateLocation(
+    id: string,
+    payload: Record<string, unknown>
+  ): Promise<DbRow | null | 'duplicate_slug'> {
+    try {
+      const existing = this.db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as
+        | DbRow
+        | undefined;
+      if (!existing) return null;
+
+      const slug = payload.slug as string | undefined;
+      if (slug !== undefined && slug !== existing.slug) {
+        const clash = this.db
+          .prepare('SELECT id FROM locations WHERE org_id = ? AND slug = ? AND id <> ?')
+          .get(existing.org_id, slug, id);
+        if (clash) return 'duplicate_slug';
+      }
+
+      const now = Date.now();
+      this.db
+        .prepare(
+          `UPDATE locations SET
+             name = COALESCE(?, name),
+             slug = COALESCE(?, slug),
+             address = COALESCE(?, address),
+             city = COALESCE(?, city),
+             state = COALESCE(?, state),
+             zip = COALESCE(?, zip),
+             timezone = COALESCE(?, timezone),
+             status = COALESCE(?, status),
+             updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          payload.name,
+          slug,
+          payload.address,
+          payload.city,
+          payload.state,
+          payload.zip,
+          payload.timezone,
+          payload.status,
+          now,
+          id
+        );
+
+      const row = this.db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as DbRow;
+      return mapLocation(row);
+    } catch (error) {
+      logger.error('Error updating location:', error);
+      throw new DatabaseError('Failed to update location');
+    }
+  }
+
+  // Register Operations
+
+  async getRegisters(filter: {
+    orgId: string;
+    locationId?: string;
+    status?: string;
+  }): Promise<DbRow[]> {
+    try {
+      let query = `
+        SELECT r.*, l.name AS location_name
+        FROM registers r
+        JOIN locations l ON l.id = r.location_id
+        WHERE r.org_id = ?
+      `;
+      const params: unknown[] = [filter.orgId];
+
+      if (filter.locationId) {
+        query += ' AND r.location_id = ?';
+        params.push(filter.locationId);
+      }
+      if (filter.status) {
+        query += ' AND r.status = ?';
+        params.push(filter.status);
+      }
+
+      query += ' ORDER BY l.name ASC, r.register_number ASC';
+
+      const rows = this.db.prepare(query).all(...params) as DbRow[];
+      return rows.map((row) => ({ ...mapRegister(row), locationName: row.location_name }));
+    } catch (error) {
+      logger.error('Error getting registers:', error);
+      throw new DatabaseError('Failed to get registers');
+    }
+  }
+
+  async getRegisterById(id: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT r.*, l.name AS location_name
+           FROM registers r
+           JOIN locations l ON l.id = r.location_id
+           WHERE r.id = ?`
+        )
+        .get(id) as DbRow | undefined;
+      if (!row) return null;
+      return { ...mapRegister(row), locationName: row.location_name };
+    } catch (error) {
+      logger.error('Error getting register by id:', error);
+      throw new DatabaseError('Failed to get register');
+    }
+  }
+
+  /**
+   * `bad_location` covers both "no such location" and "location belongs to
+   * a different org": the composite FK on `registers(location_id, org_id)`
+   * would reject the latter anyway, but checking first lets the caller
+   * produce a useful message instead of a raw constraint violation.
+   */
+  async createRegister(
+    payload: Record<string, unknown>
+  ): Promise<DbRow | 'duplicate_number' | 'duplicate_code' | 'bad_location'> {
+    try {
+      const orgId = String(payload.org_id);
+      const locationId = String(payload.location_id);
+      const registerNumber = Number(payload.register_number);
+      const displayCode = String(payload.display_code);
+
+      const location = this.db
+        .prepare('SELECT org_id FROM locations WHERE id = ?')
+        .get(locationId) as { org_id: string } | undefined;
+      if (!location || String(location.org_id) !== orgId) return 'bad_location';
+
+      const numberClash = this.db
+        .prepare('SELECT id FROM registers WHERE location_id = ? AND register_number = ?')
+        .get(locationId, registerNumber);
+      if (numberClash) return 'duplicate_number';
+
+      const codeClash = this.db
+        .prepare('SELECT id FROM registers WHERE org_id = ? AND display_code = ?')
+        .get(orgId, displayCode);
+      if (codeClash) return 'duplicate_code';
+
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      // Flags are bound as 0/1: better-sqlite3 has no boolean bind type, so a
+      // raw JS boolean here would throw at the native layer.
+      this.db
+        .prepare(
+          `INSERT INTO registers
+            (id, org_id, location_id, name, register_number, display_code, placement, type,
+             has_cash_drawer, accepts_cash, can_refund, can_open_drawer_no_sale, require_sign_in,
+             idle_lock_seconds, terminal_provider, terminal_device_id, status, created_by,
+             created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          orgId,
+          locationId,
+          String(payload.name),
+          registerNumber,
+          displayCode,
+          (payload.placement as string | undefined) ?? null,
+          (payload.type as string | undefined) ?? 'fixed',
+          payload.has_cash_drawer !== false ? 1 : 0,
+          payload.accepts_cash !== false ? 1 : 0,
+          payload.can_refund !== false ? 1 : 0,
+          payload.can_open_drawer_no_sale ? 1 : 0,
+          payload.require_sign_in ? 1 : 0,
+          (payload.idle_lock_seconds as number | undefined) ?? 300,
+          (payload.terminal_provider as string | undefined) ?? null,
+          (payload.terminal_device_id as string | undefined) ?? null,
+          (payload.status as string | undefined) ?? 'pending',
+          (payload.created_by as string | undefined) ?? null,
+          now,
+          now
+        );
+
+      const row = this.db.prepare('SELECT * FROM registers WHERE id = ?').get(id) as DbRow;
+      return mapRegister(row);
+    } catch (error) {
+      logger.error('Error creating register:', error);
+      throw new DatabaseError('Failed to create register');
+    }
+  }
+
+  /**
+   * Partial update, same omitted-key convention as `updateLocation`.
+   * `org_id`, `location_id` and `register_number` are never read from the
+   * payload here — changing any of them would move the register out from
+   * under the composite FK and the per-location numbering the schema
+   * enforces, so they are silently ignored rather than rejected.
+   */
+  async updateRegister(
+    id: string,
+    payload: Record<string, unknown>
+  ): Promise<DbRow | null | 'duplicate_code'> {
+    try {
+      const existing = this.db.prepare('SELECT * FROM registers WHERE id = ?').get(id) as
+        | DbRow
+        | undefined;
+      if (!existing) return null;
+
+      const displayCode = payload.display_code as string | undefined;
+      if (displayCode !== undefined && displayCode !== existing.display_code) {
+        const clash = this.db
+          .prepare('SELECT id FROM registers WHERE org_id = ? AND display_code = ? AND id <> ?')
+          .get(existing.org_id, displayCode, id);
+        if (clash) return 'duplicate_code';
+      }
+
+      const hasCashDrawer =
+        payload.has_cash_drawer === undefined ? null : payload.has_cash_drawer ? 1 : 0;
+      const acceptsCash = payload.accepts_cash === undefined ? null : payload.accepts_cash ? 1 : 0;
+      const canRefund = payload.can_refund === undefined ? null : payload.can_refund ? 1 : 0;
+      const canOpenDrawerNoSale =
+        payload.can_open_drawer_no_sale === undefined ? null : payload.can_open_drawer_no_sale ? 1 : 0;
+      const requireSignIn =
+        payload.require_sign_in === undefined ? null : payload.require_sign_in ? 1 : 0;
+
+      const now = Date.now();
+      this.db
+        .prepare(
+          `UPDATE registers SET
+             name = COALESCE(?, name),
+             display_code = COALESCE(?, display_code),
+             placement = COALESCE(?, placement),
+             type = COALESCE(?, type),
+             has_cash_drawer = COALESCE(?, has_cash_drawer),
+             accepts_cash = COALESCE(?, accepts_cash),
+             can_refund = COALESCE(?, can_refund),
+             can_open_drawer_no_sale = COALESCE(?, can_open_drawer_no_sale),
+             require_sign_in = COALESCE(?, require_sign_in),
+             idle_lock_seconds = COALESCE(?, idle_lock_seconds),
+             terminal_provider = COALESCE(?, terminal_provider),
+             terminal_device_id = COALESCE(?, terminal_device_id),
+             status = COALESCE(?, status),
+             updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          payload.name,
+          displayCode,
+          payload.placement,
+          payload.type,
+          hasCashDrawer,
+          acceptsCash,
+          canRefund,
+          canOpenDrawerNoSale,
+          requireSignIn,
+          payload.idle_lock_seconds,
+          payload.terminal_provider,
+          payload.terminal_device_id,
+          payload.status,
+          now,
+          id
+        );
+
+      const row = this.db.prepare('SELECT * FROM registers WHERE id = ?').get(id) as DbRow;
+      return mapRegister(row);
+    } catch (error) {
+      logger.error('Error updating register:', error);
+      throw new DatabaseError('Failed to update register');
+    }
+  }
+
+  async setRegisterStatus(id: string, status: string): Promise<DbRow | null> {
+    try {
+      const now = Date.now();
+      const result = this.db
+        .prepare('UPDATE registers SET status = ?, updated_at = ? WHERE id = ?')
+        .run(status, now, id);
+      if (result.changes === 0) return null;
+
+      const row = this.db.prepare('SELECT * FROM registers WHERE id = ?').get(id) as DbRow;
+      return mapRegister(row);
+    } catch (error) {
+      logger.error('Error setting register status:', error);
+      throw new DatabaseError('Failed to set register status');
+    }
+  }
+
+  /**
+   * Registers that occupy a licence slot: `pending`, `active` and
+   * `disabled`. `retired` is excluded on purpose — a retired register frees
+   * its slot, while a disabled one does not, because the device is expected
+   * back.
+   */
+  async countRegistersForCap(orgId: string): Promise<number> {
+    try {
+      const { count } = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM registers
+           WHERE org_id = ? AND status IN ('pending', 'active', 'disabled')`
+        )
+        .get(orgId) as { count: number };
+      return Number(count);
+    } catch (error) {
+      logger.error('Error counting registers for cap:', error);
+      throw new DatabaseError('Failed to count registers');
+    }
+  }
+
+  /**
+   * Every register number ever assigned at a location, including retired
+   * ones: a retired register's number is never released for reuse, so the
+   * next-number picker has to see it too.
+   */
+  async getUsedRegisterNumbers(locationId: string): Promise<number[]> {
+    try {
+      const rows = this.db
+        .prepare('SELECT register_number FROM registers WHERE location_id = ? ORDER BY register_number ASC')
+        .all(locationId) as { register_number: number }[];
+      return rows.map((row) => Number(row.register_number));
+    } catch (error) {
+      logger.error('Error getting used register numbers:', error);
+      throw new DatabaseError('Failed to get used register numbers');
     }
   }
 
