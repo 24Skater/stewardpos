@@ -4291,9 +4291,20 @@ export class SQLiteAdapter {
   }
 
   /**
-   * Partial update. Only columns present in `payload` are touched — COALESCE
-   * against the existing value covers anything the caller omitted, the same
-   * convention `updateProduct` uses above.
+   * Partial update, built as a dynamic SET clause rather than COALESCE.
+   *
+   * COALESCE(?, column) cannot tell "the caller sent null to clear this
+   * field" apart from "the caller didn't send this field at all" — both
+   * arrive at better-sqlite3 as a bound NULL. That collapses the two into
+   * one behavior (keep the existing value), which makes it impossible to
+   * ever clear a nullable column such as `address`. So presence is checked
+   * with `hasOwnProperty` before a column is included in the update at all;
+   * only then does `?? null` decide whether an explicit null clears it.
+   *
+   * `name`, `slug`, `timezone` and `status` are NOT NULL, so an explicit
+   * null for one of those is refused (the assignment is skipped) rather
+   * than attempted — this is not full input validation, just the adapter
+   * declining to write something the schema forbids.
    */
   async updateLocation(
     id: string,
@@ -4305,41 +4316,45 @@ export class SQLiteAdapter {
         | undefined;
       if (!existing) return null;
 
-      const slug = payload.slug as string | undefined;
-      if (slug !== undefined && slug !== existing.slug) {
-        const clash = this.db
-          .prepare('SELECT id FROM locations WHERE org_id = ? AND slug = ? AND id <> ?')
-          .get(existing.org_id, slug, id);
-        if (clash) return 'duplicate_slug';
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+
+      if (has('slug') && payload.slug != null) {
+        const slug = payload.slug as string;
+        if (slug !== existing.slug) {
+          const clash = this.db
+            .prepare('SELECT id FROM locations WHERE org_id = ? AND slug = ? AND id <> ?')
+            .get(existing.org_id, slug, id);
+          if (clash) return 'duplicate_slug';
+        }
       }
 
-      const now = Date.now();
-      this.db
-        .prepare(
-          `UPDATE locations SET
-             name = COALESCE(?, name),
-             slug = COALESCE(?, slug),
-             address = COALESCE(?, address),
-             city = COALESCE(?, city),
-             state = COALESCE(?, state),
-             zip = COALESCE(?, zip),
-             timezone = COALESCE(?, timezone),
-             status = COALESCE(?, status),
-             updated_at = ?
-           WHERE id = ?`
-        )
-        .run(
-          payload.name,
-          slug,
-          payload.address,
-          payload.city,
-          payload.state,
-          payload.zip,
-          payload.timezone,
-          payload.status,
-          now,
-          id
-        );
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      const assign = (column: string, value: unknown) => {
+        sets.push(`${column} = ?`);
+        values.push(value);
+      };
+
+      // NOT NULL columns: skip rather than write an explicit null.
+      if (has('name') && payload.name != null) assign('name', payload.name);
+      if (has('slug') && payload.slug != null) assign('slug', payload.slug);
+      if (has('timezone') && payload.timezone != null) assign('timezone', payload.timezone);
+      if (has('status') && payload.status != null) assign('status', payload.status);
+
+      // Nullable columns: an explicit null clears them.
+      if (has('address')) assign('address', payload.address ?? null);
+      if (has('city')) assign('city', payload.city ?? null);
+      if (has('state')) assign('state', payload.state ?? null);
+      if (has('zip')) assign('zip', payload.zip ?? null);
+
+      if (sets.length === 0) {
+        return mapLocation(existing);
+      }
+
+      assign('updated_at', Date.now());
+      values.push(id);
+
+      this.db.prepare(`UPDATE locations SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
       const row = this.db.prepare('SELECT * FROM locations WHERE id = ?').get(id) as DbRow;
       return mapLocation(row);
@@ -4477,11 +4492,20 @@ export class SQLiteAdapter {
   }
 
   /**
-   * Partial update, same omitted-key convention as `updateLocation`.
+   * Partial update, built as a dynamic SET clause rather than COALESCE —
+   * see the comment on `updateLocation` for why. `terminal_provider` and
+   * `terminal_device_id` are the case this exists for: unbinding a dead
+   * card reader means sending `terminal_provider: null` and having it
+   * actually clear, which COALESCE can never do.
+   *
    * `org_id`, `location_id` and `register_number` are never read from the
    * payload here — changing any of them would move the register out from
    * under the composite FK and the per-location numbering the schema
    * enforces, so they are silently ignored rather than rejected.
+   *
+   * `name`, `display_code`, `type`, `status`, `idle_lock_seconds` and the
+   * five capability flags are NOT NULL, so an explicit null for one of
+   * those is refused (the assignment is skipped) rather than attempted.
    */
   async updateRegister(
     id: string,
@@ -4493,60 +4517,67 @@ export class SQLiteAdapter {
         | undefined;
       if (!existing) return null;
 
-      const displayCode = payload.display_code as string | undefined;
-      if (displayCode !== undefined && displayCode !== existing.display_code) {
-        const clash = this.db
-          .prepare('SELECT id FROM registers WHERE org_id = ? AND display_code = ? AND id <> ?')
-          .get(existing.org_id, displayCode, id);
-        if (clash) return 'duplicate_code';
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+
+      if (has('display_code') && payload.display_code != null) {
+        const displayCode = payload.display_code as string;
+        if (displayCode !== existing.display_code) {
+          const clash = this.db
+            .prepare('SELECT id FROM registers WHERE org_id = ? AND display_code = ? AND id <> ?')
+            .get(existing.org_id, displayCode, id);
+          if (clash) return 'duplicate_code';
+        }
       }
 
-      const hasCashDrawer =
-        payload.has_cash_drawer === undefined ? null : payload.has_cash_drawer ? 1 : 0;
-      const acceptsCash = payload.accepts_cash === undefined ? null : payload.accepts_cash ? 1 : 0;
-      const canRefund = payload.can_refund === undefined ? null : payload.can_refund ? 1 : 0;
-      const canOpenDrawerNoSale =
-        payload.can_open_drawer_no_sale === undefined ? null : payload.can_open_drawer_no_sale ? 1 : 0;
-      const requireSignIn =
-        payload.require_sign_in === undefined ? null : payload.require_sign_in ? 1 : 0;
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      const assign = (column: string, value: unknown) => {
+        sets.push(`${column} = ?`);
+        values.push(value);
+      };
 
-      const now = Date.now();
-      this.db
-        .prepare(
-          `UPDATE registers SET
-             name = COALESCE(?, name),
-             display_code = COALESCE(?, display_code),
-             placement = COALESCE(?, placement),
-             type = COALESCE(?, type),
-             has_cash_drawer = COALESCE(?, has_cash_drawer),
-             accepts_cash = COALESCE(?, accepts_cash),
-             can_refund = COALESCE(?, can_refund),
-             can_open_drawer_no_sale = COALESCE(?, can_open_drawer_no_sale),
-             require_sign_in = COALESCE(?, require_sign_in),
-             idle_lock_seconds = COALESCE(?, idle_lock_seconds),
-             terminal_provider = COALESCE(?, terminal_provider),
-             terminal_device_id = COALESCE(?, terminal_device_id),
-             status = COALESCE(?, status),
-             updated_at = ?
-           WHERE id = ?`
-        )
-        .run(
-          payload.name,
-          displayCode,
-          payload.placement,
-          payload.type,
-          hasCashDrawer,
-          acceptsCash,
-          canRefund,
-          canOpenDrawerNoSale,
-          requireSignIn,
-          payload.idle_lock_seconds,
-          payload.terminal_provider,
-          payload.terminal_device_id,
-          payload.status,
-          now,
-          id
-        );
+      // NOT NULL columns: skip rather than write an explicit null. Flags
+      // are bound as 0/1: better-sqlite3 has no boolean bind type.
+      if (has('name') && payload.name != null) assign('name', payload.name);
+      if (has('display_code') && payload.display_code != null) {
+        assign('display_code', payload.display_code);
+      }
+      if (has('type') && payload.type != null) assign('type', payload.type);
+      if (has('status') && payload.status != null) assign('status', payload.status);
+      if (has('idle_lock_seconds') && payload.idle_lock_seconds != null) {
+        assign('idle_lock_seconds', payload.idle_lock_seconds);
+      }
+      if (has('has_cash_drawer') && payload.has_cash_drawer != null) {
+        assign('has_cash_drawer', payload.has_cash_drawer ? 1 : 0);
+      }
+      if (has('accepts_cash') && payload.accepts_cash != null) {
+        assign('accepts_cash', payload.accepts_cash ? 1 : 0);
+      }
+      if (has('can_refund') && payload.can_refund != null) {
+        assign('can_refund', payload.can_refund ? 1 : 0);
+      }
+      if (has('can_open_drawer_no_sale') && payload.can_open_drawer_no_sale != null) {
+        assign('can_open_drawer_no_sale', payload.can_open_drawer_no_sale ? 1 : 0);
+      }
+      if (has('require_sign_in') && payload.require_sign_in != null) {
+        assign('require_sign_in', payload.require_sign_in ? 1 : 0);
+      }
+
+      // Nullable columns: an explicit null clears them.
+      if (has('placement')) assign('placement', payload.placement ?? null);
+      if (has('terminal_provider')) assign('terminal_provider', payload.terminal_provider ?? null);
+      if (has('terminal_device_id')) {
+        assign('terminal_device_id', payload.terminal_device_id ?? null);
+      }
+
+      if (sets.length === 0) {
+        return mapRegister(existing);
+      }
+
+      assign('updated_at', Date.now());
+      values.push(id);
+
+      this.db.prepare(`UPDATE registers SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
       const row = this.db.prepare('SELECT * FROM registers WHERE id = ?').get(id) as DbRow;
       return mapRegister(row);

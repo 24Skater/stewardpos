@@ -4462,9 +4462,20 @@ export class PostgresAdapter {
   }
 
   /**
-   * Partial update. Only columns present in `payload` are touched — COALESCE
-   * against the existing value covers anything the caller omitted, the same
-   * convention `updateProduct` uses above.
+   * Partial update, built as a dynamic SET clause rather than COALESCE.
+   *
+   * COALESCE($n, column) cannot tell "the caller sent null to clear this
+   * field" apart from "the caller didn't send this field at all" — both
+   * arrive as a bound NULL. That collapses the two into one behavior (keep
+   * the existing value), which makes it impossible to ever clear a
+   * nullable column such as `address`. So presence is checked with
+   * `hasOwnProperty` before a column is included in the update at all;
+   * only then does `?? null` decide whether an explicit null clears it.
+   *
+   * `name`, `slug`, `timezone` and `status` are NOT NULL, so an explicit
+   * null for one of those is refused (the assignment is skipped) rather
+   * than attempted — this is not full input validation, just the adapter
+   * declining to write something the schema forbids.
    */
   async updateLocation(
     id: string,
@@ -4475,39 +4486,49 @@ export class PostgresAdapter {
       if (existing.rows.length === 0) return null;
       const current = existing.rows[0];
 
-      const slug = payload.slug as string | undefined;
-      if (slug !== undefined && slug !== current.slug) {
-        const clash = await this.pool.query(
-          'SELECT id FROM locations WHERE org_id = $1 AND slug = $2 AND id <> $3',
-          [current.org_id, slug, id]
-        );
-        if (clash.rows.length > 0) return 'duplicate_slug';
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+
+      if (has('slug') && payload.slug != null) {
+        const slug = payload.slug as string;
+        if (slug !== current.slug) {
+          const clash = await this.pool.query(
+            'SELECT id FROM locations WHERE org_id = $1 AND slug = $2 AND id <> $3',
+            [current.org_id, slug, id]
+          );
+          if (clash.rows.length > 0) return 'duplicate_slug';
+        }
       }
 
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      const assign = (column: string, value: unknown) => {
+        sets.push(`${column} = $${values.length + 1}`);
+        values.push(value);
+      };
+
+      // NOT NULL columns: skip rather than write an explicit null.
+      if (has('name') && payload.name != null) assign('name', payload.name);
+      if (has('slug') && payload.slug != null) assign('slug', payload.slug);
+      if (has('timezone') && payload.timezone != null) assign('timezone', payload.timezone);
+      if (has('status') && payload.status != null) assign('status', payload.status);
+
+      // Nullable columns: an explicit null clears them.
+      if (has('address')) assign('address', payload.address ?? null);
+      if (has('city')) assign('city', payload.city ?? null);
+      if (has('state')) assign('state', payload.state ?? null);
+      if (has('zip')) assign('zip', payload.zip ?? null);
+
+      if (sets.length === 0) {
+        return mapLocation(current);
+      }
+
+      sets.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(id);
+      const idPlaceholder = `$${values.length}`;
+
       const result = await this.pool.query(
-        `UPDATE locations SET
-           name = COALESCE($1, name),
-           slug = COALESCE($2, slug),
-           address = COALESCE($3, address),
-           city = COALESCE($4, city),
-           state = COALESCE($5, state),
-           zip = COALESCE($6, zip),
-           timezone = COALESCE($7, timezone),
-           status = COALESCE($8, status),
-           updated_at = CURRENT_TIMESTAMP
-         WHERE id = $9
-         RETURNING *`,
-        [
-          payload.name ?? null,
-          slug ?? null,
-          payload.address ?? null,
-          payload.city ?? null,
-          payload.state ?? null,
-          payload.zip ?? null,
-          payload.timezone ?? null,
-          payload.status ?? null,
-          id,
-        ]
+        `UPDATE locations SET ${sets.join(', ')} WHERE id = ${idPlaceholder} RETURNING *`,
+        values
       );
       return mapLocation(result.rows[0]);
     } catch (error) {
@@ -4636,11 +4657,20 @@ export class PostgresAdapter {
   }
 
   /**
-   * Partial update, same omitted-key convention as `updateLocation`.
+   * Partial update, built as a dynamic SET clause rather than COALESCE —
+   * see the comment on `updateLocation` for why. `terminal_provider` and
+   * `terminal_device_id` are the case this exists for: unbinding a dead
+   * card reader means sending `terminalProvider: null` and having it
+   * actually clear, which COALESCE can never do.
+   *
    * `org_id`, `location_id` and `register_number` are never read from the
    * payload here — changing any of them would move the register out from
    * under the composite FK and the per-location numbering the schema
    * enforces, so they are silently ignored rather than rejected.
+   *
+   * `name`, `display_code`, `type`, `status`, `idle_lock_seconds` and the
+   * five capability flags are NOT NULL, so an explicit null for one of
+   * those is refused (the assignment is skipped) rather than attempted.
    */
   async updateRegister(
     id: string,
@@ -4651,49 +4681,70 @@ export class PostgresAdapter {
       if (existing.rows.length === 0) return null;
       const current = existing.rows[0];
 
-      const displayCode = payload.display_code as string | undefined;
-      if (displayCode !== undefined && displayCode !== current.display_code) {
-        const clash = await this.pool.query(
-          'SELECT id FROM registers WHERE org_id = $1 AND display_code = $2 AND id <> $3',
-          [current.org_id, displayCode, id]
-        );
-        if (clash.rows.length > 0) return 'duplicate_code';
+      const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
+
+      if (has('display_code') && payload.display_code != null) {
+        const displayCode = payload.display_code as string;
+        if (displayCode !== current.display_code) {
+          const clash = await this.pool.query(
+            'SELECT id FROM registers WHERE org_id = $1 AND display_code = $2 AND id <> $3',
+            [current.org_id, displayCode, id]
+          );
+          if (clash.rows.length > 0) return 'duplicate_code';
+        }
       }
 
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      const assign = (column: string, value: unknown) => {
+        sets.push(`${column} = $${values.length + 1}`);
+        values.push(value);
+      };
+
+      // NOT NULL columns: skip rather than write an explicit null.
+      if (has('name') && payload.name != null) assign('name', payload.name);
+      if (has('display_code') && payload.display_code != null) {
+        assign('display_code', payload.display_code);
+      }
+      if (has('type') && payload.type != null) assign('type', payload.type);
+      if (has('status') && payload.status != null) assign('status', payload.status);
+      if (has('idle_lock_seconds') && payload.idle_lock_seconds != null) {
+        assign('idle_lock_seconds', payload.idle_lock_seconds);
+      }
+      if (has('has_cash_drawer') && payload.has_cash_drawer != null) {
+        assign('has_cash_drawer', Boolean(payload.has_cash_drawer));
+      }
+      if (has('accepts_cash') && payload.accepts_cash != null) {
+        assign('accepts_cash', Boolean(payload.accepts_cash));
+      }
+      if (has('can_refund') && payload.can_refund != null) {
+        assign('can_refund', Boolean(payload.can_refund));
+      }
+      if (has('can_open_drawer_no_sale') && payload.can_open_drawer_no_sale != null) {
+        assign('can_open_drawer_no_sale', Boolean(payload.can_open_drawer_no_sale));
+      }
+      if (has('require_sign_in') && payload.require_sign_in != null) {
+        assign('require_sign_in', Boolean(payload.require_sign_in));
+      }
+
+      // Nullable columns: an explicit null clears them.
+      if (has('placement')) assign('placement', payload.placement ?? null);
+      if (has('terminal_provider')) assign('terminal_provider', payload.terminal_provider ?? null);
+      if (has('terminal_device_id')) {
+        assign('terminal_device_id', payload.terminal_device_id ?? null);
+      }
+
+      if (sets.length === 0) {
+        return mapRegister(current);
+      }
+
+      sets.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(id);
+      const idPlaceholder = `$${values.length}`;
+
       const result = await this.pool.query(
-        `UPDATE registers SET
-           name = COALESCE($1, name),
-           display_code = COALESCE($2, display_code),
-           placement = COALESCE($3, placement),
-           type = COALESCE($4, type),
-           has_cash_drawer = COALESCE($5, has_cash_drawer),
-           accepts_cash = COALESCE($6, accepts_cash),
-           can_refund = COALESCE($7, can_refund),
-           can_open_drawer_no_sale = COALESCE($8, can_open_drawer_no_sale),
-           require_sign_in = COALESCE($9, require_sign_in),
-           idle_lock_seconds = COALESCE($10, idle_lock_seconds),
-           terminal_provider = COALESCE($11, terminal_provider),
-           terminal_device_id = COALESCE($12, terminal_device_id),
-           status = COALESCE($13, status),
-           updated_at = CURRENT_TIMESTAMP
-         WHERE id = $14
-         RETURNING *`,
-        [
-          payload.name ?? null,
-          displayCode ?? null,
-          payload.placement ?? null,
-          payload.type ?? null,
-          payload.has_cash_drawer === undefined ? null : Boolean(payload.has_cash_drawer),
-          payload.accepts_cash === undefined ? null : Boolean(payload.accepts_cash),
-          payload.can_refund === undefined ? null : Boolean(payload.can_refund),
-          payload.can_open_drawer_no_sale === undefined ? null : Boolean(payload.can_open_drawer_no_sale),
-          payload.require_sign_in === undefined ? null : Boolean(payload.require_sign_in),
-          payload.idle_lock_seconds ?? null,
-          payload.terminal_provider ?? null,
-          payload.terminal_device_id ?? null,
-          payload.status ?? null,
-          id,
-        ]
+        `UPDATE registers SET ${sets.join(', ')} WHERE id = ${idPlaceholder} RETURNING *`,
+        values
       );
       return mapRegister(result.rows[0]);
     } catch (error) {
