@@ -1,4 +1,4 @@
--- Persona POS Initial Schema
+-- StewardPOS Initial Schema
 -- SQLite Version
 -- Migration: 001_initial_schema
 

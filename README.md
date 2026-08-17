@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License"/></a>
-  <a href="docs/masterplan/README.md"><img src="https://img.shields.io/badge/Status-Pre--1.0_In_Development-f59e0b?style=for-the-badge&logo=semver&logoColor=white" alt="Status: pre-1.0"/></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Status-1.0.0--rc.1-f59e0b?style=for-the-badge&logo=semver&logoColor=white" alt="Status: 1.0.0-rc.1"/></a>
   <a href="docker-compose.yml"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/></a>
   <a href="#"><img src="https://img.shields.io/badge/PRs-Welcome-ec4899?style=for-the-badge&logo=github&logoColor=white" alt="PRs Welcome"/></a>
 </p>
@@ -92,9 +92,11 @@ Comprehensive reports, sales tracking, and business insights
 
 ## 🔗 Quick Links
 
-- **[Website](https://stewardpos.dev)** *(Coming Soon)*
-- **[Documentation](https://docs.stewardpos.dev)** *(Coming Soon)*
-- **[Demo](https://demo.stewardpos.dev)** *(Coming Soon)*
+- **[Documentation](docs/)** — guides, reference, and the build plan
+- **[Run the demo locally](docs/guides/demo.md)** — `docker compose -f docker-compose.demo.yml up -d`
+
+There is no hosted website or public demo. Rather than link to domains that do
+not resolve, this says so.
 - **[GitHub Issues](https://github.com/24Skater/stewardpos/issues)** - Report bugs or request features
 - **[Branding Guidelines](branding/README.md)** - Logo usage and brand assets
 
@@ -375,6 +377,10 @@ StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
 
 ### 🚀 Getting Started
 - [Setup Wizard Guide](docs/reference/environment.md)
+- **[Install on a VPS](docs/guides/install-vps.md)** — the supported path, start to finish
+- [Backup and restore](docs/guides/backup-restore.md) — set this up on day one
+- [Operating it](docs/guides/operations.md) — logs, health, troubleshooting
+- [Upgrading](docs/guides/upgrade.md)
 - [Demo Quick Start](docs/guides/demo.md)
 - [Deployment Guide](docs/guides/deployment.md)
 
@@ -604,20 +610,38 @@ git push origin feature/amazing-feature
 
 ## 📊 Status & Roadmap
 
-> **StewardPOS is pre-1.0 and not yet ready for production use.**
-> An earlier version of this section listed features as "Completed" that a verified
-> audit found broken or missing — including authentication coverage. It has been
-> replaced with pointers to sources that are checked against the running code.
+> **StewardPOS is pre-1.0.** Phases 0-8 of the build plan are complete; Phase 9
+> (the tagged release) is not. An earlier version of this section listed features
+> as "Completed" that a verified audit found broken or missing — including
+> authentication coverage — so it now points at sources checked against running
+> code rather than restating claims.
 
 | Document | What it tells you |
 |---|---|
-| **[Readiness assessment](docs/masterplan/ASSESSMENT-2026-08-04.md)** | What actually works today, with file/line evidence and a POS feature matrix |
-| **[Master plan](docs/masterplan/README.md)** | Phases 0-9 to v1.0, and the locked product decisions |
-| **[Documentation index](docs/README.md)** | Guides, reference, and the archive |
+| **[Master plan](docs/masterplan/README.md)** | Phases 0-9, the locked product decisions, and completion notes recording what each phase actually found |
+| **[Readiness assessment](docs/masterplan/ASSESSMENT-2026-08-04.md)** | The August audit that started this. Historical — several gaps it names are now closed |
+| **[Operator guides](docs/guides/)** | Install, back up, operate, upgrade |
 
-**Known gaps at the register** (see the assessment for the full list): sales tax is not
-implemented, there is no cash-tender or split-tender model, and orders carry no cashier
-attribution. Do not take live payments with this yet.
+### What works
+
+The money path is server-authoritative end to end: the register sends intents,
+the server reprices from the catalog, and totals, tax, discounts, change and
+refunds are computed in integer cents. Cash and split tender, cash-drawer
+sessions, returns with gated restock, store credit, discounts and promo codes,
+server-side reporting, branding, and a filterable audit log are all in and
+covered by tests.
+
+### What is not
+
+| Gap | Why |
+|---|---|
+| **Card payments are simulated** | The Stripe Terminal path (P3-T5) is unwired. It needs real credentials and hardware to verify, and was not written blind. Cash works; do not expect to take a card |
+| **No install has been verified on a real VPS** | The [guide](docs/guides/install-vps.md) is complete and the stack validates, but nobody has yet followed it start to finish on a clean server |
+| **Multi-tenant is a foundation, not a feature** | `org_id` exists on 20 tables; **no query filters on it**. Single-tenant only. See [multi-tenant.md](docs/guides/multi-tenant.md) |
+| **Deferred by decision** | Services & Quotes, full CRM, SSO, SMS, offline/PWA, and the non-Stripe terminals. See the backlog in [phase-9](docs/masterplan/phase-9-golive.md) |
+
+Sales tax, cash and split tender, and cashier attribution — which an earlier
+version of this section listed as missing — were built in Phase 3.
 
 ## 💒 About This Project
 

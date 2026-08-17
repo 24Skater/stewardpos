@@ -1,6 +1,6 @@
-# Persona POS Backend API
+# StewardPOS Backend API
 
-Production-ready backend API for Persona POS with PostgreSQL and SQLite support.
+Production-ready backend API for StewardPOS with PostgreSQL and SQLite support.
 
 ## 🎯 Status
 
@@ -129,7 +129,7 @@ curl http://localhost:3000/api/products \
 
 ```bash
 # Create database
-createdb persona_pos
+createdb stewardpos
 
 # Run migrations
 npm run migrate
@@ -187,8 +187,8 @@ Set these in production:
 ### Docker
 
 ```bash
-docker build -t persona-pos-backend .
-docker run -p 3000:3000 --env-file .env persona-pos-backend
+docker build -t stewardpos-backend .
+docker run -p 3000:3000 --env-file .env stewardpos-backend
 ```
 
 ## 📖 Documentation

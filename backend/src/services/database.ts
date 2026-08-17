@@ -69,7 +69,7 @@ class DatabaseService {
         ssl: false,
       });
     } else if (adapterType === 'sqlite') {
-      const filename = config.database.filename || './data/persona-pos.db';
+      const filename = config.database.filename || './data/stewardpos.db';
       return new SQLiteAdapter({ filename });
     } else {
       throw new Error(`Unsupported database adapter: ${adapterType}`);

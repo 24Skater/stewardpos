@@ -1,7 +1,7 @@
 <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
   <!-- Title -->
   <text x="400" y="30" text-anchor="middle" font-size="24" font-weight="bold" fill="#1a202c">
-    Persona POS Architecture
+    StewardPOS Architecture
   </text>
   <text x="400" y="55" text-anchor="middle" font-size="14" fill="#718096">
     Clean Architecture with Ports & Adapters Pattern

@@ -21,7 +21,7 @@ export class Seeder {
         password: config.database.password,
       });
     } else if (this.adapter === 'sqlite') {
-      const filename = config.database.filename || './data/persona-pos.db';
+      const filename = config.database.filename || './data/stewardpos.db';
       this.sqliteDb = new Database(filename);
     }
   }
