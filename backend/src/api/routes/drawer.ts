@@ -2,7 +2,8 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { resolveCallerRegister } from '../middleware/registerContext';
+import { ValidationError, NotFoundError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -20,6 +21,14 @@ router.use(authenticate);
  *
  * Scoped to `orders` rather than `reports`: opening and closing a drawer is part
  * of working a till, so a cashier does it.
+ *
+ * Since migration 016, a drawer session belongs to a specific register, and
+ * more than one register can each have a session open at once. `/current`,
+ * `/open`, and `/close` all act on the caller's *own* register, resolved by
+ * {@link resolveCallerRegister} — the `X-Register-Id` header when the caller
+ * sends one, or the org's lowest-numbered active register otherwise. `/`
+ * (the list) is unscoped by default, since it is the admin reconciliation
+ * view across every till.
  */
 
 const openSchema = z.object({
@@ -33,14 +42,22 @@ const closeSchema = z.object({
   notes: z.string().optional(),
 });
 
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().optional(),
+  /** Admin filter: one register's history rather than every till's. */
+  registerId: z.string().trim().min(1).optional(),
+});
+
 /**
  * GET /api/drawer/current
- * The open session, with what the till should hold right now.
+ * The caller's own register's open session, with what the till should hold
+ * right now.
  */
-router.get('/current', requirePermission('orders', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
+router.get('/current', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    const register = await resolveCallerRegister(req);
     const adapter = db.getAdapter();
-    const session = await adapter.getOpenDrawerSession();
+    const session = await adapter.getOpenDrawerSession(register.id);
 
     if (!session) {
       // Not an error: no drawer open is a normal state, and the register needs
@@ -57,33 +74,57 @@ router.get('/current', requirePermission('orders', 'read'), async (_req: AuthReq
 });
 
 /**
- * GET /api/drawer
- * Past sessions, most recent first.
+ * GET /api/drawer[?registerId=&limit=]
+ * Past sessions, most recent first. Unfiltered by default — the admin
+ * reconciliation view across every till.
  */
 router.get('/', requirePermission('reports', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-    const sessions = await db.getAdapter().getDrawerSessions(limit);
+    const { limit, registerId } = listQuerySchema.parse(req.query);
+    const sessions = await db.getAdapter().getDrawerSessions(limit ?? 50, registerId);
 
     res.json({ success: true, data: sessions });
   } catch (error) {
-    next(error);
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors[0].message));
+    } else {
+      next(error);
+    }
   }
 });
 
 /**
  * POST /api/drawer/open
+ *
+ * Refused for a register that cannot physically hold a drawer, or that is
+ * not in service — otherwise the variance report accumulates sessions with
+ * no till behind them.
  */
 router.post('/open', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { openingFloat } = openSchema.parse(req.body);
+    const register = await resolveCallerRegister(req);
+
+    if (!register.hasCashDrawer) {
+      throw new UnprocessableEntityError(`Register ${register.displayCode} has no cash drawer`);
+    }
+    if (register.status !== 'active') {
+      throw new UnprocessableEntityError(`Register ${register.displayCode} is not active`);
+    }
+
     const adapter = db.getAdapter();
 
-    // The database enforces one-open-at-a-time; this is only for a better
-    // message than a constraint violation.
-    const session = await adapter.openDrawerSession(openingFloat, req.user?.id);
+    // The database enforces one-open-at-a-time per register; this is only for
+    // a better message than a raw constraint violation.
+    const session = await adapter.openDrawerSession({
+      registerId: register.id,
+      openingFloat,
+      userId: req.user?.id,
+    });
 
-    logger.info(`Drawer opened with a $${openingFloat} float by ${req.user?.email}`);
+    logger.info(
+      `Drawer opened on register ${register.displayCode} with a $${openingFloat} float by ${req.user?.email}`
+    );
     await audit(req, {
       action: 'create',
       entity: 'settings',
@@ -103,16 +144,17 @@ router.post('/open', requirePermission('orders', 'write'), async (req: AuthReque
 
 /**
  * POST /api/drawer/close
- * Count the till and close the session.
+ * Count the till and close the caller's own register's open session.
  */
 router.post('/close', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { countedCash, notes } = closeSchema.parse(req.body);
+    const register = await resolveCallerRegister(req);
     const adapter = db.getAdapter();
 
-    const open = await adapter.getOpenDrawerSession();
+    const open = await adapter.getOpenDrawerSession(register.id);
     if (!open) {
-      throw new NotFoundError('No drawer session is open');
+      throw new NotFoundError('No drawer session is open on this register');
     }
 
     // Computed here, not accepted from the caller: the whole point of a
