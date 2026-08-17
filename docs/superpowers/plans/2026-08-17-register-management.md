@@ -212,7 +212,7 @@ Written here in full because it is the foundation every later task depends on. S
 | `INTEGER` epoch-ms timestamp | **`TIMESTAMP ... DEFAULT CURRENT_TIMESTAMP`** — *not* `BIGINT` | See warning below |
 | `REAL` money | `DECIMAL(10,2)` | House money rule |
 | `INTEGER 0/1` flag | `BOOLEAN ... DEFAULT TRUE/FALSE` | Matches existing flags |
-| `INSERT OR IGNORE` | `INSERT ... ON CONFLICT (id) DO NOTHING` | Matches existing backfills |
+| `INSERT OR IGNORE` | `INSERT ... ON CONFLICT DO NOTHING` — **no conflict target** | See note below |
 
 > ⚠️ **Never use `BIGINT` for a timestamp on the Postgres side.** SQLite stores epoch-ms integers and
 > Postgres stores `TIMESTAMP`; the adapter reconciles them at the boundary with
@@ -221,6 +221,16 @@ Written here in full because it is the foundation every later task depends on. S
 > `new Date("1755400000000")` → `Invalid Date`, silently. Every timestamp column in this plan —
 > `created_at`, `updated_at`, `last_seen_at`, `enrolled_at`, `revoked_at`, `started_at`, `ended_at`,
 > `pin_set_at`, `pin_locked_until` — is `TIMESTAMP` in Postgres and `INTEGER` in SQLite.
+
+> ⚠️ **Backfill inserts take an untargeted `ON CONFLICT DO NOTHING`.** SQLite's `INSERT OR IGNORE`
+> swallows *any* constraint violation; `ON CONFLICT (id) DO NOTHING` swallows only a primary-key
+> collision. Every backfill in this plan inserts into a table carrying unique indexes beyond its PK
+> (`idx_locations_org_slug`, `idx_registers_loc_number`, `idx_registers_display_code`,
+> `idx_regcred_one_active`, `idx_shift_one_open_per_register`), so a targeted clause makes the
+> Postgres migration abort where SQLite continues — the two files stop being semantically identical.
+> The **exception** is the trailing `schema_migrations` insert, which uses
+> `ON CONFLICT (version) DO NOTHING` in every migration from `002` onward. Match that; do not
+> "consistency-fix" it to match the backfills.
 
 ```sql
 -- backend/migrations/sqlite/015_registers.sql
