@@ -71,7 +71,7 @@ INSERT INTO locations (id, org_id, name, slug, timezone)
 VALUES ('00000000-0000-0000-0000-0000000000a1',
         '00000000-0000-0000-0000-000000000001',
         'Main Location', 'main', 'UTC')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO registers
   (id, org_id, location_id, name, register_number, display_code, type, status)
@@ -79,7 +79,7 @@ VALUES ('00000000-0000-0000-0000-0000000000b1',
         '00000000-0000-0000-0000-000000000001',
         '00000000-0000-0000-0000-0000000000a1',
         'Register 1', 1, 'MAIN-01', 'fixed', 'active')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 INSERT INTO schema_migrations (version, name) VALUES (15, '015_registers')
 ON CONFLICT (version) DO NOTHING;
