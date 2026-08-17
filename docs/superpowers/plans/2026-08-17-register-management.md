@@ -404,45 +404,85 @@ behaviour change to the POS yet. Safe to ship alone.
 
 - [ ] **Step 1: Write the failing migration test**
 
-  In `backend/src/services/__tests__/migrator.test.ts`, alongside the existing cases:
+  In `backend/src/services/__tests__/migrator.test.ts`, add a new `describeSqlite` block alongside
+  the existing ones.
+
+  **Harness facts you must work with** (verified against the file, do not assume otherwise):
+  - There is **no** `freshMigratedDb()` helper. The file opens **one shared `db`** in `beforeAll`
+    after running the full migration chain, and it is opened **`{ readonly: true }`**.
+  - Because it is readonly, **no test in this file can INSERT.** Constraint-violation tests belong in
+    the adapter tests (Task 1.2), not here.
+  - Existing helpers available: `columns(table: string): string[]` (via `PRAGMA table_info`) and
+    `tables(): string[]`. Reuse them rather than writing new ones.
+  - Use `describeSqlite`, not bare `describe` — it skips when the native binding is missing locally
+    and throws in CI.
 
   ```ts
-  it('creates locations and registers with a backfilled default at migration 015', async () => {
-    const db = await freshMigratedDb();          // existing helper in this file
-    const loc = db.prepare("SELECT * FROM locations WHERE slug = 'main'").get();
-    expect(loc).toBeDefined();
-    expect(loc.timezone).toBe('UTC');
+  describeSqlite('migration 015: locations and registers', () => {
+    it('creates the locations and registers tables', () => {
+      const present = tables();
+      expect(present).toContain('locations');
+      expect(present).toContain('registers');
+    });
 
-    const reg = db.prepare('SELECT * FROM registers').all();
-    expect(reg).toHaveLength(1);
-    expect(reg[0].display_code).toBe('MAIN-01');
-    expect(reg[0].register_number).toBe(1);
-    expect(reg[0].status).toBe('active');
-    expect(reg[0].location_id).toBe(loc.id);
-  });
+    it('gives registers the identity, capability and policy columns', () => {
+      const cols = columns('registers');
+      for (const col of [
+        'id', 'org_id', 'location_id', 'name', 'register_number', 'display_code',
+        'placement', 'type', 'has_cash_drawer', 'accepts_cash', 'can_refund',
+        'can_open_drawer_no_sale', 'require_sign_in', 'idle_lock_seconds',
+        'terminal_provider', 'terminal_device_id', 'status', 'last_seen_at',
+      ]) {
+        expect(cols, `registers is missing column: ${col}`).toContain(col);
+      }
+    });
 
-  it('defaults org policy to a 6-digit PIN and an unlimited register cap (D4, D5)', async () => {
-    const db = await freshMigratedDb();
-    const org = db.prepare("SELECT * FROM organizations WHERE slug = 'default'").get();
-    expect(org.pin_length).toBe(6);
-    expect(org.max_registers).toBeNull();
-  });
+    it('backfills one location and one register so existing history is attributable', () => {
+      const loc = db.prepare("SELECT * FROM locations WHERE slug = 'main'").get() as
+        { id: string; timezone: string } | undefined;
+      expect(loc).toBeDefined();
+      expect(loc!.timezone).toBe('UTC');
 
-  it('rejects two registers sharing a number within one location', async () => {
-    const db = await freshMigratedDb();
-    const loc = db.prepare("SELECT id FROM locations WHERE slug = 'main'").get();
-    const insert = () => db.prepare(
-      `INSERT INTO registers (id, location_id, name, register_number, display_code)
-       VALUES (?, ?, 'Dup', 1, 'MAIN-DUP')`
-    ).run('dup-1', loc.id);
-    expect(insert).toThrow(/UNIQUE/i);
+      const regs = db.prepare('SELECT * FROM registers').all() as Array<{
+        display_code: string; register_number: number; status: string; location_id: string;
+      }>;
+      expect(regs).toHaveLength(1);
+      expect(regs[0].display_code).toBe('MAIN-01');
+      expect(regs[0].register_number).toBe(1);
+      expect(regs[0].status).toBe('active');
+      expect(regs[0].location_id).toBe(loc!.id);
+    });
+
+    it('defaults org policy to a 6-digit PIN and an unlimited register cap (D4, D5)', () => {
+      const org = db.prepare("SELECT * FROM organizations WHERE slug = 'default'").get() as
+        { pin_length: number; max_registers: number | null };
+      expect(org.pin_length).toBe(6);
+      expect(org.max_registers).toBeNull();
+    });
+
+    it('declares the uniqueness the estate depends on', () => {
+      const idx = (db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('registers','locations')"
+      ).all() as Array<{ name: string }>).map((r) => r.name);
+      expect(idx).toContain('idx_registers_loc_number');
+      expect(idx).toContain('idx_registers_display_code');
+      expect(idx).toContain('idx_locations_org_slug');
+    });
   });
   ```
+
+  **Also update the two existing chain assertions** — they hard-code the version reached:
+  `expect(applied.count).toBeGreaterThanOrEqual(14)` and
+  `expect(version).toBeGreaterThanOrEqual(14)` both become `15`. Leaving them at 14 means the chain
+  test passes even if `015` never applied, which is precisely the failure it exists to catch.
 
 - [ ] **Step 2: Run it and confirm it fails**
 
   Run: `cd backend && npx vitest run src/services/__tests__/migrator.test.ts -t "migration 015"`
-  Expected: FAIL — `no such table: locations`.
+  Expected: FAIL — `no such table: locations` on the backfill and index cases, and the `tables()`
+  assertion reporting neither table present. If instead every test *skips*, the `better-sqlite3`
+  native binding is missing locally — that is an environment problem, not a passing run. Fix the
+  binding before continuing; a skip here proves nothing.
 
 - [ ] **Step 3: Write both migration files**
 
