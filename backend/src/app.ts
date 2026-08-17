@@ -28,6 +28,8 @@ import adminRoutes from './api/routes/admin';
 import healthRoutes from './api/routes/health';
 import setupRoutes from './api/routes/setup';
 import terminalRoutes from './api/routes/terminal';
+import locationsRoutes from './api/routes/locations';
+import registersRoutes from './api/routes/registers';
 
 /**
  * Builds the Express application.
@@ -139,6 +141,8 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/admin/api-keys', apiKeysRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/terminal', terminalRoutes);
+app.use('/api/locations', locationsRoutes);
+app.use('/api/registers', registersRoutes);
 
 // 404 handler
 app.use('*', (_req, res) => {
