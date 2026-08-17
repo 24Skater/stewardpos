@@ -302,7 +302,7 @@ export default function AdminReturns() {
                   </div>
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[180px]" aria-label="Filter returns by status">
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -628,9 +628,9 @@ export default function AdminReturns() {
                 {actionType === 'refund' && (
                   <>
                     <div>
-                      <Label>Refund Method</Label>
+                      <Label htmlFor="returns-refund-method">Refund Method</Label>
                       <Select value={refundMethod} onValueChange={setRefundMethod}>
-                        <SelectTrigger>
+                        <SelectTrigger id="returns-refund-method">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -642,8 +642,8 @@ export default function AdminReturns() {
                       </Select>
                     </div>
                     <div>
-                      <Label>Refund Amount</Label>
-                      <Input
+                      <Label htmlFor="returns-refund-amount">Refund Amount</Label>
+                      <Input id="returns-refund-amount"
                         type="number"
                         step="0.01"
                         value={refundAmount}
@@ -658,8 +658,8 @@ export default function AdminReturns() {
                 )}
 
                 <div>
-                  <Label>Notes (optional)</Label>
-                  <Textarea
+                  <Label htmlFor="returns-notes-optional">Notes (optional)</Label>
+                  <Textarea id="returns-notes-optional"
                     value={actionNotes}
                     onChange={(e) => setActionNotes(e.target.value)}
                     placeholder="Add any notes about this action..."
