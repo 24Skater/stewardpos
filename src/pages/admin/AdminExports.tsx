@@ -133,6 +133,71 @@ interface Return {
   items?: ReturnItem[];
 }
 
+/**
+ * The three format buttons for one report.
+ *
+ * At module scope, not inside `AdminExports`. Declared inside, it was a new
+ * component *type* on every render, so React unmounted and remounted every
+ * export button whenever any state changed — six times during the initial data
+ * load alone. A keyboard user who had tabbed to a button lost focus each time,
+ * and a click landing between the unmount and the remount went nowhere. Found
+ * by a test whose click reached a detached node.
+ */
+function ExportButtons({
+reportType,
+formats,
+loading,
+onExport,
+}: {
+reportType: string;
+formats: ('pdf' | 'excel' | 'csv')[];
+loading: string | null;
+onExport: (reportType: string, format: 'pdf' | 'excel' | 'csv') => void;
+}) {
+  const describes = (format: string) => `Export ${reportType.replace(/-/g, ' ')} as ${format}`;
+
+  return (
+  <div className="flex gap-2 flex-wrap">
+    {formats.includes('pdf') && (
+      <Button 
+        size="sm" 
+        variant="outline"
+        onClick={() => onExport(reportType, 'pdf')}
+        disabled={loading === reportType}
+        aria-label={describes('PDF')}
+      >
+        <FileText className="w-4 h-4 mr-2" />
+        PDF
+      </Button>
+    )}
+    {formats.includes('excel') && (
+      <Button 
+        size="sm"
+        variant="outline" 
+        onClick={() => onExport(reportType, 'excel')}
+        disabled={loading === reportType}
+        aria-label={describes('Excel')}
+      >
+        <FileSpreadsheet className="w-4 h-4 mr-2" />
+        Excel
+      </Button>
+    )}
+    {formats.includes('csv') && (
+      <Button 
+        size="sm"
+        variant="outline" 
+        onClick={() => onExport(reportType, 'csv')}
+        disabled={loading === reportType}
+        aria-label={describes('CSV')}
+      >
+        <TableIcon className="w-4 h-4 mr-2" />
+        CSV
+      </Button>
+    )}
+    </div>
+  );
+}
+
 export default function AdminExports() {
   // Store identity for the PDF header: an exported report that does not say
   // which shop it came from is not much use once it leaves the building.
@@ -462,44 +527,15 @@ export default function AdminExports() {
     }
   };
 
-  const ExportButtons = ({ reportType, formats }: { reportType: string; formats: ('pdf' | 'excel' | 'csv')[] }) => (
-    <div className="flex gap-2 flex-wrap">
-      {formats.includes('pdf') && (
-        <Button 
-          size="sm" 
-          variant="outline"
-          onClick={() => handleExport(reportType, 'pdf')}
-          disabled={loading === reportType}
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          PDF
-        </Button>
-      )}
-      {formats.includes('excel') && (
-        <Button 
-          size="sm"
-          variant="outline" 
-          onClick={() => handleExport(reportType, 'excel')}
-          disabled={loading === reportType}
-        >
-          <FileSpreadsheet className="w-4 h-4 mr-2" />
-          Excel
-        </Button>
-      )}
-      {formats.includes('csv') && (
-        <Button 
-          size="sm"
-          variant="outline" 
-          onClick={() => handleExport(reportType, 'csv')}
-          disabled={loading === reportType}
-        >
-          <TableIcon className="w-4 h-4 mr-2" />
-          CSV
-        </Button>
-      )}
-    </div>
-  );
-
+  /**
+   * The three format buttons for one report.
+   *
+   * Each carries an `aria-label` naming the report as well as the format.
+   * Without it this page renders fifteen buttons whose entire accessible name
+   * is "CSV", and a screen reader user hears the same word fifteen times with
+   * no way to tell which report they are about to download. The visible label
+   * stays short because sighted users have the card heading directly above it.
+   */
   return (
     <ProtectedRoute>
       <AdminLayout>
@@ -595,7 +631,7 @@ export default function AdminExports() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="sales-summary" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="sales-summary" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -608,7 +644,7 @@ export default function AdminExports() {
                     <CardDescription>Revenue and order trends by month</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="sales-mom" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="sales-mom" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -621,7 +657,7 @@ export default function AdminExports() {
                     <CardDescription>Revenue and order trends by week</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="sales-wow" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="sales-wow" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -634,7 +670,7 @@ export default function AdminExports() {
                     <CardDescription>Revenue breakdown by customer</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="sales-customer" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="sales-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -647,7 +683,7 @@ export default function AdminExports() {
                     <CardDescription>Top selling products with revenue</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="sales-item" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="sales-item" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -663,7 +699,7 @@ export default function AdminExports() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
               </div>
@@ -687,7 +723,7 @@ export default function AdminExports() {
                         {returns.filter(r => r.status === 'completed').length} completed
                       </Badge>
                     </div>
-                    <ExportButtons reportType="returns-all" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="returns-all" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -700,7 +736,7 @@ export default function AdminExports() {
                     <CardDescription>Which customers have the most returns</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="returns-customer" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="returns-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -713,7 +749,7 @@ export default function AdminExports() {
                     <CardDescription>Return volume and refund amounts by month</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="returns-monthly" formats={['excel', 'csv']} />
+                    <ExportButtons reportType="returns-monthly" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -726,7 +762,7 @@ export default function AdminExports() {
                     <CardDescription>Analysis of why products are being returned</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="returns-reason" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="returns-reason" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
               </div>
@@ -747,7 +783,7 @@ export default function AdminExports() {
                     <div className="flex items-center gap-2 mb-3">
                       <Badge variant="outline">{customers.length} customers</Badge>
                     </div>
-                    <ExportButtons reportType="customer-list" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="customer-list" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -775,7 +811,7 @@ export default function AdminExports() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <ExportButtons reportType="customer-history" formats={['excel', 'csv']} />
+                    <ExportButtons reportType="customer-history" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -791,7 +827,7 @@ export default function AdminExports() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="customer-history-all" formats={['excel', 'csv']} />
+                    <ExportButtons reportType="customer-history-all" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
               </div>
@@ -813,7 +849,7 @@ export default function AdminExports() {
                       <Badge variant="outline">{services.length} services</Badge>
                       <Badge variant="outline">{services.filter(s => s.isActive).length} active</Badge>
                     </div>
-                    <ExportButtons reportType="services-type" formats={['pdf', 'excel', 'csv']} />
+                    <ExportButtons reportType="services-type" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
 
@@ -826,7 +862,7 @@ export default function AdminExports() {
                     <CardDescription>Category breakdown with revenue from completed quotes</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ExportButtons reportType="services-category" formats={['excel', 'csv']} />
+                    <ExportButtons reportType="services-category" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
               </div>
@@ -849,7 +885,7 @@ export default function AdminExports() {
                       {products.reduce((sum, p) => sum + (p.variants?.length || 0), 0)} variants
                     </Badge>
                   </div>
-                  <ExportButtons reportType="inventory" formats={['excel', 'csv']} />
+                  <ExportButtons reportType="inventory" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                 </CardContent>
               </Card>
             </TabsContent>

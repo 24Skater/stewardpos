@@ -198,3 +198,42 @@ test.describe('reduced motion', () => {
     expect(animated, 'an infinite animation still runs under prefers-reduced-motion').toBe(0);
   });
 });
+
+/**
+ * The admin surface, which this suite did not cover.
+ *
+ * The scan reached `/pos` and the checkout dialog and stopped there, so
+ * seventy-three `<Label>` elements across the admin pages sat with no
+ * `htmlFor` — forty-three of them next to a real form control, which a screen
+ * reader announces as an unnamed text field and which a sighted user cannot
+ * focus by clicking the label.
+ *
+ * Nothing found it for nine phases. A gate that covers one page is a gate over
+ * one page.
+ */
+test.describe('admin accessibility', () => {
+  const PAGES = [
+    ['dashboard', '/admin'],
+    ['inventory', '/admin/inventory'],
+    ['settings', '/admin/settings'],
+    ['customers', '/admin/customers'],
+    ['discounts', '/admin/discounts'],
+    ['reports', '/admin/reports'],
+    ['audit', '/admin/audit'],
+    ['returns', '/admin/returns'],
+  ] as const;
+
+  for (const [name, path] of PAGES) {
+    test(`${name} has no serious violations`, async ({ page }) => {
+      await page.goto(path);
+      // Admin pages load their data before the form controls exist; scanning
+      // the loading state would pass while proving nothing.
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('h1').first()).toBeVisible({ timeout: 15_000 });
+
+      const violations = blocking(await scan(page));
+
+      expect(describe(violations)).toBe('');
+    });
+  }
+});
