@@ -44,7 +44,24 @@ const EMPTY_SHAPES: Record<string, unknown> = {
     endpoints: [],
     examples: {},
   },
+  // Every `getList` endpoint resolves to `{ data, meta }`, not a bare array —
+  // `apiClient.getList` unwraps the envelope but keeps the pagination. Stubbed
+  // as `[]`, destructuring `{ data }` yields undefined and the page crashes on
+  // `.filter`. Model what the server sends.
   'adminApi.audit': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
+  'receiptsApi.list': { data: [], meta: { total: 0, limit: 50, offset: 0, hasMore: false } },
+  'productsApi.listPage': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
+  'categoriesApi.listWithUnmanaged': { data: [], meta: { total: 0, unmanaged: [] } },
+  // The real shape of `POST /api/receipts/:id/start-return`. Stubbed as `{}`,
+  // `returnableItems` came back undefined and AdminReceipts crashed on
+  // `.filter` — which is a fair thing for the harness to have exposed, but the
+  // stub should still model what the server sends.
+  'receiptsApi.startReturn': {
+    order: { id: 'o1', createdAt: 0, total: 0 },
+    returnableItems: [],
+    hasReturnableItems: false,
+    existingReturns: 0,
+  },
   'reportsApi.salesSummary': {
     from: 0, to: 0, orderCount: 0, gross: 0, discounts: 0, tax: 0, net: 0,
     refunds: 0, netAfterRefunds: 0, avgTicket: 0, pendingRefunds: 0,
