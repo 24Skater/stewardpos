@@ -163,6 +163,24 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
+  /**
+   * PATCH — used by the handful of routes (registers, locations) that model
+   * updates as a partial patch rather than the full-resource PUT most of this
+   * app's admin routes expect. Mirrors `put` otherwise.
+   */
+  async patch<T>(path: string, data?: unknown): Promise<T> {
+    const token = await getToken();
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(data),
+    });
+    return handleResponse<T>(response);
+  },
+
   async delete<T>(path: string): Promise<T> {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
