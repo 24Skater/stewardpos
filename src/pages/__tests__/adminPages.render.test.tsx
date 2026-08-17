@@ -69,7 +69,14 @@ const EMPTY_SHAPES: Record<string, unknown> = {
   // `getList` endpoints resolve to `{ data, meta }`, not to a bare array. The
   // generic list stub would hand the page an `undefined` payload — a shape the
   // server never sends, so the resulting crash would say nothing about the page.
+  // Every `getList` endpoint resolves to `{ data, meta }`, not a bare array —
+  // `apiClient.getList` unwraps the envelope but keeps the pagination. Stubbed
+  // as `[]`, destructuring `{ data }` yields undefined and the page crashes on
+  // `.filter`. Model what the server sends.
   'adminApi.audit': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
+  'receiptsApi.list': { data: [], meta: { total: 0, limit: 50, offset: 0, hasMore: false } },
+  'productsApi.listPage': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
+  'categoriesApi.listWithUnmanaged': { data: [], meta: { total: 0, unmanaged: [] } },
   // The reporting endpoints COALESCE every aggregate, so an empty range comes
   // back as a complete object of zeroes rather than as `{}`. Stubbing them bare
   // would crash the report cards on `undefined.toLocaleString` and prove only

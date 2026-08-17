@@ -220,7 +220,12 @@ export default function AdminReceipts() {
         toast({ title: 'No items to return', description: 'All items have already been returned.', variant: 'destructive' });
         return;
       }
-      setReturnableItems(response.returnableItems);
+      // `?? []` because the alternative is a blank screen. The server always
+      // sends this array, but the page then calls `.filter` and `.map` on it
+      // during render — so any payload that ever lacks it takes the whole
+      // component down with an unhandled TypeError rather than showing an
+      // error. Cheap insurance on a response this page does not control.
+      setReturnableItems(response.returnableItems ?? []);
       setSelectedReturnItems({});
       setReturnReason('not_needed');
       setReturnNotes('');
