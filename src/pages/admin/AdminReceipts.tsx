@@ -762,8 +762,8 @@ export default function AdminReceipts() {
               </DialogHeader>
 
               <div>
-                <Label>Email Address</Label>
-                <Input
+                <Label htmlFor="receipts-email-address">Email Address</Label>
+                <Input id="receipts-email-address"
                   type="email"
                   value={resendEmail}
                   onChange={(e) => setResendEmail(e.target.value)}
@@ -866,8 +866,8 @@ export default function AdminReceipts() {
                 </div>
 
                 <div>
-                  <Label>Additional Notes</Label>
-                  <Input
+                  <Label htmlFor="receipts-additional-notes">Additional Notes</Label>
+                  <Input id="receipts-additional-notes"
                     value={returnNotes}
                     onChange={(e) => setReturnNotes(e.target.value)}
                     placeholder="Optional notes about the return..."

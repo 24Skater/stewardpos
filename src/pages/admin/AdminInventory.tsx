@@ -369,12 +369,12 @@ export default function AdminInventory() {
                         <TableCell>
                           <div className="flex gap-2">
                             {canWrite && (
-                              <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
+                              <Button variant="ghost" size="icon" aria-label={`Edit ${product.name}`} onClick={() => handleEdit(product)}>
                                 <Edit className="w-4 h-4" />
                               </Button>
                             )}
                             {canDelete && (
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
+                              <Button variant="ghost" size="icon" aria-label={`Delete ${product.name}`} onClick={() => handleDelete(product.id)}>
                                 <Trash2 className="w-4 h-4 text-destructive" />
                               </Button>
                             )}
@@ -409,15 +409,15 @@ export default function AdminInventory() {
               {editingProduct && (
                 <div className="space-y-4">
                   <div>
-                    <Label>Name</Label>
-                    <Input
+                    <Label htmlFor="inventory-name">Name</Label>
+                    <Input id="inventory-name"
                       value={editingProduct.name}
                       onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
                     />
                   </div>
                   <div>
-                    <Label>Description</Label>
-                    <Input
+                    <Label htmlFor="inventory-description">Description</Label>
+                    <Input id="inventory-description"
                       value={editingProduct.description || ''}
                       onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
                     />
@@ -451,8 +451,8 @@ export default function AdminInventory() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Base Price</Label>
-                    <Input
+                    <Label htmlFor="inventory-base-price">Base Price</Label>
+                    <Input id="inventory-base-price"
                       type="number"
                       step="0.01"
                       value={editingProduct.basePrice}
@@ -475,7 +475,7 @@ export default function AdminInventory() {
                             disabled={isUploadingImage}
                             className="cursor-pointer"
                           />
-                          <Button type="button" variant="outline" size="icon" disabled={isUploadingImage}>
+                          <Button type="button" variant="outline" size="icon" aria-label="Upload a product image" disabled={isUploadingImage}>
                             <ImagePlus className="w-4 h-4" />
                           </Button>
                         </div>
@@ -502,8 +502,8 @@ export default function AdminInventory() {
                     </Tabs>
                   </div>
                   <div>
-                    <Label>Barcode</Label>
-                    <Input
+                    <Label htmlFor="inventory-barcode">Barcode</Label>
+                    <Input id="inventory-barcode"
                       value={editingProduct.barcode || ''}
                       onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
                     />
