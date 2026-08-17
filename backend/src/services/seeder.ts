@@ -132,6 +132,7 @@ export class Seeder {
           orders: { read: true, write: true, delete: true },
           returns: { read: true, write: true, delete: true },
           discounts: { read: true, write: true, delete: true },
+          registers: { read: true, write: true, delete: true },
         }),
       },
       {
@@ -148,6 +149,10 @@ export class Seeder {
           orders: { read: true, write: true, delete: false },
           returns: { read: true, write: true, delete: false },
           discounts: { read: true, write: true, delete: false },
+          // Write but not delete: a supervisor can name and configure a till,
+          // but retiring or revoking one is how a register loses its credential
+          // and stops being able to trade. That stays with an admin.
+          registers: { read: true, write: true, delete: false },
         }),
       },
       {
@@ -164,6 +169,9 @@ export class Seeder {
           orders: { read: true, write: false, delete: false },
           returns: { read: true, write: false, delete: false },
           discounts: { read: true, write: false, delete: false },
+          // Read-only, and genuinely needed: once reports break down by register,
+          // a reporter has to resolve a register id to a name to read them.
+          registers: { read: true, write: false, delete: false },
         }),
       },
       {
@@ -186,6 +194,12 @@ export class Seeder {
           orders: { read: true, write: true, delete: false },
           returns: { read: true, write: false, delete: false },
           discounts: { read: true, write: false, delete: false },
+          // Read for the same reason as `settings.read` above: the till has to
+          // know which register it is and what that register may do. The
+          // capability flags — whether there is a cash drawer, whether cash is
+          // accepted, whether a PIN is required — decide what the POS screen
+          // renders. Write stays false; a cashier configures nothing.
+          registers: { read: true, write: false, delete: false },
         }),
       },
     ];

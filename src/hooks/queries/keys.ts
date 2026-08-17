@@ -31,4 +31,23 @@ export const queryKeys = {
     sales: (range: { from?: string; to?: string }) =>
       ['reports', 'sales', range.from ?? '', range.to ?? ''] as const,
   },
+  registers: {
+    all: ['registers'] as const,
+    /**
+     * Keyed on the filter, so switching location or status re-fetches rather
+     * than showing the previous filter's list under a new heading.
+     */
+    list: (filter?: { locationId?: string; status?: string }) =>
+      ['registers', 'list', filter?.locationId ?? '', filter?.status ?? ''] as const,
+    detail: (id: string) => ['registers', id] as const,
+  },
+  locations: {
+    /**
+     * A location's `registerCount` changes whenever a register under it is
+     * created or retired, so register mutations invalidate this key too —
+     * see `useRegisters.ts`.
+     */
+    all: ['locations'] as const,
+    detail: (id: string) => ['locations', id] as const,
+  },
 } as const;

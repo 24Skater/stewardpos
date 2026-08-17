@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { customersApi, discountsApi, productsApi, quotesApi, reportsApi, servicesApi } from '@/lib/api';
+import { customersApi, discountsApi, productsApi, quotesApi, registersApi, reportsApi, servicesApi } from '@/lib/api';
 import type { Customer } from '@/lib/api';
-import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag } from 'lucide-react';
+import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag, Store } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -29,6 +29,8 @@ export default function Dashboard() {
     totalCustomers: 0,
     totalDiscountAmount: 0,
     totalDiscountCount: 0,
+    activeRegisters: 0,
+    totalRegisters: 0,
   });
   const [salesData, setSalesData] = useState<{ date: string; sales: number; orders: number; services: number }[]>([]);
   const [recentQuotes, setRecentQuotes] = useState<Quote[]>([]);
@@ -45,7 +47,17 @@ export default function Dashboard() {
       const week = periodRange('7days');
       const today = periodRange('today');
 
-      const [todaySummary, weekByDay, productsResponse, quotesResponse, servicesResponse, customersResponse, discountStatsResponse, lowStockResponse] = await Promise.all([
+      const [
+        todaySummary,
+        weekByDay,
+        productsResponse,
+        quotesResponse,
+        servicesResponse,
+        customersResponse,
+        discountStatsResponse,
+        lowStockResponse,
+        registersResponse,
+      ] = await Promise.all([
         reportsApi.salesSummary(today),
         reportsApi.salesByDay(week),
         productsApi.list(),
@@ -54,6 +66,7 @@ export default function Dashboard() {
         customersApi.list(),
         discountsApi.stats(),
         productsApi.lowStock(),
+        registersApi.list(),
       ]);
 
       const discountStats = discountStatsResponse ? discountStatsResponse : { totalDiscounts: 0, totalDiscountAmount: 0 };
@@ -63,6 +76,7 @@ export default function Dashboard() {
       const services = servicesResponse ? servicesResponse : [];
       const customers = customersResponse ? customersResponse : [];
       const lowStockItems = lowStockResponse ? lowStockResponse : [];
+      const registers = registersResponse ? registersResponse : [];
 
       // The same instant the sales tiles were asked about, so "today" means one
       // thing on this screen rather than two.
@@ -93,6 +107,8 @@ export default function Dashboard() {
         totalCustomers: customers.length,
         totalDiscountAmount: discountStats.totalDiscountAmount || 0,
         totalDiscountCount: discountStats.totalDiscounts || 0,
+        activeRegisters: registers.filter((r) => r.status === 'active').length,
+        totalRegisters: registers.length,
       });
 
       // Recent quotes
@@ -206,6 +222,13 @@ export default function Dashboard() {
       subValue: `${stats.totalDiscountCount} uses`,
       icon: Tag,
       color: 'text-rose-600',
+    },
+    {
+      title: 'Active Registers',
+      value: stats.activeRegisters.toString(),
+      subValue: `${stats.totalRegisters} total`,
+      icon: Store,
+      color: 'text-teal-600',
     },
   ];
 

@@ -19,6 +19,7 @@ export { drawerApi } from './drawer';
 export { ordersApi } from './orders';
 export { productsApi } from './products';
 export { categoriesApi } from './categories';
+export { registersApi, locationsApi } from './registers';
 export { quotesApi } from './quotes';
 export { receiptsApi } from './receipts';
 export { reportsApi } from './reports';
@@ -78,6 +79,18 @@ export type {
 } from './returns';
 export type { LowStockItem, ProductQuery, VariantInput } from './products';
 export type { Category, CategoryInput, UnmanagedCategory } from './categories';
+export type {
+  CreateLocationRequest,
+  CreateRegisterRequest,
+  Location,
+  LocationStatus,
+  Register,
+  RegisterListQuery,
+  RegisterStatus,
+  RegisterType,
+  UpdateLocationRequest,
+  UpdateRegisterRequest,
+} from './registers';
 export type { CreateServiceRequest, UpdateServiceRequest } from './services';
 export type { StoreCredit, StoreCreditStatus } from './storeCredits';
 export type { CreateQuoteRequest, QuoteItemInput, UpdateQuoteRequest } from './quotes';
