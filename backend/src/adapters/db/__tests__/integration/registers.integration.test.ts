@@ -180,3 +180,204 @@ describe('register defaults', () => {
     });
   });
 });
+
+/**
+ * `PostgresAdapter` register/location methods, added in this task.
+ *
+ * Everything above this line predates the adapter methods and goes through
+ * `h.query` directly. These go through `h.adapter` instead, since that is
+ * the surface the (not-yet-written) service layer will actually call.
+ */
+describe('createRegister', () => {
+  it('rejects a duplicate register_number at one location, but accepts it at a sibling location', async () => {
+    const first = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locAId,
+      name: `${mark} First`,
+      register_number: 5,
+      display_code: `${mark}-NUM-01`,
+    });
+    expect(first).not.toBe('duplicate_number');
+
+    const dup = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locAId,
+      name: `${mark} Second`,
+      register_number: 5,
+      display_code: `${mark}-NUM-02`,
+    });
+    expect(dup).toBe('duplicate_number');
+
+    const sibling = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locASiblingId,
+      name: `${mark} Third`,
+      register_number: 5,
+      display_code: `${mark}-NUM-03`,
+    });
+    expect(sibling).not.toBe('duplicate_number');
+    expect(sibling).not.toBe('bad_location');
+  });
+
+  it('rejects a duplicate display_code within one org, but accepts it under a different org', async () => {
+    const code = `${mark}-CODE-01`;
+
+    const first = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locAId,
+      name: `${mark} A`,
+      register_number: 11,
+      display_code: code,
+    });
+    expect(first).not.toBe('duplicate_code');
+
+    const dup = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locASiblingId,
+      name: `${mark} B`,
+      register_number: 12,
+      display_code: code,
+    });
+    expect(dup).toBe('duplicate_code');
+
+    const otherOrg = await h.adapter.createRegister({
+      org_id: orgBId,
+      location_id: locBId,
+      name: `${mark} C`,
+      register_number: 1,
+      display_code: code,
+    });
+    expect(otherOrg).not.toBe('duplicate_code');
+  });
+
+  it('rejects a location that belongs to a different org', async () => {
+    const result = await h.adapter.createRegister({
+      org_id: orgBId,
+      location_id: locAId, // locAId belongs to orgAId
+      name: `${mark} Mismatch`,
+      register_number: 1,
+      display_code: `${mark}-BADLOC-01`,
+    });
+    expect(result).toBe('bad_location');
+  });
+});
+
+describe('mapRegister (via createRegister)', () => {
+  it('returns real booleans, not 0/1, and a finite createdAt with a null (not NaN) lastSeenAt', async () => {
+    const reg = await h.adapter.createRegister({
+      org_id: orgAId,
+      location_id: locAId,
+      name: `${mark} Bool`,
+      register_number: 21,
+      display_code: `${mark}-BOOL-01`,
+    });
+    if (typeof reg === 'string') throw new Error(`expected a register row, got ${reg}`);
+
+    // The regression this guards against: SQLite's adapter returns 0/1 for
+    // these columns unless explicitly coerced, which would make the same
+    // register serialize differently per environment.
+    expect(typeof reg.hasCashDrawer).toBe('boolean');
+    expect(typeof reg.acceptsCash).toBe('boolean');
+    expect(typeof reg.canRefund).toBe('boolean');
+    expect(typeof reg.canOpenDrawerNoSale).toBe('boolean');
+    expect(typeof reg.requireSignIn).toBe('boolean');
+    expect(reg.canOpenDrawerNoSale).toBe(false);
+
+    expect(Number.isFinite(reg.createdAt)).toBe(true);
+    expect(reg.lastSeenAt).toBeNull();
+  });
+});
+
+describe('countRegistersForCap', () => {
+  it('counts pending, active and disabled registers, but excludes retired', async () => {
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} P`, register_number: 31,
+      display_code: `${mark}-CAP-01`, status: 'pending',
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Act`, register_number: 32,
+      display_code: `${mark}-CAP-02`, status: 'active',
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Dis`, register_number: 33,
+      display_code: `${mark}-CAP-03`, status: 'disabled',
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Ret`, register_number: 34,
+      display_code: `${mark}-CAP-04`, status: 'retired',
+    });
+
+    const count = await h.adapter.countRegistersForCap(orgAId);
+    expect(count).toBe(3);
+  });
+});
+
+describe('getUsedRegisterNumbers', () => {
+  it('includes a retired register\'s number, since retired numbers are never released for reuse', async () => {
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Live`, register_number: 41,
+      display_code: `${mark}-USED-01`,
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Dead`, register_number: 42,
+      display_code: `${mark}-USED-02`, status: 'retired',
+    });
+
+    const numbers = await h.adapter.getUsedRegisterNumbers(locAId);
+    expect(numbers).toEqual([41, 42]);
+  });
+});
+
+describe('updateRegister', () => {
+  it('ignores attempts to change org_id, location_id and register_number', async () => {
+    const created = await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Orig`, register_number: 51,
+      display_code: `${mark}-UPD-01`,
+    });
+    if (typeof created === 'string') throw new Error(`expected a register row, got ${created}`);
+
+    const updated = await h.adapter.updateRegister(created.id, {
+      org_id: orgBId,
+      location_id: locBId,
+      register_number: 999,
+      name: `${mark} Renamed`,
+    });
+    if (updated === null || updated === 'duplicate_code') {
+      throw new Error(`expected a register row, got ${updated}`);
+    }
+
+    expect(updated.orgId).toBe(orgAId);
+    expect(updated.locationId).toBe(locAId);
+    expect(updated.registerNumber).toBe(51);
+    expect(updated.name).toBe(`${mark} Renamed`);
+  });
+});
+
+describe('getRegisters', () => {
+  it('filters by locationId and by status, and populates locationName', async () => {
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Loc A Active`, register_number: 61,
+      display_code: `${mark}-FILT-01`, status: 'active',
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locAId, name: `${mark} Loc A Pending`, register_number: 62,
+      display_code: `${mark}-FILT-02`, status: 'pending',
+    });
+    await h.adapter.createRegister({
+      org_id: orgAId, location_id: locASiblingId, name: `${mark} Loc Sibling Active`, register_number: 61,
+      display_code: `${mark}-FILT-03`, status: 'active',
+    });
+
+    const allForOrg = await h.adapter.getRegisters({ orgId: orgAId });
+    expect(allForOrg.length).toBe(3);
+    expect(allForOrg.every((r) => typeof r.locationName === 'string')).toBe(true);
+
+    const locOnly = await h.adapter.getRegisters({ orgId: orgAId, locationId: locAId });
+    expect(locOnly.length).toBe(2);
+    expect(locOnly.every((r) => r.locationId === locAId)).toBe(true);
+
+    const statusOnly = await h.adapter.getRegisters({ orgId: orgAId, status: 'active' });
+    expect(statusOnly.length).toBe(2);
+    expect(statusOnly.every((r) => r.status === 'active')).toBe(true);
+  });
+});
