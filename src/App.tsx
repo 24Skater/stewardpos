@@ -42,6 +42,7 @@ const AdminApiKeys = lazy(() => import("./pages/admin/AdminApiKeys"));
 const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
 const AdminReceipts = lazy(() => import("./pages/admin/AdminReceipts"));
 const AdminDiscounts = lazy(() => import("./pages/admin/AdminDiscounts"));
+const AdminRegisters = lazy(() => import("./pages/admin/AdminRegisters"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ const App = () => (
               <Route path="/admin/returns" element={<RequireAuth permission={{ domain: "returns", action: "read" }}><AdminReturns /></RequireAuth>} />
               <Route path="/admin/receipts" element={<RequireAuth permission={{ domain: "orders", action: "read" }}><AdminReceipts /></RequireAuth>} />
               <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
+              <Route path="/admin/registers" element={<RequireAuth permission={{ domain: "registers", action: "read" }}><AdminRegisters /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
