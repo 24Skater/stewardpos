@@ -30,6 +30,11 @@ export const PERMISSION_RESOURCES = [
   'orders',
   'returns',
   'discounts',
+  // Locations and the register estate: naming a till, enrolling it, revoking it.
+  // Deliberately not folded into `settings`, which carries payment credentials
+  // and tax rates — a store manager who should be able to rename Register 2 has
+  // no business reading the Square secret to do it.
+  'registers',
 ] as const;
 
 export type PermissionResource = (typeof PERMISSION_RESOURCES)[number];
