@@ -33,6 +33,12 @@ export interface RolePermissions {
   returns: Permission;
   /** Discount types, promo codes, and employee entitlements. */
   discounts: Permission;
+  /**
+   * Locations and the register estate: naming a till, enrolling it, revoking it.
+   * Separate from `settings` so a store manager can manage registers without
+   * also holding the payment credentials and tax rates that `settings` carries.
+   */
+  registers: Permission;
 }
 
 /** Every resource a role can be granted rights over, in display order. */
@@ -45,6 +51,7 @@ export const PERMISSION_RESOURCES = [
   'services',
   'reports',
   'exports',
+  'registers',
   'users',
   'settings',
 ] as const satisfies readonly (keyof RolePermissions)[];
