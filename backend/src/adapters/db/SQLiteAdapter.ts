@@ -4641,4 +4641,26 @@ export class SQLiteAdapter {
     }
   }
 
+  /**
+   * The org-level register policy: how many registers it may enrol, and how
+   * long a cashier's PIN must be. Lives on `organizations` — see migration
+   * 015 — so this is a narrow projection of that row rather than a new table.
+   */
+  async getOrgPolicy(orgId: string): Promise<{ maxRegisters: number | null; pinLength: number } | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT max_registers, pin_length FROM organizations WHERE id = ?')
+        .get(orgId) as { max_registers: number | null; pin_length: number } | undefined;
+      if (!row) return null;
+
+      return {
+        maxRegisters: row.max_registers == null ? null : Number(row.max_registers),
+        pinLength: Number(row.pin_length),
+      };
+    } catch (error) {
+      logger.error('Error getting org policy:', error);
+      throw new DatabaseError('Failed to get organization policy');
+    }
+  }
+
 }

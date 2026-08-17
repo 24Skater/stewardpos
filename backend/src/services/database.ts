@@ -3,7 +3,7 @@ import { PostgresAdapter } from '../adapters/db/PostgresAdapter';
 import { SQLiteAdapter } from '../adapters/db/SQLiteAdapter';
 import logger from '../utils/logger';
 
-type DatabaseAdapter = PostgresAdapter | SQLiteAdapter;
+export type DatabaseAdapter = PostgresAdapter | SQLiteAdapter;
 
 class DatabaseService {
   private static instance: DatabaseService;

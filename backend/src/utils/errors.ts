@@ -59,6 +59,19 @@ export class ConflictError extends AppError {
 }
 
 /**
+ * The request was well-formed and the resource it names is real, but the
+ * operation is refused because of a business rule rather than a data
+ * conflict — e.g. an org's register count is already at its `max_registers`
+ * cap. 422 rather than 409: nothing else would come to conflict with, and
+ * rather than 400: the request body itself was valid.
+ */
+export class UnprocessableEntityError extends AppError {
+  constructor(message: string) {
+    super(message, 422);
+  }
+}
+
+/**
  * A dependency this request needed is unavailable or misconfigured.
  *
  * 502 rather than 500: the request was fine and the server is fine, something
