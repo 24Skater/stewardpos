@@ -14,11 +14,14 @@ let h: Harness;
 const mark = tag();
 
 let cashier: string;
+let registerId: string;
+let locationId: string;
+let orgId: string;
 const orderIds: string[] = [];
 const returnIds: string[] = [];
 
 async function openDrawer(float = 100) {
-  return h.adapter.openDrawerSession(float, cashier);
+  return h.adapter.openDrawerSession({ registerId, openingFloat: float, userId: cashier });
 }
 
 beforeAll(async () => {
@@ -31,6 +34,28 @@ beforeAll(async () => {
     roleIds: [],
   });
   cashier = String(user.id);
+
+  const org = await h.query('INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id', [
+    `${mark} org`,
+    `${mark}-org`,
+  ]);
+  orgId = String(org.rows[0].id);
+
+  const location = await h.query(
+    'INSERT INTO locations (org_id, name, slug) VALUES ($1, $2, $3) RETURNING id',
+    [orgId, `${mark} location`, `${mark}-location`]
+  );
+  locationId = String(location.rows[0].id);
+
+  const register = await h.adapter.createRegister({
+    org_id: orgId,
+    location_id: locationId,
+    name: `${mark} register`,
+    register_number: 1,
+    display_code: `${mark}-REG-01`,
+  });
+  if (typeof register === 'string') throw new Error(`expected a register row, got ${register}`);
+  registerId = String(register.id);
 }, 30_000);
 
 beforeEach(async () => {
@@ -48,7 +73,13 @@ afterAll(async () => {
     await h.query('DELETE FROM order_items WHERE order_id = ANY($1)', [orderIds]);
     await h.query('DELETE FROM orders WHERE id = ANY($1)', [orderIds]);
   }
-  await h.query('DELETE FROM cash_drawer_sessions WHERE opened_by = $1 OR closed_by = $1', [cashier]);
+  await h.query('DELETE FROM cash_drawer_sessions WHERE opened_by = $1 OR closed_by = $1 OR register_id = $2', [
+    cashier,
+    registerId,
+  ]);
+  await h.query('DELETE FROM registers WHERE id = $1', [registerId]);
+  await h.query('DELETE FROM locations WHERE id = $1', [locationId]);
+  await h.query('DELETE FROM organizations WHERE id = $1', [orgId]);
   await h.query('DELETE FROM users WHERE id = $1', [cashier]);
   await h.close();
 });

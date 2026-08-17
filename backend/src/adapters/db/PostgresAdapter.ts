@@ -116,6 +116,11 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
 
   return {
     id: row.id,
+    registerId: row.register_id ?? null,
+    // Only populated when the query joins `registers`; a bare row read (e.g.
+    // right after INSERT/UPDATE) leaves these null rather than stale.
+    registerName: row.register_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
     openedBy: row.opened_by,
     openedByName: row.opened_by_name ?? null,
     closedBy: row.closed_by,
@@ -3913,14 +3918,18 @@ export class PostgresAdapter {
 
   // ===== Cash drawer sessions =====
 
-  async getOpenDrawerSession(): Promise<DbRow | null> {
+  /** Scoped to one register: three tills can each have a session open at once. */
+  async getOpenDrawerSession(registerId: string): Promise<DbRow | null> {
     try {
       const result = await this.pool.query(
-        `SELECT s.*, o.name AS opened_by_name
+        `SELECT s.*, o.name AS opened_by_name,
+                r.name AS register_name, r.display_code AS register_display_code
          FROM cash_drawer_sessions s
          LEFT JOIN users o ON s.opened_by = o.id
-         WHERE s.status = 'open'
-         LIMIT 1`
+         LEFT JOIN registers r ON s.register_id = r.id
+         WHERE s.status = 'open' AND s.register_id = $1
+         LIMIT 1`,
+        [registerId]
       );
       return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
     } catch (error) {
@@ -3932,22 +3941,30 @@ export class PostgresAdapter {
   /**
    * Open a drawer.
    *
-   * Relies on the partial unique index for exclusivity rather than checking
-   * first: two cashiers opening at once would both pass a prior read, and then
-   * neither would know which drawer a sale belonged to.
+   * Relies on the per-register partial unique index for exclusivity rather
+   * than checking first: two cashiers opening at once on the same register
+   * would both pass a prior read, and then neither would know which drawer a
+   * sale belonged to. `registerId` is required at the type level (an object
+   * parameter, not a positional string) so a caller cannot omit it and land a
+   * NULL - NULLs are distinct from one another in a Postgres unique index, so
+   * a NULL `register_id` would not be constrained by that index at all.
    */
-  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+  async openDrawerSession(input: {
+    registerId: string;
+    openingFloat: number;
+    userId?: string;
+  }): Promise<DbRow> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO cash_drawer_sessions (opened_by, opening_float, status)
-         VALUES ($1, $2, 'open')
+        `INSERT INTO cash_drawer_sessions (register_id, opened_by, opening_float, status)
+         VALUES ($1, $2, $3, 'open')
          RETURNING *`,
-        [userId ?? null, openingFloat]
+        [input.registerId, input.userId ?? null, input.openingFloat]
       );
       return mapDrawerSessionRow(result.rows[0]);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
-        throw new ValidationError('A drawer session is already open');
+        throw new ValidationError(`Register ${input.registerId} already has a drawer session open`);
       }
       logger.error('Error opening drawer session:', error);
       throw new DatabaseError('Failed to open drawer session');
@@ -3961,6 +3978,16 @@ export class PostgresAdapter {
    * Only cash sales count - a card sale never touches the drawer. Sales with no
    * recorded tender fall back to their total, which is what a cash sale
    * contributed before `amount_tendered` existed.
+   *
+   * Joins on `orders.drawer_session_id` rather than a time window. A time
+   * window (`o.created_at BETWEEN s.opened_at AND s.closed_at`) was correct
+   * back when only one drawer could ever be open at a time, but migration 016
+   * lets multiple registers each hold an open session concurrently - their
+   * open windows overlap, so a time-window join would sum every register's
+   * cash sales into every open session's expected cash, not just its own.
+   * Direct attribution via `drawer_session_id` (backfilled by 016 for any
+   * session that was open at migration time) is unambiguous regardless of
+   * how many sessions are open simultaneously.
    */
   async getExpectedDrawerCash(sessionId: string): Promise<number> {
     try {
@@ -3971,9 +3998,8 @@ export class PostgresAdapter {
              AS expected
          FROM cash_drawer_sessions s
          LEFT JOIN orders o
-           ON LOWER(o.payment_method) = 'cash'
-          AND o.created_at >= s.opened_at
-          AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+           ON o.drawer_session_id = s.id
+          AND LOWER(o.payment_method) = 'cash'
          WHERE s.id = $1
          GROUP BY s.opening_float`,
         [sessionId]
@@ -4016,16 +4042,28 @@ export class PostgresAdapter {
     }
   }
 
-  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+  /** Unfiltered when `registerId` is omitted - the admin reconciliation view. */
+  async getDrawerSessions(limit = 50, registerId?: string): Promise<DbRow[]> {
     try {
+      const params: unknown[] = [];
+      let whereClause = '';
+      if (registerId) {
+        params.push(registerId);
+        whereClause = `WHERE s.register_id = $${params.length}`;
+      }
+      params.push(limit);
+
       const result = await this.pool.query(
-        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name,
+                r.name AS register_name, r.display_code AS register_display_code
          FROM cash_drawer_sessions s
          LEFT JOIN users o ON s.opened_by = o.id
          LEFT JOIN users c ON s.closed_by = c.id
+         LEFT JOIN registers r ON s.register_id = r.id
+         ${whereClause}
          ORDER BY s.opened_at DESC
-         LIMIT $1`,
-        [limit]
+         LIMIT $${params.length}`,
+        params
       );
       return result.rows.map(mapDrawerSessionRow);
     } catch (error) {
