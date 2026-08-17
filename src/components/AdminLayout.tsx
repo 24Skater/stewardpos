@@ -21,6 +21,7 @@ import {
   Tag,
   Sun,
   Moon,
+  Store,
 } from 'lucide-react';
 import {
   Button,
@@ -44,6 +45,7 @@ const navItems = [
   { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
   { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
+  { path: '/admin/registers', label: 'Registers', icon: Store },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { path: '/admin/exports', label: 'Exports', icon: Download },
   { path: '/admin/customers', label: 'Customers', icon: Users },

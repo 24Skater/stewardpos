@@ -47,11 +47,21 @@ const { default: app } = await import('../../../app');
 
 const PERSON = { id: 'u2', name: 'Cashier', email: 'cashier@example.com' };
 
-/** Every resource, since the schema requires the complete shape. */
+/**
+ * Every resource, since the schema requires the complete shape.
+ *
+ * Derived from `PERMISSION_RESOURCES` rather than listed by hand. A hand-written
+ * copy is exactly what drifted before — the role-creation schema once omitted
+ * `orders`, `returns` and `discounts`, so a cashier role saved through the admin
+ * UI silently could not take orders. Spelling the list out here would reintroduce
+ * that: adding a resource would fail this test for the wrong reason, and the
+ * obvious fix would be to paste the new name in rather than notice the fixture
+ * had gone stale.
+ */
+const { PERMISSION_RESOURCES } = await import('../../middleware/authorize');
+
 const FULL_PERMISSIONS = Object.fromEntries(
-  ['inventory', 'reports', 'exports', 'settings', 'users', 'services', 'customers', 'orders', 'returns', 'discounts'].map(
-    (resource) => [resource, { read: true, write: false, delete: false }]
-  )
+  PERMISSION_RESOURCES.map((resource) => [resource, { read: true, write: false, delete: false }])
 );
 
 function token(): string {
