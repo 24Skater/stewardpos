@@ -67,6 +67,17 @@ describe('buildDisplayCode', () => {
     expect(code).toBe(`${'A'.repeat(47)}-07`);
   });
 
+  it('does not leave a dangling hyphen when the cut lands on a separator', () => {
+    // The 47-character slug limit falls exactly on the hyphen between the two
+    // words, which would otherwise produce '...A--01' — a doubled separator
+    // that reads as a typo on a printed receipt rather than as a code.
+    const code = buildDisplayCode(`${'a'.repeat(46)} bcdef`, 1);
+
+    expect(code).toBe(`${'A'.repeat(46)}-01`);
+    expect(code).not.toContain('--');
+    expect(code.length).toBeLessThanOrEqual(50);
+  });
+
   it('truncates the slug even further for a longer register number', () => {
     const longSlug = 'b'.repeat(60);
     const code = buildDisplayCode(longSlug, 12345);
