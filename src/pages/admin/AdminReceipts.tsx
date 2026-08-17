@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import Barcode from '@/components/Barcode';
 import { adminApi, receiptsApi, returnsApi, type ReturnReasonCode } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays, subMonths } from 'date-fns';
@@ -658,8 +659,11 @@ export default function AdminReceipts() {
 
                           {/* Barcode */}
                           {settings.receiptShowBarcode !== false && (
-                            <div className="text-center mt-4">
-                              <div className="bg-black h-10 w-48 mx-auto"></div>
+                            <div className="barcode text-center mt-4">
+                              {/* The same real symbol the register's receipt
+                                  prints. This preview carried its own copy of
+                                  the black-rectangle placeholder. */}
+                              <Barcode value={selectedReceipt.id.slice(0, 8)} className="mx-auto" height={40} />
                               <p className="text-xs mt-1">*{selectedReceipt.id.slice(0, 8).toUpperCase()}*</p>
                             </div>
                           )}
