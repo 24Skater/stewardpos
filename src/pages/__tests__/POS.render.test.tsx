@@ -2,6 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+
+/**
+ * Where the header buttons actually navigate.
+ *
+ * The Admin button called `navigate('/login')`. It sent every cashier to the
+ * sign-in page instead of the dashboard, and since nothing had set `?next=`,
+ * signing in returned them to the register — so the button appeared to do
+ * nothing but make you log in again. Nothing caught it: it typechecks, it
+ * renders, and a render test that only asserts the button exists says the same
+ * about a button pointing anywhere.
+ */
+const navigate = vi.fn();
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return { ...actual, useNavigate: () => navigate };
+});
 import type { Product } from '@/lib/api';
 
 /**
@@ -178,5 +194,33 @@ describe('the checkout dialog totals', () => {
 
     expect(within(dialog).queryByText('Tax')).not.toBeInTheDocument();
     expect(row(dialog, 'Total')).toHaveTextContent('$20.00');
+  });
+});
+
+describe('the register header', () => {
+  it.each([
+    ['Admin', '/admin'],
+    ['Inventory', '/inventory'],
+    ['Reports', '/reports'],
+    ['Settings', '/settings'],
+    ['Services', '/services'],
+  ])('sends %s to %s', async (label, path) => {
+    renderRegister();
+
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}$`, 'i') }));
+
+    expect(navigate).toHaveBeenCalledWith(path);
+  });
+
+  it('does not send anyone to the login page', async () => {
+    // The specific shape of the bug: a destination button routing to `/login`
+    // looks like a permissions prompt and behaves like a dead end.
+    renderRegister();
+
+    for (const label of ['Admin', 'Inventory', 'Reports', 'Settings', 'Services']) {
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}$`, 'i') }));
+    }
+
+    expect(navigate).not.toHaveBeenCalledWith('/login');
   });
 });
