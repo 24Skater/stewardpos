@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { adminApi } from '@/lib/api';
 import { Mail, Phone, Printer } from "lucide-react";
+import Barcode from '@/components/Barcode';
 
 interface ReceiptSettings {
   storeName?: string;
@@ -157,12 +158,10 @@ export default function ReceiptDialog({
           .grand-total { font-weight: bold; font-size: 14px; margin-top: 5px; }
           .footer { text-align: center; margin-top: 15px; font-size: 11px; }
           .barcode { text-align: center; margin: 15px 0; }
-          .barcode-placeholder { 
-            background: #000; 
-            height: 40px; 
-            width: 180px; 
-            display: inline-block; 
-          }
+          /* The barcode is an inline SVG in the copied markup. The rule that
+             used to live here filled a 180x40 box with solid black — that was
+             the placeholder, and it would now paint over the real symbol. */
+          .barcode svg { height: 40px; width: auto; }
           .barcode-text { font-size: 10px; margin-top: 5px; }
           .footer-message { white-space: pre-line; color: #666; }
         </style>
@@ -299,7 +298,13 @@ export default function ReceiptDialog({
           {/* Barcode */}
           {settings.receiptShowBarcode !== false && (
             <div className="barcode text-center mt-4">
-              <div className="barcode-placeholder bg-black h-10 w-48 mx-auto"></div>
+              {/*
+                A real Code 39 symbol, not the black rectangle that used to sit
+                here. The payload is the same eight characters the text below
+                shows and the returns dialog asks for, so a cashier can scan the
+                receipt to start a return rather than reading it out.
+              */}
+              <Barcode value={orderId.slice(0, 8)} className="mx-auto" height={40} />
               <p className="barcode-text text-xs mt-1">*{orderId.slice(0, 8).toUpperCase()}*</p>
             </div>
           )}
