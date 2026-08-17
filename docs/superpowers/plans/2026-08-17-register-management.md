@@ -321,11 +321,22 @@ ALTER TABLE payments ADD COLUMN register_id TEXT REFERENCES registers(id);
 ALTER TABLE cash_drawer_sessions ADD COLUMN register_id TEXT REFERENCES registers(id);
 ALTER TABLE cash_drawer_sessions ADD COLUMN shift_id TEXT;
 
--- Backfill every historical row onto the migrated default register (3.2).
-UPDATE orders               SET register_id = '00000000-0000-0000-0000-0000000000b1' WHERE register_id IS NULL;
-UPDATE returns              SET register_id = '00000000-0000-0000-0000-0000000000b1' WHERE register_id IS NULL;
-UPDATE payments             SET register_id = '00000000-0000-0000-0000-0000000000b1' WHERE register_id IS NULL;
-UPDATE cash_drawer_sessions SET register_id = '00000000-0000-0000-0000-0000000000b1' WHERE register_id IS NULL;
+-- Backfill every historical row onto its OWN org's default register.
+--
+-- NOT a hardcoded '…b1'. That id belongs to the default org's register, and an
+-- install that has since created a second organisation would have org B's whole
+-- order history attributed to org A's till — a cross-tenant misattribution baked
+-- into historical data, which nobody notices until a year-end report.
+--
+-- So: give every org lacking one a default location and register first, then
+-- join through org_id. Rows whose org_id is NULL (everything predating 014) fall
+-- to the default org, which is what 014 already assumes.
+UPDATE orders SET register_id = (
+  SELECT r.id FROM registers r
+  WHERE r.org_id = COALESCE(orders.org_id, '00000000-0000-0000-0000-000000000001')
+  ORDER BY r.register_number LIMIT 1
+) WHERE register_id IS NULL;
+-- …and the same shape for returns, payments and cash_drawer_sessions.
 
 -- B2: replace the global one-open-drawer index with a per-register one.
 -- Order matters. Dropping before creating leaves a window with no constraint;
@@ -421,7 +432,36 @@ behaviour change to the POS yet. Safe to ship alone.
 |---|---|
 | 1.1 Migration 015, both dialects | `backend/migrations/{sqlite,postgres}/015_registers.sql` |
 | 1.2 Adapter methods on **both** adapters in one commit (B4) | `backend/src/adapters/db/{SQLiteAdapter,PostgresAdapter}.ts` |
+
+> **Carried into 1.2 from the 015 review — booleans cross the adapter boundary differently.**
+> SQLite returns the five register flags as `0`/`1`; Postgres returns `false`/`true`. The codebase is
+> already inconsistent about this — `SQLiteAdapter.ts:1098` uses `s.is_active === 1` while `:2170` uses
+> `!!k.is_active` for the same concept. A register mapper written as `hasCashDrawer: row.has_cash_drawer`
+> therefore serialises to different JSON per adapter, and a frontend guard like
+> `if (register.canOpenDrawerNoSale === false)` behaves differently in dev than in prod. Four of these
+> flags gate cash handling. **Pick one coercion (`Boolean(row.x)`) and apply it in both adapters' register
+> mappers**, and assert it in the adapter tests: the SQLite and Postgres mappers must return `true`/`false`,
+> never `1`/`0`.
+>
+> Also: the constraint-violation tests that could not live in `migrator.test.ts` (readonly handle) belong
+> here — duplicate `display_code` per org, duplicate `register_number` per location, and the composite-FK
+> rejection of a register whose org disagrees with its location's.
 | 1.3 `registers` service — numbering, display-code generation, validation | Create `backend/src/services/registers.ts` |
+
+> **Carried into 1.3 from the 015 review — three things the schema cannot enforce.**
+> 1. **`VARCHAR(n)` is enforced by Postgres and silently ignored by SQLite.** Dev and every migrator test
+>    run SQLite; production runs Postgres. An over-long `name` or `display_code` passes locally and 500s
+>    in production with SQLSTATE 22001. The zod schemas must carry `.max()` matching the SQL widths —
+>    `name` 255, `display_code` 50, `placement` 255, `terminal_device_id` 255 — and the SQL widths are the
+>    source of truth for those numbers.
+> 2. **`slug` and `display_code` are case-sensitive in both dialects** (no `COLLATE` anywhere in the repo).
+>    `MAIN-01` and `main-01` would be two different registers, and a lookup typed in lowercase misses.
+>    Normalise to uppercase for `display_code` and lowercase for `slug` **in the service**, not in SQL.
+> 3. **A retired register never releases its `register_number` or `display_code`** — the unique indexes are
+>    unconditional, deliberately, so an old receipt always resolves to the till that printed it. The store
+>    whose till dies *will* try to name the replacement `Register 1` again. Catch the unique violation and
+>    return a `422` explaining that the code belongs to a retired register and suggesting the next free
+>    number — never let it surface as an opaque 500.
 | 1.4 Routes with zod schemas | Create `backend/src/api/routes/registers.ts`, `locations.ts`; mount in `backend/src/app.ts` |
 | 1.5 `registers` RBAC resource in **both** lists (B6) | `src/lib/permissions.ts:39-50`, `backend/src/api/middleware/authorize.ts` |
 | 1.6 Typed SDK + query hooks | Create `src/lib/api/registers.ts`, `src/hooks/queries/useRegisters.ts`; export from `src/lib/api/index.ts`, `src/hooks/queries/{index,keys}.ts` |
