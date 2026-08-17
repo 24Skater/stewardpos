@@ -69,7 +69,7 @@ const configSchema = z.object({
   // Email
   email: z.object({
     adapter: z.enum(['console', 'smtp', 'resend']).default('console'),
-    from: z.string().default('noreply@persona-pos.local'),
+    from: z.string().default('noreply@stewardpos.local'),
     smtp: z.object({
       host: z.string().optional(),
       port: z.coerce.number().optional(),

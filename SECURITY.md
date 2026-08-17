@@ -2,12 +2,16 @@
 
 ## Supported Versions
 
-We release security updates for the following versions:
+StewardPOS has not yet cut a `1.0.0` release. Until it does, the supported
+version is **whatever is currently on `main`** — fixes land there and operators
+take them with `git pull` (see [docs/guides/upgrade.md](docs/guides/upgrade.md)).
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+Once `1.0.0` is tagged this becomes:
+
+| Version | Supported |
+| ------- | --------- |
+| 1.x     | Yes |
+| < 1.0   | No |
 
 ## Reporting a Vulnerability
 
@@ -19,7 +23,13 @@ Security vulnerabilities should not be reported through public GitHub issues to 
 
 ### 2. Report Privately
 
-Send details to: **security@persona-pos.dev** (or create private security advisory on GitHub)
+Use **[GitHub's private security advisories](https://github.com/24Skater/stewardpos/security/advisories/new)**.
+
+That is deliberately the only channel. There is no `security@` mailbox, and
+publishing an address nobody reads is worse than publishing none — a reporter who
+emails it and hears nothing reasonably concludes the project does not care, and
+may disclose publicly instead. The GitHub channel is private, notifies the
+maintainers, and exists today.
 
 Include:
 - Description of the vulnerability
@@ -29,11 +39,17 @@ Include:
 
 ### 3. What to Expect
 
-- **Acknowledgment**: Within 48 hours
-- **Initial Assessment**: Within 5 business days
-- **Status Updates**: Every 7 days until resolved
-- **Fix Timeline**: Critical issues within 7 days, others within 30 days
-- **Public Disclosure**: After fix is released (coordinated disclosure)
+- **Acknowledgment**: within a week
+- **Assessment**: as soon as we can get to it, and we will tell you what we think
+- **Status updates**: when there is something to report, rather than on a timer
+- **Fix**: critical issues are prioritised over everything else
+- **Public disclosure**: after a fix is released (coordinated disclosure)
+
+These are deliberately modest, because StewardPOS is maintained by very few
+people in their own time. This file used to promise acknowledgment within 48
+hours and critical fixes within 7 days. Those are commitments a project this
+size cannot reliably keep, and a security policy that is quietly broken is worse
+than one that is modest and honoured.
 
 ### 4. Coordinated Disclosure
 
@@ -76,7 +92,7 @@ We believe in coordinated disclosure:
 ```sql
 -- Create app user with limited permissions
 CREATE USER pos_app WITH PASSWORD 'strong_password';
-GRANT CONNECT ON DATABASE persona_pos TO pos_app;
+GRANT CONNECT ON DATABASE stewardpos TO pos_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pos_app;
 
 -- Don't grant DROP, CREATE, or ALTER permissions
@@ -312,9 +328,9 @@ If a security incident occurs:
 
 ## Contact
 
-- **Security Email**: security@persona-pos.dev
-- **GitHub Security**: [Private Security Advisory](https://github.com/yourorg/persona-pos/security/advisories/new)
+- **Report a vulnerability**: [private security advisory](https://github.com/24Skater/stewardpos/security/advisories/new)
+- **Everything else**: [open an issue](https://github.com/24Skater/stewardpos/issues)
 
 ---
 
-Thank you for helping keep Persona POS secure! 🔒
+Thank you for helping keep StewardPOS secure! 🔒

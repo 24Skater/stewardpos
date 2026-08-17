@@ -22,7 +22,7 @@ export class Migrator {
         password: config.database.password,
       });
     } else if (this.adapter === 'sqlite') {
-      const filename = config.database.filename || './data/persona-pos.db';
+      const filename = config.database.filename || './data/stewardpos.db';
       // Ensure directory exists
       const dir = path.dirname(filename);
       if (!fs.existsSync(dir)) {

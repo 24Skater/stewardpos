@@ -1,0 +1,11 @@
+# Discussions are not enabled on this repository, so it is not offered here — a
+# contact link to a disabled tab is the same broken promise as an unread
+# security mailbox.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/24Skater/stewardpos/security/advisories/new
+    about: Report privately. Do not open a public issue.
+  - name: Installing or operating StewardPOS
+    url: https://github.com/24Skater/stewardpos/tree/main/docs/guides
+    about: Install, backup, upgrade and troubleshooting guides.

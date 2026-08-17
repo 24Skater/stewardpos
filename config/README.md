@@ -1,6 +1,6 @@
 # Configuration
 
-Persona POS uses a flexible configuration system that supports multiple data sources:
+StewardPOS uses a flexible configuration system that supports multiple data sources:
 
 1. **Default configuration** (`config/default.yml`) - Base configuration for all environments
 2. **Local overrides** (`config/local.yml`) - Git-ignored file for local development overrides

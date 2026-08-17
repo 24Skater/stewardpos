@@ -1,6 +1,6 @@
-# Contributing to Persona POS
+# Contributing to StewardPOS
 
-Thank you for your interest in contributing to Persona POS! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to StewardPOS! This document provides guidelines and information for contributors.
 
 ## Table of Contents
 
@@ -22,8 +22,8 @@ We are committed to providing a welcoming and inclusive environment. Please be r
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/persona-pos.git
-   cd persona-pos
+   git clone https://github.com/YOUR_USERNAME/stewardpos.git
+   cd stewardpos
    ```
 3. **Install dependencies**:
    ```bash
@@ -126,118 +126,66 @@ Fixes #456
 
 ## Adding New Adapters
 
-Persona POS uses a clean architecture with ports (interfaces) and adapters (implementations). Here's how to add new adapters:
+Two extension points exist, and both are **server-side**. If you are looking for
+`src/adapters/` or `src/lib/di.ts` in the frontend, they are gone — Phase 1
+removed the browser-side IndexedDB/DI layer, and every page now reaches the API
+through `src/lib/api/`. This section used to describe that deleted architecture,
+which would have sent a contributor looking for files that do not exist.
 
-### 1. Database Adapter
+### Payment terminals
 
-```bash
-# Create new adapter file
-touch src/adapters/db/YourDBAdapter.ts
-```
+`backend/src/terminal/TerminalPort.ts` is the interface; there are six
+implementations beside it, and `TerminalAdapterFactory.ts` selects one from
+store settings.
 
 ```typescript
-// src/adapters/db/YourDBAdapter.ts
-import { DBPort } from '../../core/ports/DBPort';
+// backend/src/terminal/YourTerminalAdapter.ts
+import { TerminalPort, ChargeResult, ChargeMeta } from './TerminalPort';
 
-export class YourDBAdapter implements DBPort {
-  private config: YourConfigType;
-
-  constructor(config: YourConfigType) {
-    this.config = config;
-  }
-
-  // Implement all DBPort methods
-  async getAllItems(): Promise<Item[]> {
-    // Your implementation
-  }
-
-  // ... other methods
+export class YourTerminalAdapter implements TerminalPort {
+  createCharge(amount: number, currency: string, meta: ChargeMeta): Promise<ChargeResult>;
+  getChargeStatus(chargeId: string): Promise<ChargeResult>;
+  cancelCharge(chargeId: string): Promise<void>;
+  listReaders(): Promise<TerminalReader[]>;
+  testConnection(): Promise<ConnectionTestResult>;
 }
 ```
 
-**Register in DI container** (`src/lib/di.ts`):
+Register it in `TerminalAdapterFactory`, and add it to the provider list in
+`src/pages/admin/AdminSettings.tsx`.
 
-```typescript
-case 'your-db':
-  this.dbPort = new YourDBAdapter(config);
-  break;
-```
+**`amount` is integer cents.** Every adapter is handed the figure the server
+computed; none of them may re-derive it from anything the client sent. Read
+`backend/src/services/pricing.ts` before touching money.
 
-**Update config schema** (`src/lib/config.ts`):
+Note that adding an adapter is the easy part. Only Manual (cash) and Stripe are
+in v1, and the rest are flagged off, because a terminal integration is not done
+until it has been exercised against real hardware — see the backlog in
+`docs/masterplan/phase-9-golive.md`.
 
-```typescript
-adapter: z.enum(['indexeddb', 'sqlite', 'postgres', 'your-db'])
-```
+### Email
 
-**Add documentation** in `CONFIGURATION.md`
+`backend/src/services/email.ts` dispatches on `config.email.adapter`
+(`console`, `smtp`, `resend`). Add a `case` and a sender.
 
-### 2. Auth Adapter
+The `console` adapter returns `logged`, deliberately **not** `sent`. Keep that
+distinction in anything you add: this project previously recorded receipts as
+delivered when nothing had been sent, and a shop reading its own send history
+saw evidence that was not true.
 
-Similar process - implement `AuthPort` interface:
+### Storage
 
-```typescript
-// src/adapters/auth/YourAuthAdapter.ts
-import { AuthPort } from '../../core/ports/AuthPort';
-
-export class YourAuthAdapter implements AuthPort {
-  // Implement signIn, signOut, getSession, etc.
-}
-```
-
-### 3. Email Adapter
-
-Implement `EmailPort`:
-
-```typescript
-// src/adapters/email/YourEmailAdapter.ts
-import { EmailPort } from '../../core/ports/EmailPort';
-
-export class YourEmailAdapter implements EmailPort {
-  async sendEmail(message: EmailMessage): Promise<Result> {
-    // Your implementation
-  }
-}
-```
-
-### 4. SMS Adapter
-
-Implement `SmsPort`:
-
-```typescript
-// src/adapters/sms/YourSmsAdapter.ts
-import { SmsPort } from '../../core/ports/SmsPort';
-
-export class YourSmsAdapter implements SmsPort {
-  async sendSms(message: SmsMessage): Promise<Result> {
-    // Your implementation
-  }
-}
-```
-
-### 5. Storage Adapter
-
-Implement `StoragePort`:
-
-```typescript
-// src/adapters/storage/YourStorageAdapter.ts
-import { StoragePort } from '../../core/ports/StoragePort';
-
-export class YourStorageAdapter implements StoragePort {
-  async put(key: string, data: Blob): Promise<Result> {
-    // Your implementation
-  }
-  
-  async get(key: string): Promise<Blob | null> {
-    // Your implementation
-  }
-}
-```
+`STORAGE_ADAPTER` selects between the volume-backed disk path (the default) and
+S3-compatible object storage. See `docs/guides/deploy-alternatives.md`.
 
 ### Testing Your Adapter
 
-1. Add unit tests in `src/adapters/__tests__/`
-2. Test via settings UI (/admin/settings)
-3. Add integration tests if applicable
+1. Add unit tests beside the adapter, in `backend/src/terminal/__tests__/`
+2. Exercise it through **Admin → Settings → Payments**, including
+   "Test connection"
+3. If it touches the database, add an integration test in
+   `backend/src/adapters/db/__tests__/integration/` — those run against a real
+   Postgres and have repeatedly caught what a mocked adapter accepted
 
 ## Pull Request Process
 
@@ -319,38 +267,46 @@ describe('YourAdapter', () => {
 ## Project Structure
 
 ```
-persona-pos/
-├── src/
-│   ├── core/              # Domain models and ports (interfaces)
-│   │   ├── models/        # TypeScript types
-│   │   └── ports/         # Interface definitions
-│   ├── adapters/          # Concrete implementations
-│   │   ├── db/            # Database adapters
-│   │   ├── auth/          # Auth adapters
-│   │   ├── email/         # Email adapters
-│   │   ├── sms/           # SMS adapters
-│   │   └── storage/       # Storage adapters
-│   ├── components/        # React components
-│   ├── pages/             # Route pages
-│   ├── lib/               # Utilities
-│   │   ├── di.ts          # Dependency injection
-│   │   └── config.ts      # Configuration
-│   └── hooks/             # Custom React hooks
-├── config/                # YAML configuration files
-└── public/                # Static assets
+stewardpos/
+├── src/                      # Frontend (Vite + React + TypeScript)
+│   ├── components/           # Shared components; ui/ is shadcn
+│   ├── pages/                # Route pages, incl. admin/
+│   ├── hooks/queries/        # TanStack Query hooks
+│   └── lib/
+│       ├── api/              # The typed API SDK — the only way to the backend
+│       ├── api-client.ts     # fetch wrapper; unwraps the response envelope
+│       └── register-math.ts  # Register arithmetic
+├── backend/                  # Express API
+│   ├── src/api/routes/       # One module per resource
+│   ├── src/api/middleware/   # authenticate, authorize, errors, logging
+│   ├── src/services/         # pricing, discounts, returns, reports, email, migrator, seeder
+│   ├── src/adapters/db/      # PostgresAdapter, SQLiteAdapter — the hand-written SQL
+│   ├── src/terminal/         # Payment terminal adapters (TerminalPort)
+│   └── migrations/           # postgres/ and sqlite/, kept in lock-step
+├── e2e/                      # Playwright specs
+├── docs/
+│   ├── guides/               # Operator documentation
+│   ├── masterplan/           # The build plan and its completion notes
+│   └── reference/            # Environment variables
+└── scripts/                  # backup, restore, deploy, load test
 ```
+
+**Read `docs/masterplan/` before a substantial change.** Each phase file carries
+completion notes recording what was built, what it broke, and what was
+deliberately left undone. It is the closest thing this project has to
+institutional memory.
 
 ## Need Help?
 
-- **Documentation**: Check `CONFIGURATION.md` and `README.md`
-- **Issues**: Browse [existing issues](https://github.com/yourorg/persona-pos/issues)
-- **Discussions**: Join [GitHub Discussions](https://github.com/yourorg/persona-pos/discussions)
-- **Discord**: [Join our community](https://discord.gg/persona-pos)
+- **Documentation**: `README.md`, then [docs/guides/](docs/guides/) for running it
+  and `docs/masterplan/` for why it is the way it is
+- **Issues**: [existing issues](https://github.com/24Skater/stewardpos/issues)
+- **Security**: do not open an issue — see [SECURITY.md](SECURITY.md)
 
 ## License
 
-By contributing to Persona POS, you agree that your contributions will be licensed under the MIT License.
+By contributing to StewardPOS, you agree that your contributions will be licensed under the MIT License.
 
 ---
 
-Thank you for contributing to Persona POS! 🎉
+Thank you for contributing to StewardPOS! 🎉

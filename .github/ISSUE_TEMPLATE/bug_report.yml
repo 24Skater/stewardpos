@@ -1,0 +1,78 @@
+name: Bug report
+description: Something is behaving incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security vulnerabilities here.** Use a
+        [private security advisory](https://github.com/24Skater/stewardpos/security/advisories/new)
+        instead — see [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+      placeholder: |
+        Rang up a sale with a 10% discount. The receipt showed the discount but
+        the total was the undiscounted amount.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Enough for someone else to see the same thing.
+      placeholder: |
+        1. Sign in as a cashier
+        2. Add "Loose Leaf Tea" to the cart
+        3. Apply the 10% quick discount
+        4. Complete as cash
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Register / checkout
+        - Returns and refunds
+        - Inventory
+        - Reports or exports
+        - Settings, branding, or users
+        - Install, upgrade, or deployment
+        - Somewhere else / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`git rev-parse --short HEAD`, or the release tag."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        `docker compose -f docker-compose.prod.yml logs --tail 50 backend`, or the
+        browser console for a frontend issue.
+
+        **Redact anything from your `.env`** before pasting.
+      render: shell
+
+  - type: checkboxes
+    id: money
+    attributes:
+      label: Does this affect money?
+      description: |
+        Totals, tax, discounts, change, refunds, or the day's takings. These are
+        triaged first — a till that charges the wrong amount is not a normal bug.
+      options:
+        - label: This bug affects an amount charged, refunded, or reported
