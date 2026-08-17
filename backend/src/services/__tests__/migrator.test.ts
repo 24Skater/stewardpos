@@ -87,7 +87,7 @@ describeSqlite('the SQLite migration chain', () => {
       count: number;
     };
 
-    expect(applied.count).toBeGreaterThanOrEqual(14);
+    expect(applied.count).toBeGreaterThanOrEqual(15);
   });
 
   it('records the version it reached', () => {
@@ -95,7 +95,7 @@ describeSqlite('the SQLite migration chain', () => {
       version: number;
     };
 
-    expect(version).toBeGreaterThanOrEqual(14);
+    expect(version).toBeGreaterThanOrEqual(15);
   });
 
   it('applies them in order, with no gaps', () => {
@@ -169,6 +169,58 @@ describeSqlite('014_org_tenancy', () => {
       expect(column, `${table} has no org_id`).toBeTruthy();
       expect(column!.notnull, `${table}.org_id is NOT NULL`).toBe(0);
     }
+  });
+});
+
+describeSqlite('migration 015: locations and registers', () => {
+  it('creates the locations and registers tables', () => {
+    const present = tables();
+    expect(present).toContain('locations');
+    expect(present).toContain('registers');
+  });
+
+  it('gives registers the identity, capability and policy columns', () => {
+    const cols = columns('registers');
+    for (const col of [
+      'id', 'org_id', 'location_id', 'name', 'register_number', 'display_code',
+      'placement', 'type', 'has_cash_drawer', 'accepts_cash', 'can_refund',
+      'can_open_drawer_no_sale', 'require_sign_in', 'idle_lock_seconds',
+      'terminal_provider', 'terminal_device_id', 'status', 'last_seen_at',
+    ]) {
+      expect(cols, `registers is missing column: ${col}`).toContain(col);
+    }
+  });
+
+  it('backfills one location and one register so existing history is attributable', () => {
+    const loc = db.prepare("SELECT * FROM locations WHERE slug = 'main'").get() as
+      { id: string; timezone: string } | undefined;
+    expect(loc).toBeDefined();
+    expect(loc!.timezone).toBe('UTC');
+
+    const regs = db.prepare('SELECT * FROM registers').all() as Array<{
+      display_code: string; register_number: number; status: string; location_id: string;
+    }>;
+    expect(regs).toHaveLength(1);
+    expect(regs[0].display_code).toBe('MAIN-01');
+    expect(regs[0].register_number).toBe(1);
+    expect(regs[0].status).toBe('active');
+    expect(regs[0].location_id).toBe(loc!.id);
+  });
+
+  it('defaults org policy to a 6-digit PIN and an unlimited register cap', () => {
+    const org = db.prepare("SELECT * FROM organizations WHERE slug = 'default'").get() as
+      { pin_length: number; max_registers: number | null };
+    expect(org.pin_length).toBe(6);
+    expect(org.max_registers).toBeNull();
+  });
+
+  it('declares the uniqueness the estate depends on', () => {
+    const idx = (db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('registers','locations')"
+    ).all() as Array<{ name: string }>).map((r) => r.name);
+    expect(idx).toContain('idx_registers_loc_number');
+    expect(idx).toContain('idx_registers_display_code');
+    expect(idx).toContain('idx_locations_org_slug');
   });
 });
 
