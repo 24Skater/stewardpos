@@ -1,4 +1,4 @@
-# Persona POS Default Configuration
+# StewardPOS Default Configuration
 # This file contains the default configuration for all environments
 # Override these values in config/local.yml (gitignored) or via environment variables
 
@@ -28,5 +28,5 @@ features:
   storage: true
 
 app:
-  name: Persona POS
+  name: StewardPOS
   environment: development

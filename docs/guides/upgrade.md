@@ -88,13 +88,32 @@ migrated database against older code is a worse position than a clean restore.
 
 ## Version pinning
 
-The production stack builds from the checkout, so `git pull` is what moves you
-between versions. To hold a specific one:
+Two ways, and the second is better once releases exist.
+
+**Building from source** — `git pull` moves you between versions:
 
 ```bash
-git checkout v1.0.0
+git checkout v1.0.0-rc.1
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+**Running published images** — set `IMAGE_TAG` in `.env`:
+
+```bash
+IMAGE_TAG=1.0.0-rc.1
+```
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+No build, no toolchain, and a rollback is one line: put the previous tag back
+and `up -d` again. Images are published to
+`ghcr.io/24skater/stewardpos-{backend,frontend}` when a version tag is pushed.
+
+Note that a release candidate is **not** tagged `latest`. An install that has not
+pinned a version will not be pulled onto one by accident.
 
 Read `CHANGELOG.md` before a major version. Anything that needs an operator
 decision — a setting that changes meaning, a manual step — is called out there.

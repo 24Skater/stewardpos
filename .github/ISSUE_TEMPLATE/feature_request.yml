@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest something StewardPOS should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing: several things are **deliberately deferred** rather than
+        missing — Services & Quotes, full CRM, SSO, SMS, offline/PWA,
+        multi-tenant SaaS, and the non-Stripe payment terminals. The reasoning
+        is in the backlog at the end of
+        [`docs/masterplan/phase-9-golive.md`](../blob/main/docs/masterplan/phase-9-golive.md).
+
+        If your request is one of those, say so — a real use case is exactly
+        what would move it off the backlog.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: |
+        The situation, not the solution. "I need to void a sale after the drawer
+        has closed" is more useful than "add a void button", because it leaves
+        room for a better answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do about it today?
+      description: The workaround, if there is one, or what goes wrong without it.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: who
+    attributes:
+      label: Who needs this?
+      options:
+        - A cashier, during a shift
+        - A manager or administrator
+        - Whoever installs and maintains it
+        - An integration or script
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind (optional)
+      description: If you already have a shape in mind, describe it here.

@@ -1,325 +1,121 @@
 # Changelog
 
-All notable changes to Persona POS will be documented in this file.
+All notable changes to StewardPOS are recorded here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
+this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
 ## [Unreleased]
 
-### Added - Database Implementation (Phase 2 - ✅ COMPLETED)
-
-#### Database Migrations
-- Created migration system with `Migrator` class
-- PostgreSQL initial schema migration (`001_initial_schema.sql`)
-- SQLite initial schema migration (`001_initial_schema.sql`)
-- Migration tracking table (`schema_migrations`)
-- CLI command for running migrations (`npm run migrate`)
-
-#### Database Schema
-- Complete database schema with 13 tables
-- Categories, Products, Product Variants tables
-- Orders and Order Items tables
-- Customers, Services, Quotes tables
-- Users, Roles, User Roles tables (RBAC)
-- Audit Logs table for activity tracking
-- Settings table (single row configuration)
-- All necessary indexes for performance
-- Foreign keys with CASCADE delete
-- UUID primary keys (PostgreSQL) / Text UUIDs (SQLite)
-
-#### Seed Data System
-- Created `Seeder` class for populating initial data
-- Seed default roles (Admin, Supervisor, Reporter, Standard)
-- Seed admin user (admin@example.com / admin123)
-- Seed default settings
-- Seed sample categories (Electronics, Clothing, Food & Beverage, Books, Home & Garden)
-- Seed sample products with variants
-- CLI command for seeding (`npm run seed`)
-- Combined setup script (`npm run setup-db`)
-
-#### PostgreSQL Adapter
-- Complete `PostgresAdapter` class with connection pooling
-- User operations (getUserByEmail, updateUserLastLogin)
-- Product CRUD operations with variants (getAllProducts, getProductById, createProduct, updateProduct, deleteProduct)
-- Order operations (createOrder, getAllOrders, getOrderById)
-- Customer operations (getAllCustomers, createCustomer)
-- Category, Role, Audit Log, and Settings operations
-- Connection testing and health checks
-- Transaction support for multi-table operations
-- Error handling with custom exceptions
-- JSON aggregation for efficient data loading
-- Prepared statements for SQL injection prevention
-
-#### SQLite Adapter
-- Complete `SQLiteAdapter` class for single-server deployments
-- WAL mode for better concurrency
-- Foreign key enforcement enabled
-- All operations matching PostgreSQL adapter
-- User operations (getUserByEmail, updateUserLastLogin)
-- Product CRUD operations with variants
-- Order operations with transaction support
-- Customer operations
-- Optimized for embedded database usage
-
-#### Database Service
-- Singleton `DatabaseService` for centralized database access
-- Automatic adapter selection based on configuration
-- Connection testing on startup
-- Graceful shutdown support
-- Integrated with Express server lifecycle
-
-#### API Integration
-- **Authentication Routes**: Fully integrated with database
-  - Login with user lookup and password verification
-  - Session management with full user data
-  - Last login tracking
-- **Products Routes**: Complete CRUD operations
-  - GET /api/products - List all products
-  - GET /api/products/:id - Get product by ID
-  - POST /api/products - Create product with variants
-  - PUT /api/products/:id - Update product
-  - DELETE /api/products/:id - Delete product
-  - Zod validation for all inputs
-- **Orders Routes**: Order management
-  - GET /api/orders - List all orders
-  - GET /api/orders/:id - Get order by ID
-  - POST /api/orders - Create order with items
-  - Transaction support for atomic operations
-- **Customers Routes**: Customer management
-  - GET /api/customers - List all customers
-  - POST /api/customers - Create customer
-
-#### Setup Scripts
-- `backend/scripts/setup-database.ts` - Combined migration and seeding
-- `npm run setup-db` - Full database setup
-- `npm run setup-db -- --skip-seed` - Migrations only
-- Clear success/failure reporting with default credentials
-
-#### Code Review & Quality Assurance
-- Complete security audit (no vulnerabilities found)
-- Code quality review (excellent standards)
-- Frontend compatibility verification (perfect match)
-- Documentation review (comprehensive)
-- Open source readiness check (fully prepared)
-- Created `CODE-REVIEW-PHASE2.md` - Detailed review report
-- Created `CODE-REVIEW-SUMMARY.md` - Executive summary
-- Created `GITHUB-READINESS-CHECKLIST.md` - Release checklist
-- Created `backend/env.example` - Environment template
-
-### Added - Backend API Foundation (Phase 1 - Completed)
-
-#### Project Structure
-- Created `backend/` directory with TypeScript configuration
-- Added `package.json` with all necessary dependencies (Express, JWT, Winston, etc.)
-- Set up TypeScript compilation and development workflow
-- Created `.env.example` with comprehensive configuration options
-- Added `.gitignore` for backend
-
-#### Core Systems
-- **Configuration System** - Zod-validated configuration from environment variables
-- **Logging System** - Winston logger with console and file output, configurable log levels
-- **Error Handling** - Custom error classes (AppError, ValidationError, AuthenticationError, etc.)
-- **Security Middleware** - Helmet.js for security headers, CORS configuration, rate limiting
-
-#### Express Server
-- Main Express application with proper middleware stack
-- Request/response logging middleware
-- Global error handler
-- Graceful shutdown handlers (SIGTERM, SIGINT)
-- 404 handler for unknown routes
-
-#### Authentication System
-- JWT token generation and verification
-- `authenticate` middleware for protected routes
-- `optionalAuth` middleware for optional authentication
-- Password hashing with bcrypt
-- Login endpoint (`POST /api/auth/login`)
-- Logout endpoint (`POST /api/auth/logout`)
-- Session endpoint (`GET /api/auth/session`)
-- Refresh token endpoint (`POST /api/auth/refresh`)
-
-#### API Routes (Foundation)
-- Health check endpoints (`GET /api/health`, `GET /api/health/db`)
-- Authentication routes (fully functional)
-- Product routes (stubs created)
-- Order routes (stubs created)
-- Customer routes (stubs created)
-- Service routes (stubs created)
-- Admin routes (stubs created)
-
-#### Documentation
-- `backend/README.md` - Complete backend documentation
-- `BACKEND-QUICKSTART.md` - 5-minute quick start guide
-- `PHASE1-PROGRESS.md` - Detailed progress tracking
-- `ROADMAP.md` - Complete 7-phase development roadmap
-- `INSTALL.md` - Comprehensive installation guide for Linux, Windows, and Docker
-- `QUICK-REFERENCE.md` - One-page developer reference
-- `DEVELOPMENT-SUMMARY.md` - Development status and next steps
-
-#### Project Documentation
-- Updated `README.md` with professional open-source project overview
-- Added feature highlights and architecture diagram
-- Documented deployment options and system requirements
-- Added community links and contributing guidelines
-
-### Changed
-- Replaced Lovable project README with professional open-source README
-- Updated project structure to support backend API
-
-### Technical Details
-- Node.js 18+ required
-- TypeScript with strict mode
-- Express 4.x for HTTP server
-- JWT for stateless authentication
-- Winston for structured logging
-- Zod for schema validation
-- bcrypt for password hashing
+Nothing yet.
 
 ---
 
-## [0.9.0] - 2025-01-15 (Pre-release)
+## [1.0.0-rc.1] — 2026-08-17
 
-### Current State
-- Frontend React application fully functional
-- IndexedDB adapter working (browser-only)
-- Role-based access control (RBAC) implemented
-- Audit logging system in place
-- Docker Compose setup available
-- Clean architecture with ports/adapters pattern
+The first release candidate. StewardPOS began as an AI-scaffolded prototype in
+which a great deal existed and very little worked; this is the end of a nine-phase
+plan (`docs/masterplan/`) to make it a thing a shop can actually run.
 
-### Known Limitations
-- Backend API not yet connected (Phase 1 in progress)
-- PostgreSQL adapter incomplete (mock implementation)
-- SQLite adapter not implemented
-- Email/SMS adapters are console-only
-- Storage adapters need backend integration
-- No automated installation scripts yet
-- Database migrations not implemented
+**It is a release candidate rather than 1.0.0 because two go-live checks cannot
+yet pass** — see [Not in this release](#not-in-this-release). Everything else on
+that checklist does.
 
----
+### The money path
 
-## Development Phases
+- **The server prices every sale.** The register sends intents — product, variant,
+  quantity, a requested discount — and the server looks up prices, applies tax and
+  discount rules, and computes every total. A client-supplied price is ignored.
+  Before this, the API stored whatever it was sent, so anyone able to shape a
+  request could buy a $40 item for a penny.
+- **Integer cents throughout.** Floating-point dollars do not survive the
+  arithmetic a receipt needs; totals convert to dollars only at the storage and
+  serialization boundary.
+- **Orders are transactional.** The order, its items, its payments and the stock
+  decrement commit together or not at all. Stock is decremented conditionally
+  (`WHERE stock >= n`), so two registers selling the last unit cannot both succeed.
+- **Cash, change and drawer sessions**, with expected-versus-counted variance.
+- **Split tender** — cash plus card, or store credit topped up with cash — recorded
+  per payment rather than as a single method on the order.
+- **Returns and refunds**, repriced from the original order, with restock gated on
+  approval, and store credit issuable and spendable.
+- **Discounts and promo codes** validated server-side across all four sources,
+  with limits and approval thresholds enforced.
 
-### Phase 1: Backend API Foundation (Completed)
-**Status:** 100% Complete  
-**Timeline:** 3-4 weeks  
-**Started:** January 15, 2025  
-**Completed:** January 15, 2025
+### Reporting
 
-- [x] Backend project structure
-- [x] Express server with TypeScript
-- [x] Configuration system
-- [x] Security middleware (Helmet, CORS, rate limiting)
-- [x] Error handling and logging
-- [x] JWT authentication
-- [x] Health check endpoints
-- [x] API route stubs
-- [x] Documentation and quick start guides
+- Five endpoints (`/api/reports/*`) that aggregate in SQL: sales summary, daily
+  series, top products, tender split and refunds by reason.
+- Exports to PDF, Excel and CSV built from the same payload the screen renders,
+  so the paper and the screen cannot disagree.
 
-### Phase 2: Database Implementation (✅ COMPLETED)
-**Status:** 100% Complete  
-**Timeline:** 2-3 weeks  
-**Started:** January 15, 2025  
-**Completed:** January 15, 2025
+### Catalog, customers and admin
 
-- [x] Database migrations system
-- [x] PostgreSQL schema migration
-- [x] SQLite schema migration
-- [x] PostgreSQL adapter (all CRUD operations)
-- [x] SQLite adapter (all CRUD operations)
-- [x] Connection pooling
-- [x] Transaction support
-- [x] Seed data scripts
-- [x] Database service with adapter selection
-- [x] Integrate with API routes (auth, products, orders, customers)
-- [x] Setup scripts for easy database initialization
-- [x] Server startup database connection testing
+- Products with variants, images, barcode lookup, search, filtering and paging;
+  CSV import and export; low stock as a store setting.
+- Customers, with archival that does not destroy trading history.
+- Store branding — colour, logo, favicon, receipt header and footer — applied
+  across the app and onto receipts.
+- An audit log filterable by user, entity, action and date, showing what changed
+  field by field.
+- API keys: hashed at rest, shown once, scoped, revocable, and unable to manage
+  other keys.
 
-### Phase 3: Installation & Deployment (Planned)
-**Status:** Documentation Complete, Scripts Pending  
-**Timeline:** 3-4 weeks
+### Security and operations
 
-- [x] Installation documentation
-- [ ] Linux installation script
-- [ ] Windows installation script
-- [ ] Improved Docker Compose setup
-- [ ] Uninstall scripts
-- [ ] Update scripts
+- JWT authentication with role-based permissions enforced on **every** protected
+  route, checked against the database on each request rather than trusted from
+  the token.
+- Rate limiting per client address, with a separate budget for failed sign-ins.
+- A production Docker Compose stack with Caddy terminating TLS and automatic
+  certificates; only the proxy publishes ports.
+- **The backend refuses to start in production on the placeholder secrets this
+  repository ships.**
+- Migrations run on start and a failure is fatal, rather than serving against a
+  schema the code does not match.
+- Scripted backup and restore, both tested against a real stack.
+- Bounded log rotation.
 
-### Phase 4: Documentation & UX (Planned)
-**Timeline:** 2-3 weeks
+### Not in this release
 
-- [x] Installation guides
-- [x] Quick start guide
-- [ ] Video tutorials
-- [ ] Interactive documentation site
-- [ ] In-app help system
+- **Card payments are simulated.** The Stripe Terminal integration (P3-T5) is
+  unwired: it needs real credentials and hardware to verify, and was not written
+  blind. Cash and manual tender work. The Square, Clover, Verifone and Dejavoo
+  adapters compile but are flagged off for the same reason.
+- **No install has been verified on a real VPS.** The guide is complete, the
+  compose file and Caddyfile validate, and every failure path is covered by
+  tests — but nobody has yet followed it start to finish on a clean server.
+- **Multi-tenant is a foundation, not a feature.** `org_id` exists on twenty
+  tables and on every authenticated request; **no query filters on it**.
+- **Day bucketing follows the database server's timezone** (UTC in every shipped
+  image). A store several hours behind UTC will see an evening sale counted
+  against the following day.
+- **Deferred by decision**, not omission: Services & Quotes, full CRM and
+  loyalty, SSO, SMS, offline/PWA, and multi-tenant SaaS. The reasoning is in the
+  backlog at the end of `docs/masterplan/phase-9-golive.md`.
 
-### Phase 5: Production Hardening (Planned)
-**Timeline:** 2-3 weeks
+### Promoting this to 1.0.0
 
-- [ ] SSL/TLS with Let's Encrypt
-- [ ] Backup and restore scripts
-- [ ] Monitoring dashboard
-- [ ] Performance optimization
+Two things, and then it is a tag:
 
-### Phase 6: Testing & QA (Planned)
-**Timeline:** 2-3 weeks
-
-- [ ] Unit test suite
-- [ ] Integration tests
-- [ ] E2E tests
-- [ ] Load testing
-- [ ] Beta testing program
-
-### Phase 7: Community & Support (Ongoing)
-- [ ] Discord server setup
-- [ ] GitHub issue/PR templates
-- [ ] Documentation website
-- [ ] Release process
+1. A card sale completed end to end against real Stripe Terminal hardware in test
+   mode, with a decline creating no order.
+2. A fresh VPS taken to a working HTTPS install by following
+   `docs/guides/install-vps.md` and nothing else.
 
 ---
 
-## Target Milestones
+## Before 1.0.0-rc.1
 
-### v1.0.0 (Target: Q2 2025)
-- Complete backend API with all endpoints
-- PostgreSQL and SQLite adapters fully functional
-- Database migrations working
-- One-command installation for Linux and Windows
-- Production hardening (SSL, backups, monitoring)
-- Comprehensive documentation
-- 80%+ test coverage
+This project has no released history. Everything above is the first release.
 
-### v1.1.0 (Target: Q3 2025)
-- Video tutorials
-- Interactive documentation site
-- Email/SMS adapters (real implementations)
-- S3 storage adapter (real implementation)
-- Monitoring dashboard
+The development that produced it is recorded phase by phase in
+`docs/masterplan/`, where each file carries completion notes describing what was
+built, what it broke, and what was deliberately left undone. That is a more
+useful record than a reconstructed changelog would be — several of the entries
+above exist because a phase found the previous one had not actually worked.
 
-### v1.2.0+ (Future)
-- Mobile app (iOS/Android)
-- Offline-first PWA
-- Multi-location support
-- Advanced reporting
-- Third-party integrations (QuickBooks, Xero)
-- Plugin marketplace
-
----
-
-## Notes
-
-- This project uses [Semantic Versioning](https://semver.org/)
-- Breaking changes will be clearly documented
-- Migration guides will be provided for major version updates
-- Security patches will be released as needed
-
----
-
-**Last Updated:** January 15, 2025  
-**Current Version:** 0.9.0 (Pre-release)  
-**Next Release:** 1.0.0 (Target: Q2 2025)
+A prior version of this file listed in-progress development as though it were
+released. It has been replaced.

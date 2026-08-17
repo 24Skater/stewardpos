@@ -80,9 +80,19 @@ services:
       - stewardpos
 
   backend:
+    # Pull a published image when IMAGE_TAG is set, build from source otherwise.
+    #
+    #   IMAGE_TAG=1.0.0-rc.1 docker compose -f docker-compose.prod.yml up -d
+    #
+    # Compose uses `image:` as the pull target and `build:` as the fallback, so
+    # both can be declared: with a real tag it pulls, and with the default
+    # `local` it finds nothing published and builds. Pinning a version is the
+    # better habit — it is what makes a rollback a one-line change.
+    image: ghcr.io/24skater/stewardpos-backend:${IMAGE_TAG:-local}
     build:
       context: ./backend
       dockerfile: Dockerfile
+    pull_policy: ${IMAGE_PULL_POLICY:-missing}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -160,6 +170,7 @@ services:
       - stewardpos
 
   frontend:
+    image: ghcr.io/24skater/stewardpos-frontend:${IMAGE_TAG:-local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -169,6 +180,7 @@ services:
         # would tie the built image to one hostname and break the moment the
         # domain changes.
         VITE_API_BASE_URL: ""
+    pull_policy: ${IMAGE_PULL_POLICY:-missing}
     restart: unless-stopped
     environment:
       - VITE_APP_ENV=production
