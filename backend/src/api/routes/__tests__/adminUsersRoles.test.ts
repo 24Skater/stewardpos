@@ -23,6 +23,10 @@ const updateRole = vi.fn();
 const deleteRole = vi.fn();
 const getAuditLogs = vi.fn();
 const createAuditLog = vi.fn();
+const getUserById = vi.fn();
+const getOrgPolicy = vi.fn();
+const getActiveUsersWithPin = vi.fn();
+const setUserPin = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -38,6 +42,10 @@ vi.mock('../../../services/database', () => ({
       deleteRole,
       getAuditLogs,
       createAuditLog,
+      getUserById,
+      getOrgPolicy,
+      getActiveUsersWithPin,
+      setUserPin,
     }),
   },
 }));
@@ -99,6 +107,10 @@ beforeEach(() => {
   deleteRole.mockResolvedValue(true);
   getAuditLogs.mockResolvedValue({ logs: [{ id: 'a1', action: 'create' }], total: 1 });
   createAuditLog.mockResolvedValue({});
+  getUserById.mockResolvedValue({ id: 'u2', email: PERSON.email, name: PERSON.name });
+  getOrgPolicy.mockResolvedValue({ maxRegisters: null, pinLength: 6 });
+  getActiveUsersWithPin.mockResolvedValue([]);
+  setUserPin.mockResolvedValue({ id: 'u2', email: PERSON.email, name: PERSON.name });
 });
 
 describe('POST /api/admin/users', () => {
@@ -270,5 +282,97 @@ describe('GET /api/admin/audit', () => {
     );
 
     expect((await request(app).get('/api/admin/audit').set(auth())).status).toBe(403);
+  });
+});
+
+describe('till PINs', () => {
+  it('sets one and never echoes it back', async () => {
+    const response = await request(app)
+      .put('/api/admin/users/u2/pin')
+      .set(auth())
+      .send({ pin: '482197' });
+
+    expect(response.status).toBe(200);
+    // The PIN must not survive anywhere in the response, in any form.
+    expect(JSON.stringify(response.body)).not.toContain('482197');
+    expect(setUserPin).toHaveBeenCalled();
+  });
+
+  it('stores it only as a bcrypt hash', async () => {
+    await request(app).put('/api/admin/users/u2/pin').set(auth()).send({ pin: '482197' });
+
+    const [, payload] = setUserPin.mock.calls[0];
+    expect(payload.pinHash).not.toContain('482197');
+    expect(payload.pinHash).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('keeps the PIN out of the audit trail', async () => {
+    // The audit table is the one record an operator is meant to browse, so a
+    // PIN reaching it would undo the care taken to keep it out of responses.
+    await request(app).put('/api/admin/users/u2/pin').set(auth()).send({ pin: '482197' });
+
+    expect(JSON.stringify(createAuditLog.mock.calls)).not.toContain('482197');
+    expect(JSON.stringify(createAuditLog.mock.calls)).not.toMatch(/\$2[aby]\$/);
+  });
+
+  it('refuses a PIN already in use, without naming who holds it', async () => {
+    const bcrypt = (await import('bcryptjs')).default;
+    getActiveUsersWithPin.mockResolvedValue([
+      { id: 'someone-else', name: 'Dana', pinHash: await bcrypt.hash('482197', 10) },
+    ]);
+
+    const response = await request(app)
+      .put('/api/admin/users/u2/pin')
+      .set(auth())
+      .send({ pin: '482197' });
+
+    expect(response.status).toBe(409);
+    // Naming the holder would make this endpoint a way to discover a
+    // colleague's PIN by guessing at it.
+    expect(response.body.error).not.toContain('Dana');
+  });
+
+  it('refuses a PIN shorter than the store allows', async () => {
+    const response = await request(app)
+      .put('/api/admin/users/u2/pin')
+      .set(auth())
+      .send({ pin: '1234' });
+
+    expect(response.status).toBe(400);
+    expect(setUserPin).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-numeric PIN', async () => {
+    const response = await request(app)
+      .put('/api/admin/users/u2/pin')
+      .set(auth())
+      .send({ pin: 'abcdef' });
+
+    expect(response.status).toBe(400);
+    expect(setUserPin).not.toHaveBeenCalled();
+  });
+
+  it('clears one, revoking till access', async () => {
+    const response = await request(app).delete('/api/admin/users/u2/pin').set(auth());
+
+    expect(response.status).toBe(200);
+    const [, payload] = setUserPin.mock.calls[0];
+    expect(payload.pinHash).toBeNull();
+    expect(payload.pinSetAt).toBeNull();
+  });
+
+  it('404s clearing a PIN for a user that does not exist', async () => {
+    setUserPin.mockResolvedValue(null);
+
+    const response = await request(app).delete('/api/admin/users/nobody/pin').set(auth());
+
+    expect(response.status).toBe(404);
+  });
+
+  it('refuses both without users:write', async () => {
+    getUserByEmail.mockResolvedValue(actor({ users: { read: true, write: false, delete: false } }));
+
+    expect((await request(app).put('/api/admin/users/u2/pin').set(auth()).send({ pin: '482197' })).status).toBe(403);
+    expect((await request(app).delete('/api/admin/users/u2/pin').set(auth())).status).toBe(403);
   });
 });

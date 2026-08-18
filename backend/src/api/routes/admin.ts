@@ -1,7 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import {
   authorize,
   requirePermission,
@@ -9,7 +9,8 @@ import {
   type PermissionResource,
 } from '../middleware/authorize';
 import { Seeder } from '../../services/seeder';
-import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
+import { setPin, clearPin } from '../../services/pins';
+import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
@@ -131,6 +132,86 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     } else {
       next(error);
     }
+  }
+});
+
+const setPinSchema = z.object({
+  pin: z.string().trim(),
+});
+
+/**
+ * PUT /api/admin/users/:id/pin
+ *
+ * Set an employee's till PIN.
+ *
+ * `users:write` rather than `users:delete`: issuing a PIN is granting an
+ * ability, and it is the same authority that creates the employee in the first
+ * place. The PIN itself is never echoed back, here or anywhere — the response
+ * says only that one is now set. `services/audit.ts` redacts the field from the
+ * snapshot, so the audit row records that a PIN changed without recording what
+ * it changed to.
+ */
+router.put('/users/:id/pin', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { pin } = setPinSchema.parse(req.body);
+    const adapter = db.getAdapter();
+
+    const user = await adapter.getUserById(id);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    const result = await setPin(adapter, req.orgId ?? DEFAULT_ORG_ID, id, pin);
+
+    if (result === 'not_numeric') {
+      throw new ValidationError('A PIN must be digits only');
+    }
+    if (result === 'too_short') {
+      throw new ValidationError('That PIN is shorter than this store allows');
+    }
+    if (result === 'in_use') {
+      // Deliberately does not say who holds it. Naming them would turn this
+      // endpoint into a way to discover a colleague's PIN by guessing.
+      throw new ConflictError('That PIN is already in use. Choose a different one.');
+    }
+
+    await audit(req, { action: 'update', entity: 'user', entityId: id, after: { pinSet: true } });
+
+    res.json({ success: true, data: { id, pinSet: true } });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.errors[0].message));
+    } else {
+      next(error);
+    }
+  }
+});
+
+/**
+ * DELETE /api/admin/users/:id/pin
+ *
+ * Clear an employee's PIN, revoking their ability to sign on to a till.
+ *
+ * Does not end any shift they currently have open: that is a separate act, and
+ * silently dropping a cashier mid-sale to revoke a credential would lose a cart.
+ * The next sign-on is what fails.
+ */
+router.delete('/users/:id/pin', requirePermission('users', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const adapter = db.getAdapter();
+
+    const cleared = await clearPin(adapter, id);
+    if (!cleared) {
+      throw new NotFoundError('User not found');
+    }
+
+    await audit(req, { action: 'update', entity: 'user', entityId: id, after: { pinSet: false } });
+
+    res.json({ success: true, data: { id, pinSet: false } });
+  } catch (error) {
+    next(error);
   }
 });
 

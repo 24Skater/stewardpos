@@ -89,6 +89,25 @@ export async function setPin(
   return updated;
 }
 
+/**
+ * Remove a user's PIN, revoking their ability to sign on to any till.
+ *
+ * Separate from `setPin` rather than a null-accepting overload of it, because
+ * the two are different acts with different authorisation stories: setting a
+ * PIN hands someone the ability to ring sales under their own name, clearing it
+ * takes that away. A route that means to revoke should not be one mistyped
+ * argument away from issuing instead.
+ *
+ * Returns null when no such user exists, so the route can 404 rather than
+ * silently reporting success for an id that was never there.
+ */
+export async function clearPin(
+  adapter: DatabaseAdapter,
+  userId: string
+): Promise<DbRow | null> {
+  return adapter.setUserPin(userId, { pinHash: null, pinSetAt: null });
+}
+
 export type VerifyPinResult = { user: DbRow } | 'no_pin' | 'locked' | 'bad_pin';
 
 /**

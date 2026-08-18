@@ -5202,9 +5202,17 @@ export class PostgresAdapter {
    * `getUserById`/`getActiveUsersWithPin`, this return value is what a route
    * is expected to hand back in a response.
    */
+  /**
+   * Set or clear a user's PIN.
+   *
+   * A null `pinHash` clears it, which is how an admin revokes an employee's
+   * ability to sign on to a till. Clearing also resets the lockout bookkeeping:
+   * leaving a stale `pin_locked_until` behind would lock the *next* PIN issued
+   * to that person before they had ever used it.
+   */
   async setUserPin(
     userId: string,
-    payload: { pinHash: string; pinSetAt: number }
+    payload: { pinHash: string | null; pinSetAt: number | null }
   ): Promise<DbRow | null> {
     try {
       const result = await this.pool.query(
@@ -5212,7 +5220,9 @@ export class PostgresAdapter {
          SET pin_hash = $2, pin_set_at = $3, pin_failed_count = 0, pin_locked_until = NULL
          WHERE id = $1
          RETURNING id, email, name, status, pin_set_at`,
-        [userId, payload.pinHash, new Date(payload.pinSetAt)]
+        // null clears the PIN; Date(null) would be epoch 0, which reads as a
+        // PIN set in 1970 rather than as no PIN at all.
+        [userId, payload.pinHash, payload.pinSetAt === null ? null : new Date(payload.pinSetAt)]
       );
       if (result.rows.length === 0) return null;
 
