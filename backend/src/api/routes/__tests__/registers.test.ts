@@ -90,7 +90,9 @@ describe('GET /api/registers', () => {
     const response = await request(app).get('/api/registers').set(auth());
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toEqual([REGISTER]);
+    // 'never' — REGISTER carries no lastSeenAt, so derived liveness reads as
+    // "has not enrolled a heartbeating device yet", distinct from 'offline'.
+    expect(response.body.data).toEqual([{ ...REGISTER, liveness: 'never' }]);
     expect(getRegisters).toHaveBeenCalledWith({ orgId: DEFAULT_ORG_ID, locationId: undefined, status: undefined });
   });
 
@@ -123,7 +125,7 @@ describe('GET /api/registers/:id', () => {
     const response = await request(app).get('/api/registers/r1').set(auth());
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toEqual(REGISTER);
+    expect(response.body.data).toEqual({ ...REGISTER, liveness: 'never' });
   });
 
   it('404s when it does not exist', async () => {
