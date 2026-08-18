@@ -127,6 +127,22 @@ vi.mock('@/lib/api', () => ({
       calls.push('registersApi.activate');
       return REGISTERS[0];
     }),
+    pairingCode: vi.fn(async (id: string) => {
+      calls.push('registersApi.pairingCode');
+      return { code: 'ABCD2345', formattedCode: 'ABCD-2345', expiresAt: Date.now() + 15 * 60_000, registerId: id };
+    }),
+    pair: vi.fn(async () => {
+      calls.push('registersApi.pair');
+      return { token: 'srt_test_secret', register: REGISTERS[0] };
+    }),
+    heartbeat: vi.fn(async () => {
+      calls.push('registersApi.heartbeat');
+      return REGISTERS[0];
+    }),
+    revoke: vi.fn(async (id: string) => {
+      calls.push('registersApi.revoke');
+      return { register: { ...REGISTERS[0], id, status: 'pending' }, closedDrawerSession: null };
+    }),
   },
   locationsApi: {
     list: vi.fn(async () => {
@@ -277,5 +293,61 @@ describe('AdminRegisters', () => {
       ([arg]) => arg?.title === 'Failed to create register'
     );
     expect(genericFailure).toBe(false);
+  }, TIMEOUT);
+
+  it('shows a pairing code once it is generated, large and copyable, with its expiry', async () => {
+    const { default: Page } = await import('../admin/AdminRegisters');
+    renderPage(Page);
+
+    const pairButton = await screen.findByRole('button', { name: 'Generate pairing code for MAIN-01' });
+    fireEvent.click(pairButton);
+
+    await waitFor(() => expect(calls).toContain('registersApi.pairingCode'));
+    expect(await screen.findByText('ABCD-2345')).toBeInTheDocument();
+    expect(screen.getByText(/shown once/i)).toBeInTheDocument();
+  }, TIMEOUT);
+
+  it('confirms before revoking, and only revokes after confirming', async () => {
+    const { default: Page } = await import('../admin/AdminRegisters');
+    renderPage(Page);
+
+    const revokeButton = await screen.findByRole('button', { name: 'Revoke MAIN-01' });
+    fireEvent.click(revokeButton);
+
+    // The dialog is up, but nothing has been sent to the API yet.
+    expect(await screen.findByText(/must be paired again/i)).toBeInTheDocument();
+    expect(calls).not.toContain('registersApi.revoke');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke register' }));
+
+    await waitFor(() => expect(calls).toContain('registersApi.revoke'));
+    expect(vi.mocked((await import('@/lib/api')).registersApi.revoke)).toHaveBeenCalledWith('r1', undefined);
+  }, TIMEOUT);
+
+  it('explains the open drawer and offers the force path on a 409, instead of a generic failure', async () => {
+    const { registersApi } = await import('@/lib/api');
+    vi.mocked(registersApi.revoke).mockRejectedValueOnce(
+      new ApiClientError(409, 'Register MAIN-01 has an open drawer session (opened 2026-01-01T00:00:00.000Z). Pass force: true to close it and revoke anyway.')
+    );
+
+    const { default: Page } = await import('../admin/AdminRegisters');
+    renderPage(Page);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke MAIN-01' }));
+    await screen.findByText(/must be paired again/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke register' }));
+
+    // Not a generic failure toast - the specific open-drawer explanation and the force path.
+    expect(await screen.findByText(/open cash drawer/i)).toBeInTheDocument();
+    expect(screen.getByText(/flag it for review/i)).toBeInTheDocument();
+    expect(
+      toastSpy.mock.calls.some(([arg]) => arg?.title === 'Failed to revoke register')
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close drawer and revoke' }));
+
+    await waitFor(() =>
+      expect(registersApi.revoke).toHaveBeenLastCalledWith('r1', { force: true })
+    );
   }, TIMEOUT);
 });

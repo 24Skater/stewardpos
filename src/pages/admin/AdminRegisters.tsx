@@ -35,16 +35,38 @@ import {
   useCreateRegister,
   useDisableRegister,
   useActivateRegister,
+  useGeneratePairingCode,
   useLocations,
   useRegisters,
   useRetireRegister,
+  useRevokeRegister,
   useUpdateRegister,
 } from '@/hooks/queries/useRegisters';
 import { hasPermission } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { ApiClientError } from '@/lib/api-client';
-import type { Location, Register, RegisterStatus, RegisterType } from '@/lib/api';
-import { Ban, Loader2, MapPin, Pencil, Plus, Power, PowerOff, Store, Trash2 } from 'lucide-react';
+import type {
+  Location,
+  Register,
+  RegisterLiveness,
+  RegisterPairingCode,
+  RegisterStatus,
+  RegisterType,
+} from '@/lib/api';
+import {
+  Ban,
+  Copy,
+  KeyRound,
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  Power,
+  PowerOff,
+  Store,
+  Trash2,
+  Unlink,
+} from 'lucide-react';
 
 /** Every register status a manager can filter by, `all` first. */
 const STATUS_FILTERS: Array<{ value: RegisterStatus | 'all'; label: string }> = [
@@ -72,6 +94,20 @@ const REGISTER_TYPE_LABELS: Record<RegisterType, string> = {
   mobile: 'Mobile',
   web: 'Web',
   kiosk: 'Kiosk',
+};
+
+/**
+ * Liveness badge variants, same rule as `STATUS_BADGE` above: every variant
+ * carries its own text label, so liveness is never conveyed by colour alone.
+ * `never` (no heartbeat has ever landed) is kept visually distinct from
+ * `offline` (one landed, then stopped) — they mean different things to an
+ * operator deciding whether a till needs attention.
+ */
+const LIVENESS_BADGE: Record<RegisterLiveness, { label: string; variant: BadgeProps['variant'] }> = {
+  online: { label: 'Online', variant: 'default' },
+  idle: { label: 'Idle', variant: 'secondary' },
+  offline: { label: 'Offline', variant: 'destructive' },
+  never: { label: 'Never seen', variant: 'outline' },
 };
 
 /** Form state for both creating and editing a register. Location only applies to create. */
@@ -131,6 +167,11 @@ function formatLastSeen(lastSeenAt: number | null): string {
   return formatDistanceToNow(lastSeenAt, { addSuffix: true });
 }
 
+/** 'in 15 minutes' — always future-tense at issuance; a code is minted with a fresh 15-minute TTL. */
+function formatExpiresAt(expiresAt: number): string {
+  return formatDistanceToNow(expiresAt, { addSuffix: true });
+}
+
 /**
  * The capabilities that matter at a glance: whether this till can even take
  * cash. A "web / no drawer" register is a first-class configuration this
@@ -177,6 +218,8 @@ export default function AdminRegisters() {
   const retireRegister = useRetireRegister();
   const disableRegister = useDisableRegister();
   const activateRegister = useActivateRegister();
+  const generatePairingCode = useGeneratePairingCode();
+  const revokeRegister = useRevokeRegister();
 
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [locationForm, setLocationForm] = useState<LocationFormState>(emptyLocationForm);
@@ -186,6 +229,20 @@ export default function AdminRegisters() {
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(emptyRegisterForm());
 
   const [retireTarget, setRetireTarget] = useState<Register | null>(null);
+
+  // Pairing code: the register it was minted for, plus the code itself. The
+  // code is shown exactly once (the backend only ever stores a hash of it),
+  // so there is nothing to re-fetch if this dialog is closed.
+  const [pairingCodeTarget, setPairingCodeTarget] = useState<Register | null>(null);
+  const [pairingCodeResult, setPairingCodeResult] = useState<RegisterPairingCode | null>(null);
+
+  // Revoke is a two-step confirmation: the plain confirm below, and — only
+  // reached if the backend answers 409 for an open drawer — a second,
+  // starker confirmation that explains the drawer will be force-closed.
+  const [revokeTarget, setRevokeTarget] = useState<Register | null>(null);
+  const [forceRevokeTarget, setForceRevokeTarget] = useState<{ register: Register; message: string } | null>(
+    null
+  );
 
   const locations = locationsQuery.data ?? [];
   const registers = registersQuery.data ?? [];
@@ -336,6 +393,70 @@ export default function AdminRegisters() {
     }
   };
 
+  const handleGeneratePairingCode = async (register: Register) => {
+    try {
+      const result = await generatePairingCode.mutateAsync(register.id);
+      setPairingCodeTarget(register);
+      setPairingCodeResult(result);
+    } catch (error: unknown) {
+      toast({
+        title: 'Failed to generate pairing code',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const copyPairingCode = () => {
+    if (!pairingCodeResult) return;
+    navigator.clipboard.writeText(pairingCodeResult.formattedCode);
+    toast({ title: 'Copied to clipboard' });
+  };
+
+  /**
+   * First confirmation. A 409 here means the register has an open drawer
+   * session — that isn't a failure to report, it's the backend asking
+   * whether to force the issue, so it routes to the second confirmation
+   * instead of a toast.
+   */
+  const handleConfirmRevoke = async () => {
+    if (!revokeTarget) return;
+    const target = revokeTarget;
+    try {
+      await revokeRegister.mutateAsync({ id: target.id });
+      toast({
+        title: `${target.displayCode} revoked`,
+        description: 'The device stopped working immediately. Re-pairing is required before it can take a sale again.',
+      });
+      setRevokeTarget(null);
+    } catch (error: unknown) {
+      if (error instanceof ApiClientError && error.status === 409) {
+        setRevokeTarget(null);
+        setForceRevokeTarget({ register: target, message: error.message });
+        return;
+      }
+      toast({ title: 'Failed to revoke register', description: getErrorMessage(error), variant: 'destructive' });
+      setRevokeTarget(null);
+    }
+  };
+
+  /** Second confirmation, reached only after the 409 above. Closes the open drawer as part of the revoke. */
+  const handleConfirmForceRevoke = async () => {
+    if (!forceRevokeTarget) return;
+    const target = forceRevokeTarget.register;
+    try {
+      await revokeRegister.mutateAsync({ id: target.id, body: { force: true } });
+      toast({
+        title: `${target.displayCode} revoked`,
+        description: 'Its open drawer was closed at its expected cash and flagged for review.',
+      });
+    } catch (error: unknown) {
+      toast({ title: 'Failed to revoke register', description: getErrorMessage(error), variant: 'destructive' });
+    } finally {
+      setForceRevokeTarget(null);
+    }
+  };
+
   return (
     <ProtectedRoute>
       <AdminLayout>
@@ -457,6 +578,7 @@ export default function AdminRegisters() {
                               <TableHead>Type</TableHead>
                               <TableHead>Capabilities</TableHead>
                               <TableHead>Status</TableHead>
+                              <TableHead>Liveness</TableHead>
                               <TableHead>Last seen</TableHead>
                               {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
                             </TableRow>
@@ -475,6 +597,12 @@ export default function AdminRegisters() {
                                   </TableCell>
                                   <TableCell>
                                     <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {(() => {
+                                      const liveness = LIVENESS_BADGE[register.liveness ?? 'never'];
+                                      return <Badge variant={liveness.variant}>{liveness.label}</Badge>;
+                                    })()}
                                   </TableCell>
                                   <TableCell className="text-sm text-muted-foreground">
                                     {formatLastSeen(register.lastSeenAt)}
@@ -513,6 +641,28 @@ export default function AdminRegisters() {
                                               <Power className="w-4 h-4" aria-hidden="true" />
                                             </Button>
                                           )}
+                                        {canWrite && register.status !== 'retired' && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label={`Generate pairing code for ${register.displayCode}`}
+                                            onClick={() => handleGeneratePairingCode(register)}
+                                            disabled={generatePairingCode.isPending}
+                                          >
+                                            <KeyRound className="w-4 h-4" aria-hidden="true" />
+                                          </Button>
+                                        )}
+                                        {canDelete && register.status !== 'retired' && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-destructive"
+                                            aria-label={`Revoke ${register.displayCode}`}
+                                            onClick={() => setRevokeTarget(register)}
+                                          >
+                                            <Unlink className="w-4 h-4" aria-hidden="true" />
+                                          </Button>
+                                        )}
                                         {canDelete && register.status !== 'retired' && (
                                           <Button
                                             variant="ghost"
@@ -818,6 +968,111 @@ export default function AdminRegisters() {
                   onClick={handleConfirmRetire}
                 >
                   Retire register
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Pairing code display */}
+          <Dialog
+            open={pairingCodeResult != null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setPairingCodeResult(null);
+                setPairingCodeTarget(null);
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Pairing code for {pairingCodeTarget?.displayCode}</DialogTitle>
+                <DialogDescription>
+                  Enter this code on the till's own screen at <span className="font-mono">/pair</span> to enrol it.
+                  This code is shown once — it won't be shown again.
+                </DialogDescription>
+              </DialogHeader>
+              {pairingCodeResult && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+                    <strong>Important:</strong> This is the only time you'll see this code. If you lose it, generate
+                    a new one — the old code stops working the moment a new one is issued.
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="font-mono text-3xl font-bold tracking-[0.2em] text-foreground">
+                      {pairingCodeResult.formattedCode}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Copy pairing code"
+                      onClick={copyPairingCode}
+                    >
+                      <Copy className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <p className="text-center text-sm text-muted-foreground">
+                    Expires {formatExpiresAt(pairingCodeResult.expiresAt)}
+                  </p>
+                </div>
+              )}
+              <DialogFooter>
+                <Button
+                  onClick={() => {
+                    setPairingCodeResult(null);
+                    setPairingCodeTarget(null);
+                  }}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Revoke confirmation */}
+          <AlertDialog open={revokeTarget != null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Revoke {revokeTarget?.displayCode}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This immediately stops the device from authenticating as {revokeTarget?.displayCode} — its very
+                  next request is rejected. The register returns to pending, and it must be paired again with a new
+                  code before it can take a sale. This is not the same as disabling it: disabling can be undone
+                  instantly, this cannot — the device has to be re-paired from the till itself.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleConfirmRevoke}
+                >
+                  Revoke register
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Force-revoke confirmation: reached only after a 409 for an open drawer. */}
+          <AlertDialog
+            open={forceRevokeTarget != null}
+            onOpenChange={(open) => !open && setForceRevokeTarget(null)}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{forceRevokeTarget?.register.displayCode} has an open cash drawer</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {forceRevokeTarget?.message} Forcing this revoke will close that drawer at its expected cash and
+                  flag it for review — nobody counts it first, so this will likely create a cash variance that has
+                  to be investigated later. Do this only if the till is gone or unreachable.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={handleConfirmForceRevoke}
+                >
+                  Close drawer and revoke
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
