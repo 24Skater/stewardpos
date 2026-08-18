@@ -23,7 +23,8 @@ export type AuditEntity =
   | 'settings'
   | 'api_key'
   | 'location'
-  | 'register';
+  | 'register'
+  | 'register_credential';
 
 /**
  * Stand-in id for singleton entities.
