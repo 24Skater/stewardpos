@@ -598,3 +598,16 @@ describe('per-org register backfill invariant (016)', () => {
     expect(after[0].register_id).not.toBe('00000000-0000-0000-0000-0000000000b1');
   });
 });
+
+describe('malformed ids', () => {
+  it('reports a non-UUID user id as not found rather than raising', async () => {
+    // Postgres raises 22P02 on a bad UUID cast, which surfaced to the route as
+    // a 500 with a stack trace where SQLite - which stores ids as TEXT - simply
+    // matches nothing and 404s. A user's typo in a URL is not a server fault,
+    // and the two adapters have to agree.
+    await expect(h.adapter.getUserById('not-a-uuid')).resolves.toBeNull();
+    await expect(
+      h.adapter.setUserPin('not-a-uuid', { pinHash: null, pinSetAt: null })
+    ).resolves.toBeNull();
+  });
+});

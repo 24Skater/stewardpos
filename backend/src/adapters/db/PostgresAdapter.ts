@@ -297,6 +297,21 @@ function mapRegisterShift(row: DbRow): DbRow {
   };
 }
 
+/**
+ * Whether a Postgres error is "that text is not a valid value for this column
+ * type" — in practice, a malformed id where a UUID was expected.
+ *
+ * SQLite stores ids as TEXT and simply matches nothing, so the two adapters
+ * disagree about a bad id unless this is translated: Postgres raises 22P02 and
+ * the route turns a user's typo into a 500 with a stack trace, where SQLite
+ * quietly 404s. Treating it as "not found" makes the dialects behave alike and
+ * keeps malformed input out of the error monitoring that should be reserved for
+ * real faults.
+ */
+function isInvalidTextRepresentation(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === '22P02';
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -5161,6 +5176,7 @@ export class PostgresAdapter {
       const result = await this.pool.query('SELECT * FROM users WHERE id = $1', [id]);
       return result.rows[0] ? mapUserPin(result.rows[0]) : null;
     } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
       logger.error('Error getting user by id:', error);
       throw new DatabaseError('Failed to get user');
     }
@@ -5235,6 +5251,7 @@ export class PostgresAdapter {
         pinSetAt: row.pin_set_at == null ? null : new Date(row.pin_set_at as string).getTime(),
       };
     } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
       logger.error('Error setting user PIN:', error);
       throw new DatabaseError('Failed to set PIN');
     }
