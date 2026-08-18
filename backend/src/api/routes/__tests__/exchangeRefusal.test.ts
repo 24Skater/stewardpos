@@ -17,6 +17,7 @@ const getReturnsByOrder = vi.fn();
 const createAuditLog = vi.fn();
 const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
+const getOpenShiftForRegister = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -28,6 +29,7 @@ vi.mock('../../../services/database', () => ({
       createAuditLog,
       getRegisterById,
       getRegisters,
+      getOpenShiftForRegister,
     }),
   },
 }));
@@ -83,6 +85,7 @@ beforeEach(() => {
   createReturn.mockResolvedValue({ id: 'ret-1' });
   getReturnsByOrder.mockResolvedValue([]);
   createAuditLog.mockResolvedValue({});
+  getOpenShiftForRegister.mockResolvedValue(null);
   getRegisters.mockResolvedValue([
     {
       id: 'reg-1',

@@ -15,6 +15,8 @@ export interface CallerRegister {
   /** Whether this register may process a refund. */
   canRefund: boolean;
   status: string;
+  /** Whether a cashier must have an open PIN shift before this register can ring a sale or a return. */
+  requireSignIn: boolean;
 }
 
 function toCallerRegister(register: Record<string, unknown>): CallerRegister {
@@ -25,6 +27,7 @@ function toCallerRegister(register: Record<string, unknown>): CallerRegister {
     acceptsCash: Boolean(register.acceptsCash),
     canRefund: Boolean(register.canRefund),
     status: String(register.status),
+    requireSignIn: Boolean(register.requireSignIn),
   };
 }
 
