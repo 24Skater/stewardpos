@@ -5053,9 +5053,17 @@ export class SQLiteAdapter {
    * `getUserById`/`getActiveUsersWithPin`, this return value is what a route
    * is expected to hand back in a response.
    */
+  /**
+   * Set or clear a user's PIN.
+   *
+   * A null `pinHash` clears it, which is how an admin revokes an employee's
+   * ability to sign on to a till. Clearing also resets the lockout bookkeeping:
+   * leaving a stale `pin_locked_until` behind would lock the *next* PIN issued
+   * to that person before they had ever used it.
+   */
   async setUserPin(
     userId: string,
-    payload: { pinHash: string; pinSetAt: number }
+    payload: { pinHash: string | null; pinSetAt: number | null }
   ): Promise<DbRow | null> {
     try {
       const result = this.db
