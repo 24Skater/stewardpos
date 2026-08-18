@@ -79,6 +79,13 @@ const configSchema = z.object({
      * without this — see `services/pins.ts`.
      */
     maxShiftAttempts: z.coerce.number().default(10),
+    /**
+     * Attempts against `POST /api/registers/:id/overrides` per window per IP.
+     * Successes do not count. A supervisor's PIN is entered at the same
+     * public keypad a cashier's is — see `maxShiftAttempts` — so it needs the
+     * same brute-force budget in front of it.
+     */
+    maxOverrideAttempts: z.coerce.number().default(10),
   }),
 
   // Email
@@ -175,6 +182,7 @@ function buildConfig(): AppConfig {
       maxLoginAttempts: parseInt(process.env.RATE_LIMIT_MAX_LOGIN_ATTEMPTS || '10', 10),
       maxPairAttempts: parseInt(process.env.RATE_LIMIT_MAX_PAIR_ATTEMPTS || '10', 10),
       maxShiftAttempts: parseInt(process.env.RATE_LIMIT_MAX_SHIFT_ATTEMPTS || '10', 10),
+      maxOverrideAttempts: parseInt(process.env.RATE_LIMIT_MAX_OVERRIDE_ATTEMPTS || '10', 10),
     },
 
     email: {

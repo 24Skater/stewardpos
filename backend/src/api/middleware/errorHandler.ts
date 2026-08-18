@@ -25,6 +25,9 @@ export function errorHandler(
       // Only present when the thrower set one. See AppError#code: clients branch
       // on this, never on the prose in `error`.
       ...(err.code && { code: err.code }),
+      // Structured context beyond the code itself — e.g. which override
+      // `action` a refused request needs. See AppError#data.
+      ...(err.data && { data: err.data }),
       ...(config.nodeEnv === 'development' && { stack: err.stack }),
     });
   }

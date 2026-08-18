@@ -25,7 +25,8 @@ export type AuditEntity =
   | 'location'
   | 'register'
   | 'register_credential'
-  | 'register_shift';
+  | 'register_shift'
+  | 'register_override';
 
 /**
  * Stand-in id for singleton entities.

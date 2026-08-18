@@ -22,7 +22,15 @@ export class AppError extends Error {
      * Only set it where a client genuinely needs to distinguish outcomes that
      * share a status code. Prose stays in `message`.
      */
-    public code?: string
+    public code?: string,
+    /**
+     * Extra machine-readable context beyond `code`, surfaced as `data` in the
+     * error envelope — e.g. which override `action` a refused checkout needs
+     * before it can be retried with a grant. Same rationale as `code`: a
+     * client that must act on this needs structure, not prose to parse out of
+     * `message`.
+     */
+    public data?: Record<string, unknown>
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -78,8 +86,8 @@ export class NotFoundError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string, code?: string) {
-    super(message, 409, true, code);
+  constructor(message: string, code?: string, data?: Record<string, unknown>) {
+    super(message, 409, true, code, data);
   }
 }
 
