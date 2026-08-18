@@ -28,31 +28,38 @@ export class ApiClientError extends Error {
 }
 
 import { authStore } from './auth-store';
-import { getSelectedRegisterId } from './register-device';
+import { clearDeviceToken, getDeviceToken, getSelectedRegisterId } from './register-device';
 
 async function getToken(): Promise<string | null> {
   return authStore.getToken();
 }
 
 /**
- * The common request headers: auth, and the caller's selected register when
- * one is set.
+ * The common request headers: auth, and the caller's register attribution.
  *
  * `X-Register-Id` is deliberately omitted rather than sent empty when no
  * register is selected - the backend's own fallback (the org's
  * lowest-numbered active register, see `registerContext.ts`) handles that
  * case, and an empty header value would be rejected as if it named a
  * register that doesn't exist.
+ *
+ * `X-Register-Token` is sent whenever a device has paired (see
+ * `register-device.ts`), *alongside* `X-Register-Id` when both are present -
+ * the backend prefers the verified token over the unverified id
+ * (`registerContext.ts`), so sending both costs nothing and keeps a terminal
+ * working through the moment it enrols without a code change here.
  */
 function requestHeaders(
   token: string | null,
   extra?: Record<string, string>
 ): Record<string, string> {
   const registerId = getSelectedRegisterId();
+  const registerToken = getDeviceToken();
 
   return {
     ...(token && { Authorization: `Bearer ${token}` }),
     ...(registerId && { 'X-Register-Id': registerId }),
+    ...(registerToken && { 'X-Register-Token': registerToken }),
     ...extra,
   };
 }
@@ -95,15 +102,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
   const body: ApiEnvelope<T> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
+    const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      onUnauthorized();
+      handleUnauthorized(message);
     }
-    throw new ApiClientError(
-      response.status,
-      body.error || body.message || 'An error occurred',
-      body.errors,
-      body as unknown as Record<string, unknown>
-    );
+    throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
 
   return body.data as T;
@@ -119,18 +122,33 @@ async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
   const body: ApiEnvelope<T, M> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
+    const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      onUnauthorized();
+      handleUnauthorized(message);
     }
-    throw new ApiClientError(
-      response.status,
-      body.error || body.message || 'An error occurred',
-      body.errors,
-      body as unknown as Record<string, unknown>
-    );
+    throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
 
   return { data: body.data as T, meta: body.meta ?? body.pagination };
+}
+
+/**
+ * Whether a 401's message identifies a bad `X-Register-Token` specifically,
+ * as opposed to an ordinary expired user session.
+ *
+ * The backend has no structured error code for this - `registerContext.ts`
+ * and `registerAuth.ts` both raise a plain `AuthenticationError`, which the
+ * error handler serialises as `{ success: false, error: <message> }` same as
+ * every other 401 - so the message text is the only signal available. Every
+ * register-token failure path on the backend names the header explicitly
+ * ("X-Register-Token is required" / "...is invalid or has been revoked" /
+ * "...does not belong to your organization"), while user-session failures
+ * never do ("Not authenticated", "Session expired"), so matching on that
+ * substring is reliable today. If the backend ever adds a machine-readable
+ * discriminator (an error `code`, say), prefer that over this.
+ */
+function isRegisterTokenFailure(message: string): boolean {
+  return /x-register-token/i.test(message);
 }
 
 /**
@@ -145,6 +163,33 @@ function onUnauthorized(): void {
 
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
     window.location.assign('/login');
+  }
+}
+
+/**
+ * Drop the device credential and send the terminal back to pair.
+ *
+ * A revoked or otherwise invalid `X-Register-Token` means this specific
+ * physical till can no longer authenticate as itself - that is the entire
+ * point of Phase 3's enrolment (see `register-device.ts`). The failure mode
+ * this guards against is a revoked terminal that keeps silently sending the
+ * dead token forever, never telling the person standing at it that the
+ * register needs to be re-paired.
+ */
+function onRegisterTokenRevoked(): void {
+  clearDeviceToken();
+
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/pair')) {
+    window.location.assign('/pair');
+  }
+}
+
+/** Route a 401 to the right recovery path - see {@link isRegisterTokenFailure}. */
+function handleUnauthorized(message: string): void {
+  if (isRegisterTokenFailure(message)) {
+    onRegisterTokenRevoked();
+  } else {
+    onUnauthorized();
   }
 }
 
