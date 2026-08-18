@@ -282,6 +282,10 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     // Generate return number
     const returnNumber = generateReturnNumber();
 
+    // Set when a supervisor authorises a void, so the return row itself names
+    // the approver. Stays null on an ordinary refund, which needs nobody.
+    let overrideByUserId: string | null = null;
+
     // A void needs a manager override, unconditionally — unlike a discount
     // or a drawer variance, there is no threshold under which a void is fine
     // on its own. Consumed here, with `returnNumber` (generated above, not
@@ -307,6 +311,13 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       if (typeof consumed === 'string') {
         throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, { action: 'void' });
       }
+
+      // Stamp the approver on the return itself, not only on the override row.
+      // `orders.override_by_user_id` is filled the same way for an approved
+      // discount, and a reader asking "which refunds did a manager authorise"
+      // should not have to know that one of the two tables answers by join and
+      // the other by column.
+      overrideByUserId = String(consumed.override.approverUserId);
     }
 
     // Create the return
@@ -321,6 +332,7 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       // The signed-in cashier's shift, when one is open, is who actually
       // processed this return - see orders.ts for the same rule.
       cashierUserId: openShift ? String(openShift.userId) : req.user?.id,
+      overrideByUserId,
     });
 
     // Completing a return is activity: postpone this shift's idle clock.
