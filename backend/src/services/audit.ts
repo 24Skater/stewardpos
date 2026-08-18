@@ -24,7 +24,8 @@ export type AuditEntity =
   | 'api_key'
   | 'location'
   | 'register'
-  | 'register_credential';
+  | 'register_credential'
+  | 'register_shift';
 
 /**
  * Stand-in id for singleton entities.
@@ -61,6 +62,13 @@ const REDACTED_KEYS = new Set([
   'key',
   'terminalCredentials',
   'secret',
+  // A PIN is weaker than a password (six digits, typed on a shared screen) —
+  // its hash is exactly as unfit for a browsable audit table as a password
+  // hash is. Covers both casings so a raw adapter row (snake_case) and a
+  // service-mapped one (camelCase) are redacted the same way.
+  'pin',
+  'pinHash',
+  'pin_hash',
 ]);
 
 function redact(value: unknown): unknown {
