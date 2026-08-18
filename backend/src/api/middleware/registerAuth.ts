@@ -3,6 +3,7 @@ import { AuthRequest } from './auth';
 import { AuthenticationError, ForbiddenError } from '../../utils/errors';
 import db from '../../services/database';
 import { verifyDeviceToken } from '../../services/registerEnrolment';
+import { REGISTER_TOKEN_INVALID } from './registerErrorCodes';
 
 /**
  * Device-credential authentication.
@@ -43,12 +44,15 @@ export async function requireRegisterToken(
   try {
     const token = readRegisterToken(req);
     if (!token) {
-      throw new AuthenticationError('X-Register-Token is required');
+      throw new AuthenticationError('X-Register-Token is required', REGISTER_TOKEN_INVALID);
     }
 
     const result = await verifyDeviceToken(db.getAdapter(), token);
     if (result === 'invalid' || result === 'revoked') {
-      throw new AuthenticationError('X-Register-Token is invalid or has been revoked');
+      throw new AuthenticationError(
+        'X-Register-Token is invalid or has been revoked',
+        REGISTER_TOKEN_INVALID
+      );
     }
 
     req.tokenRegister = result.register;
