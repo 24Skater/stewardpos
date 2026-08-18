@@ -13,3 +13,26 @@
  * value is part of the API contract with the client: do not change it.
  */
 export const REGISTER_TOKEN_INVALID = 'REGISTER_TOKEN_INVALID';
+
+/**
+ * A PIN was entered at `POST /:id/shifts` and did not match any active
+ * cashier's PIN in the organization. Distinguished from {@link PIN_LOCKED} so
+ * the till can tell "wrong PIN, try again" apart from "stop asking, this
+ * account is locked out" — the recoveries differ (retry vs. wait / find a
+ * manager).
+ */
+export const PIN_INVALID = 'PIN_INVALID';
+
+/**
+ * The PIN entered matches an account whose PIN is currently locked out after
+ * repeated failures (see `services/pins.ts`). Never sent for a PIN that
+ * simply does not match anyone — that is {@link PIN_INVALID}.
+ */
+export const PIN_LOCKED = 'PIN_LOCKED';
+
+/**
+ * A register with `require_sign_in` was asked to ring a sale or a return
+ * with no open shift on it. The client's recovery is to prompt for a PIN and
+ * retry, not to treat this like an ordinary validation failure.
+ */
+export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';

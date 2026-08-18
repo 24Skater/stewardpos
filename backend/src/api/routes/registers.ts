@@ -1,5 +1,6 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import {
@@ -7,6 +8,7 @@ import {
   requireMatchingRegister,
   AuthenticatedRegisterRequest,
 } from '../middleware/registerAuth';
+import { PIN_INVALID, PIN_LOCKED } from '../middleware/registerErrorCodes';
 import {
   ValidationError,
   NotFoundError,
@@ -15,6 +17,7 @@ import {
   AuthenticationError,
 } from '../../utils/errors';
 import db from '../../services/database';
+import config from '../../config';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import {
@@ -28,6 +31,7 @@ import {
   redeemPairingCode,
   revokeCredential,
 } from '../../services/registerEnrolment';
+import { startShift, endShift, getOpenShift } from '../../services/registerShifts';
 
 /**
  * Register API routes.
@@ -40,7 +44,7 @@ import {
  * Registers are never deleted — see `retire` below — so there is
  * deliberately no DELETE route here.
  *
- * Two routes below are deliberately registered BEFORE `router.use(authenticate)`
+ * Several routes below are deliberately registered BEFORE `router.use(authenticate)`
  * and so run without a user session at all:
  *
  * - `POST /pair` — the device has no session to present yet; that's the
@@ -48,10 +52,36 @@ import {
  * - `POST /:id/heartbeat` — authenticated by `X-Register-Token`
  *   (`requireRegisterToken`/`requireMatchingRegister` in
  *   `middleware/registerAuth.ts`), a device credential, not a user one.
+ * - `POST /:id/shifts`, `POST /:id/shifts/end`, `GET /:id/shifts/current` —
+ *   same reasoning as heartbeat: a PIN sign-in authenticates a cashier to an
+ *   already-authenticated till, not a user session, so these run off the
+ *   device token too. See `services/registerShifts.ts` and
+ *   `services/pins.ts`.
  *
  * Everything else needs `authenticate` to run first, same as before.
  */
 const router = Router();
+
+/**
+ * Brute-force protection for `POST /:id/shifts`, in front of a six-digit PIN.
+ *
+ * Defined here rather than in `app.ts` alongside `pairLimiter`/`loginLimiter`:
+ * those are mounted with `app.use(exactPath, limiter)`, which only works
+ * because their paths (`/api/registers/pair`, `/api/auth/login`) have no
+ * route parameter. `/:id/shifts` does, and `app.use` path-matching is
+ * prefix-based — mounting it at `/api/registers/:id/shifts` would also catch
+ * `/:id/shifts/end` and `/:id/shifts/current`, which take no PIN and are not
+ * what this budget is protecting. Applying it directly to this one route
+ * keeps the blast radius exact.
+ */
+const shiftLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxShiftAttempts,
+  skipSuccessfulRequests: true,
+  message: 'Too many PIN attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const pairSchema = z.object({
   code: z.string().trim().min(1, 'A pairing code is required'),
@@ -120,6 +150,145 @@ router.post(
         throw new NotFoundError('Register');
       }
       res.json({ success: true, data: withLiveness(updated) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+const startShiftSchema = z.object({
+  pin: z.string().trim().min(1, 'A PIN is required'),
+});
+
+/**
+ * POST /api/registers/:id/shifts
+ *
+ * Sign a cashier on to this register with a PIN. Rate-limited (`shiftLimiter`
+ * above) — see there for why it lives here rather than in `app.ts`.
+ * Authenticated by `X-Register-Token`, not a user session: the PIN says who
+ * is standing at an already-authenticated till, it does not authenticate the
+ * till itself. Returns the shift and the cashier's name; NEVER a token — a
+ * PIN sign-in is deliberately not a session, see `services/pins.ts`.
+ */
+router.post(
+  '/:id/shifts',
+  shiftLimiter,
+  requireRegisterToken,
+  requireMatchingRegister,
+  async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
+    try {
+      const { pin } = startShiftSchema.parse(req.body);
+      const adapter = db.getAdapter();
+
+      const result = await startShift(adapter, { registerId: req.params.id, pin });
+
+      if (result === 'register_not_found') {
+        throw new NotFoundError('Register');
+      }
+      if (result === 'register_not_active') {
+        throw new UnprocessableEntityError('This register is not active');
+      }
+      if (result === 'bad_pin') {
+        throw new AuthenticationError('That PIN was not recognized', PIN_INVALID);
+      }
+      if (result === 'locked') {
+        throw new AuthenticationError(
+          'This PIN is locked after too many failed attempts. Try again later.',
+          PIN_LOCKED
+        );
+      }
+
+      logger.info(`Shift started on register ${req.params.id} for user ${result.user.id}`);
+      await audit(req, {
+        action: 'create',
+        entity: 'register_shift',
+        entityId: String(result.shift.id),
+        after: {
+          registerId: req.params.id,
+          userId: result.user.id,
+          supersededShiftId: result.supersededShiftId,
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          shift: result.shift,
+          cashier: { id: result.user.id, name: result.user.name },
+        },
+      });
+    } catch (error) {
+      next(asValidationError(error));
+    }
+  }
+);
+
+/**
+ * POST /api/registers/:id/shifts/end
+ *
+ * Sign out whoever is currently on this register. A no-op-shaped 404 when
+ * nothing is open — including when the open shift just turned out to be
+ * idle-expired, since `getOpenShift` ends that lazily and reports null the
+ * same as "nothing was ever open".
+ */
+router.post(
+  '/:id/shifts/end',
+  requireRegisterToken,
+  requireMatchingRegister,
+  async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
+    try {
+      const adapter = db.getAdapter();
+      const openShift = await getOpenShift(adapter, req.params.id);
+      if (!openShift) {
+        throw new NotFoundError('Open shift');
+      }
+
+      const ended = await endShift(adapter, String(openShift.id), 'signed_out');
+
+      logger.info(`Shift ${openShift.id} signed out on register ${req.params.id}`);
+      await audit(req, {
+        action: 'update',
+        entity: 'register_shift',
+        entityId: String(openShift.id),
+        before: openShift,
+        after: ended,
+      });
+
+      res.json({ success: true, data: { shift: ended } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/registers/:id/shifts/current
+ *
+ * Who is currently on this register, or null. Used by the till to decide
+ * whether to show a lock screen.
+ */
+router.get(
+  '/:id/shifts/current',
+  requireRegisterToken,
+  requireMatchingRegister,
+  async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
+    try {
+      const adapter = db.getAdapter();
+      const openShift = await getOpenShift(adapter, req.params.id);
+      if (!openShift) {
+        res.json({ success: true, data: null });
+        return;
+      }
+
+      const cashier = await adapter.getUserById(String(openShift.userId));
+
+      res.json({
+        success: true,
+        data: {
+          shift: openShift,
+          cashier: cashier ? { id: cashier.id, name: cashier.name } : null,
+        },
+      });
     } catch (error) {
       next(error);
     }

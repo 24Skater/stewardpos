@@ -13,6 +13,7 @@ const getPromoCodeByCode = vi.fn();
 const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
 const getOpenDrawerSession = vi.fn();
+const getOpenShiftForRegister = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -28,6 +29,7 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       getRegisters,
       getOpenDrawerSession,
+      getOpenShiftForRegister,
     }),
   },
 }));
@@ -100,6 +102,7 @@ beforeEach(() => {
     status: 'active',
   });
   getOpenDrawerSession.mockResolvedValue(null);
+  getOpenShiftForRegister.mockResolvedValue(null);
   // Echo what the route asked to store, so the test can compare the two.
   createOrder.mockImplementation(async (order: Record<string, unknown>) => ({
     id: 'o1',
