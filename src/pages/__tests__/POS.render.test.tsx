@@ -71,6 +71,10 @@ vi.mock('@/hooks/queries', () => ({
   useProducts: () => productsQuery,
   useSettings: () => settingsQuery,
   useCreateOrder: () => ({ mutateAsync, isPending: false }),
+  // The register switcher in the POS header reads this. An empty list is the
+  // honest default here: this suite covers first paint, and a store that has
+  // not finished setup has no registers yet — the header must still render.
+  useRegisters: () => ({ data: [], isLoading: false, isError: false }),
 }));
 
 // Only the network-calling members are replaced. `calculateVariantPrice` and the
