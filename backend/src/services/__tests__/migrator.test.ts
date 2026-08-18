@@ -87,7 +87,7 @@ describeSqlite('the SQLite migration chain', () => {
       count: number;
     };
 
-    expect(applied.count).toBeGreaterThanOrEqual(15);
+    expect(applied.count).toBeGreaterThanOrEqual(16);
   });
 
   it('records the version it reached', () => {
@@ -95,7 +95,7 @@ describeSqlite('the SQLite migration chain', () => {
       version: number;
     };
 
-    expect(version).toBeGreaterThanOrEqual(15);
+    expect(version).toBeGreaterThanOrEqual(16);
   });
 
   it('applies them in order, with no gaps', () => {
@@ -285,6 +285,62 @@ describeSqlite('015_registers', () => {
       'org_id', 'display_code',
     ]);
     expect(uniqueColumns('locations', 'idx_locations_org_slug')).toEqual(['org_id', 'slug']);
+  });
+});
+
+describeSqlite('016_register_attribution', () => {
+  it('adds the attribution columns to orders, returns, payments and cash_drawer_sessions', () => {
+    expect(columns('orders')).toEqual(
+      expect.arrayContaining(['register_id', 'cashier_user_id', 'drawer_session_id', 'override_by_user_id'])
+    );
+    expect(columns('returns')).toEqual(
+      expect.arrayContaining(['register_id', 'cashier_user_id', 'override_by_user_id'])
+    );
+    expect(columns('payments')).toContain('register_id');
+    expect(columns('cash_drawer_sessions')).toEqual(
+      expect.arrayContaining(['register_id', 'shift_id'])
+    );
+  });
+
+  it('leaves zero rows with a NULL register_id after the backfill', () => {
+    // The whole point of the per-org backfill: every historical row, on any
+    // organisation, must resolve to *some* register — never silently left
+    // unattributed and never all pointed at the default org's till.
+    for (const table of ['orders', 'returns', 'payments', 'cash_drawer_sessions']) {
+      const { count } = db
+        .prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE register_id IS NULL`)
+        .get() as { count: number };
+      expect(count, `${table} has rows with a NULL register_id`).toBe(0);
+    }
+  });
+
+  it('removes the old install-wide one-open-drawer index', () => {
+    const list = db.prepare('PRAGMA index_list(cash_drawer_sessions)').all() as Array<{
+      name: string;
+    }>;
+    expect(list.map((i) => i.name)).not.toContain('idx_drawer_one_open');
+  });
+
+  it('replaces it with a unique per-register one-open-drawer index', () => {
+    // Same reasoning as 015's uniqueness test: a name-only check from
+    // sqlite_master would stay green even if the index were edited down to a
+    // non-unique index, or its columns reordered to (status, register_id),
+    // either of which would silently readmit the global one-drawer bug this
+    // migration exists to fix.
+    const list = db.prepare('PRAGMA index_list(cash_drawer_sessions)').all() as Array<{
+      name: string;
+      unique: number;
+    }>;
+    const entry = list.find((i) => i.name === 'idx_drawer_one_open_per_register');
+    expect(entry, 'idx_drawer_one_open_per_register does not exist').toBeTruthy();
+    expect(entry!.unique, 'idx_drawer_one_open_per_register is not a unique index').toBe(1);
+
+    const cols = (
+      db.prepare('PRAGMA index_info(idx_drawer_one_open_per_register)').all() as Array<{
+        name: string;
+      }>
+    ).map((c) => c.name);
+    expect(cols).toEqual(['register_id', 'status']);
   });
 });
 

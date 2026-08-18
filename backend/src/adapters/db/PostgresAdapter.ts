@@ -87,6 +87,10 @@ export function mapOrderRow(order: DbRow): DbRow {
     // Null on card and other tenders, and on orders predating the columns.
     amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
     changeGiven: order.change_given == null ? null : parseFloat(order.change_given as string),
+    registerId: order.register_id ?? null,
+    cashierUserId: order.cashier_user_id ?? null,
+    drawerSessionId: order.drawer_session_id ?? null,
+    overrideByUserId: order.override_by_user_id ?? null,
   };
 }
 
@@ -116,6 +120,11 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
 
   return {
     id: row.id,
+    registerId: row.register_id ?? null,
+    // Only populated when the query joins `registers`; a bare row read (e.g.
+    // right after INSERT/UPDATE) leaves these null rather than stale.
+    registerName: row.register_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
     openedBy: row.opened_by,
     openedByName: row.opened_by_name ?? null,
     closedBy: row.closed_by,
@@ -141,6 +150,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     amount: parseFloat(row.amount as string),
     reference: row.reference ?? null,
     createdAt: new Date(row.created_at as string).getTime(),
+    registerId: row.register_id ?? null,
   };
 }
 
@@ -628,8 +638,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
           order.subtotal,
@@ -643,6 +653,10 @@ export class PostgresAdapter {
           order.cardAuthCode ?? null,
           order.amountTendered ?? null,
           order.changeGiven ?? null,
+          order.registerId ?? null,
+          order.cashierUserId ?? null,
+          order.drawerSessionId ?? null,
+          order.overrideByUserId ?? null,
         ]
       );
 
@@ -732,10 +746,16 @@ export class PostgresAdapter {
           }
 
           const inserted = await client.query(
-            `INSERT INTO payments (order_id, method, amount, reference)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO payments (order_id, method, amount, reference, register_id)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [newOrder.id, payment.method, payment.amount, payment.reference ?? null]
+            [
+              newOrder.id,
+              payment.method,
+              payment.amount,
+              payment.reference ?? null,
+              order.registerId ?? null,
+            ]
           );
           payments.push(mapPaymentRow(inserted.rows[0]));
         }
@@ -2638,8 +2658,9 @@ export class PostgresAdapter {
           subtotal, tax_total, total,
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
-          restock_items, restocking_fee, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          restock_items, restocking_fee, created_by,
+          register_id, cashier_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING *`,
         [
           returnData.originalOrderId,
@@ -2660,6 +2681,8 @@ export class PostgresAdapter {
           returnData.restockItems !== false,
           returnData.restockingFee || 0,
           returnData.createdBy,
+          returnData.registerId ?? null,
+          returnData.cashierUserId ?? null,
         ]
       );
 
@@ -3115,6 +3138,9 @@ export class PostgresAdapter {
       originalOrderTotal: row.original_order_total ? parseFloat(row.original_order_total) : null,
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: new Date(row.updated_at).getTime(),
+      registerId: row.register_id ?? null,
+      cashierUserId: row.cashier_user_id ?? null,
+      overrideByUserId: row.override_by_user_id ?? null,
     };
   }
 
@@ -3913,14 +3939,18 @@ export class PostgresAdapter {
 
   // ===== Cash drawer sessions =====
 
-  async getOpenDrawerSession(): Promise<DbRow | null> {
+  /** Scoped to one register: three tills can each have a session open at once. */
+  async getOpenDrawerSession(registerId: string): Promise<DbRow | null> {
     try {
       const result = await this.pool.query(
-        `SELECT s.*, o.name AS opened_by_name
+        `SELECT s.*, o.name AS opened_by_name,
+                r.name AS register_name, r.display_code AS register_display_code
          FROM cash_drawer_sessions s
          LEFT JOIN users o ON s.opened_by = o.id
-         WHERE s.status = 'open'
-         LIMIT 1`
+         LEFT JOIN registers r ON s.register_id = r.id
+         WHERE s.status = 'open' AND s.register_id = $1
+         LIMIT 1`,
+        [registerId]
       );
       return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
     } catch (error) {
@@ -3932,22 +3962,30 @@ export class PostgresAdapter {
   /**
    * Open a drawer.
    *
-   * Relies on the partial unique index for exclusivity rather than checking
-   * first: two cashiers opening at once would both pass a prior read, and then
-   * neither would know which drawer a sale belonged to.
+   * Relies on the per-register partial unique index for exclusivity rather
+   * than checking first: two cashiers opening at once on the same register
+   * would both pass a prior read, and then neither would know which drawer a
+   * sale belonged to. `registerId` is required at the type level (an object
+   * parameter, not a positional string) so a caller cannot omit it and land a
+   * NULL - NULLs are distinct from one another in a Postgres unique index, so
+   * a NULL `register_id` would not be constrained by that index at all.
    */
-  async openDrawerSession(openingFloat: number, userId?: string): Promise<DbRow> {
+  async openDrawerSession(input: {
+    registerId: string;
+    openingFloat: number;
+    userId?: string;
+  }): Promise<DbRow> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO cash_drawer_sessions (opened_by, opening_float, status)
-         VALUES ($1, $2, 'open')
+        `INSERT INTO cash_drawer_sessions (register_id, opened_by, opening_float, status)
+         VALUES ($1, $2, $3, 'open')
          RETURNING *`,
-        [userId ?? null, openingFloat]
+        [input.registerId, input.userId ?? null, input.openingFloat]
       );
       return mapDrawerSessionRow(result.rows[0]);
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
-        throw new ValidationError('A drawer session is already open');
+        throw new ValidationError(`Register ${input.registerId} already has a drawer session open`);
       }
       logger.error('Error opening drawer session:', error);
       throw new DatabaseError('Failed to open drawer session');
@@ -3961,6 +3999,16 @@ export class PostgresAdapter {
    * Only cash sales count - a card sale never touches the drawer. Sales with no
    * recorded tender fall back to their total, which is what a cash sale
    * contributed before `amount_tendered` existed.
+   *
+   * Joins on `orders.drawer_session_id` rather than a time window. A time
+   * window (`o.created_at BETWEEN s.opened_at AND s.closed_at`) was correct
+   * back when only one drawer could ever be open at a time, but migration 016
+   * lets multiple registers each hold an open session concurrently - their
+   * open windows overlap, so a time-window join would sum every register's
+   * cash sales into every open session's expected cash, not just its own.
+   * Direct attribution via `drawer_session_id` (backfilled by 016 for any
+   * session that was open at migration time) is unambiguous regardless of
+   * how many sessions are open simultaneously.
    */
   async getExpectedDrawerCash(sessionId: string): Promise<number> {
     try {
@@ -3971,9 +4019,8 @@ export class PostgresAdapter {
              AS expected
          FROM cash_drawer_sessions s
          LEFT JOIN orders o
-           ON LOWER(o.payment_method) = 'cash'
-          AND o.created_at >= s.opened_at
-          AND (s.closed_at IS NULL OR o.created_at <= s.closed_at)
+           ON o.drawer_session_id = s.id
+          AND LOWER(o.payment_method) = 'cash'
          WHERE s.id = $1
          GROUP BY s.opening_float`,
         [sessionId]
@@ -4016,16 +4063,28 @@ export class PostgresAdapter {
     }
   }
 
-  async getDrawerSessions(limit = 50): Promise<DbRow[]> {
+  /** Unfiltered when `registerId` is omitted - the admin reconciliation view. */
+  async getDrawerSessions(limit = 50, registerId?: string): Promise<DbRow[]> {
     try {
+      const params: unknown[] = [];
+      let whereClause = '';
+      if (registerId) {
+        params.push(registerId);
+        whereClause = `WHERE s.register_id = $${params.length}`;
+      }
+      params.push(limit);
+
       const result = await this.pool.query(
-        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name
+        `SELECT s.*, o.name AS opened_by_name, c.name AS closed_by_name,
+                r.name AS register_name, r.display_code AS register_display_code
          FROM cash_drawer_sessions s
          LEFT JOIN users o ON s.opened_by = o.id
          LEFT JOIN users c ON s.closed_by = c.id
+         LEFT JOIN registers r ON s.register_id = r.id
+         ${whereClause}
          ORDER BY s.opened_at DESC
-         LIMIT $1`,
-        [limit]
+         LIMIT $${params.length}`,
+        params
       );
       return result.rows.map(mapDrawerSessionRow);
     } catch (error) {

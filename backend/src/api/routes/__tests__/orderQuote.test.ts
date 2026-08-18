@@ -10,6 +10,9 @@ const createAuditLog = vi.fn();
 const getDiscountTypeById = vi.fn();
 const getPromoCodeById = vi.fn();
 const getPromoCodeByCode = vi.fn();
+const getRegisterById = vi.fn();
+const getRegisters = vi.fn();
+const getOpenDrawerSession = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -22,11 +25,15 @@ vi.mock('../../../services/database', () => ({
       getDiscountTypeById,
       getPromoCodeById,
       getPromoCodeByCode,
+      getRegisterById,
+      getRegisters,
+      getOpenDrawerSession,
     }),
   },
 }));
 
 const { default: config } = await import('../../../config');
+const { DEFAULT_ORG_ID } = await import('../../middleware/auth');
 const { default: app } = await import('../../../app');
 
 const TEA = {
@@ -70,6 +77,29 @@ beforeEach(() => {
     isActive: true,
     showInPos: true,
   });
+  getRegisters.mockResolvedValue([
+    {
+      id: 'reg-1',
+      orgId: DEFAULT_ORG_ID,
+      displayCode: 'MAIN-01',
+      registerNumber: 1,
+      hasCashDrawer: true,
+      acceptsCash: true,
+      canRefund: true,
+      status: 'active',
+    },
+  ]);
+  getRegisterById.mockResolvedValue({
+    id: 'reg-1',
+    orgId: DEFAULT_ORG_ID,
+    displayCode: 'MAIN-01',
+    registerNumber: 1,
+    hasCashDrawer: true,
+    acceptsCash: true,
+    canRefund: true,
+    status: 'active',
+  });
+  getOpenDrawerSession.mockResolvedValue(null);
   // Echo what the route asked to store, so the test can compare the two.
   createOrder.mockImplementation(async (order: Record<string, unknown>) => ({
     id: 'o1',

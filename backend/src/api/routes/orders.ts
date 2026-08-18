@@ -2,7 +2,8 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { resolveCallerRegister } from '../middleware/registerContext';
+import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -357,6 +358,17 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     const orderData = createOrderSchema.parse(req.body);
     const adapter = db.getAdapter();
 
+    const register = await resolveCallerRegister(req);
+    // resolveCallerRegister only ever returns an active register today: an
+    // X-Register-Id naming an inactive register is rejected inside it (400),
+    // and the no-header fallback only ever considers active registers. This
+    // check is defense in depth for if that guarantee ever loosens - the same
+    // redundant pattern already exists in drawer.ts's POST /open - not because
+    // it is reachable through the current resolution path.
+    if (register.status !== 'active') {
+      throw new ConflictError(`Register ${register.displayCode} is not active`);
+    }
+
     const priced = await priceCart(req, orderData.items, orderData.appliedDiscounts);
 
     // The tender has to add up to the repriced total, whether it is one payment
@@ -365,6 +377,15 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     const tender = orderData.payments
       ? validateTender(orderData.payments, priced.total)
       : singleTender(orderData.paymentMethod, priced.total);
+
+    // A card-only lane (accepts_cash = false) must refuse a cash leg of a split
+    // tender, not just a wholly-cash sale - so this checks the tender's actual
+    // cash component, never the caller's chosen `paymentMethod` label.
+    if (!register.acceptsCash && cashPortion(tender.payments) > 0) {
+      throw new UnprocessableEntityError(
+        `Register ${register.displayCode} does not accept cash`
+      );
+    }
 
     // Change is computed against the *cash portion*, not the whole total - on a
     // split, only the cash part can produce change, and giving change against
@@ -377,12 +398,31 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
             changeGiven: calculateChange(cashPortion(tender.payments), orderData.cashTendered),
           };
 
+    // Only a cash sale needs to link to a drawer session: a card-only sale is
+    // legitimate on a register with no drawer open at all, and linking it to
+    // an unrelated session would misattribute someone else's till. A cash sale
+    // into a register with nothing open is not blocked - it just links to
+    // nothing, same as before this existed - but a cash sale into an *open*
+    // session must link, or the expected-cash join (orders.drawer_session_id =
+    // session.id) silently understates that till by this sale's amount.
+    const drawerSession =
+      cashPortion(tender.payments) > 0 ? await adapter.getOpenDrawerSession(register.id) : null;
+
     const order = await adapter.createOrder({
       ...orderData,
       ...priced,
       ...cash,
       paymentMethod: tender.summaryMethod,
       payments: tender.payments,
+      registerId: register.id,
+      // Phase-1 cashier attribution: whoever authenticated the request. PIN
+      // sign-in and register shifts (a later phase) will override this with
+      // the actually signed-in cashier, who may not be the same person as
+      // whoever is logged into the app on a shared terminal.
+      cashierUserId: req.user?.id,
+      drawerSessionId: drawerSession?.id ?? null,
+      // Manager override is a later phase; this stays NULL until then.
+      overrideByUserId: null,
     });
 
     // If this was a card payment, link the terminal transaction to the order

@@ -20,6 +20,9 @@ const updateTerminalTransactionByChargeId = vi.fn();
 const getAllOrders = vi.fn();
 const getOrderById = vi.fn();
 const getOrdersByCustomerEmail = vi.fn();
+const getRegisterById = vi.fn();
+const getRegisters = vi.fn();
+const getOpenDrawerSession = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -37,11 +40,15 @@ vi.mock('../../../services/database', () => ({
       getAllOrders,
       getOrderById,
       getOrdersByCustomerEmail,
+      getRegisterById,
+      getRegisters,
+      getOpenDrawerSession,
     }),
   },
 }));
 
 const { default: config } = await import('../../../config');
+const { DEFAULT_ORG_ID } = await import('../../middleware/auth');
 const { default: app } = await import('../../../app');
 
 const TEA = {
@@ -52,6 +59,18 @@ const TEA = {
 };
 
 const CART = { items: [{ productId: 'p-tea', variantId: 'v1', quantity: 4 }] };
+
+/** The register a caller resolves to when no `X-Register-Id` is sent. */
+const REGISTER = {
+  id: 'reg-1',
+  orgId: DEFAULT_ORG_ID,
+  displayCode: 'MAIN-01',
+  registerNumber: 1,
+  hasCashDrawer: true,
+  acceptsCash: true,
+  canRefund: true,
+  status: 'active',
+};
 
 function token(): string {
   return jwt.sign({ id: 'u1', email: 'admin@example.com', roleIds: ['r1'] }, config.jwt.secret, {
@@ -80,6 +99,9 @@ beforeEach(() => {
   getAllOrders.mockResolvedValue([{ id: 'o1' }]);
   getOrderById.mockResolvedValue({ id: 'o1', total: 20, payments: [] });
   getOrdersByCustomerEmail.mockResolvedValue([{ id: 'o1' }]);
+  getRegisters.mockResolvedValue([REGISTER]);
+  getRegisterById.mockResolvedValue(REGISTER);
+  getOpenDrawerSession.mockResolvedValue(null);
   createOrder.mockImplementation(async (order: Record<string, unknown>) => ({
     id: 'o1',
     createdAt: Date.now(),
@@ -254,6 +276,139 @@ describe('discount usage', () => {
       });
 
     expect(response.status).toBe(201);
+  });
+});
+
+describe('register attribution', () => {
+  it('stamps registerId and cashierUserId on every sale', async () => {
+    await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Card' });
+
+    expect(stored().registerId).toBe('reg-1');
+    expect(stored().cashierUserId).toBe('u1');
+    expect(stored().overrideByUserId).toBeNull();
+  });
+
+  it('links a cash sale to the register\'s open drawer session', async () => {
+    getOpenDrawerSession.mockResolvedValue({ id: 'ds-1', registerId: 'reg-1', status: 'open' });
+
+    await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Cash' });
+
+    expect(getOpenDrawerSession).toHaveBeenCalledWith('reg-1');
+    expect(stored().drawerSessionId).toBe('ds-1');
+  });
+
+  it('does not look up a drawer session for a card-only sale', async () => {
+    await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Card' });
+
+    expect(getOpenDrawerSession).not.toHaveBeenCalled();
+    expect(stored().drawerSessionId).toBeNull();
+  });
+
+  it('leaves drawerSessionId null for a cash sale into a register with nothing open, without blocking the sale', async () => {
+    getOpenDrawerSession.mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Cash' });
+
+    expect(response.status).toBe(201);
+    expect(stored().drawerSessionId).toBeNull();
+  });
+
+  it('links the cash leg of a split tender to the open drawer session', async () => {
+    getOpenDrawerSession.mockResolvedValue({ id: 'ds-2', registerId: 'reg-1', status: 'open' });
+
+    await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        ...CART,
+        paymentMethod: 'Cash',
+        payments: [
+          { method: 'cash', amount: 12 },
+          { method: 'card', amount: 8 },
+        ],
+      });
+
+    expect(getOpenDrawerSession).toHaveBeenCalledWith('reg-1');
+    expect(stored().drawerSessionId).toBe('ds-2');
+  });
+
+  it('rejects a cash tender at a register with accepts_cash false', async () => {
+    getRegisters.mockResolvedValue([{ ...REGISTER, acceptsCash: false }]);
+    getRegisterById.mockResolvedValue({ ...REGISTER, acceptsCash: false });
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Cash' });
+
+    expect(response.status).toBe(422);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects the cash leg of a split tender at a register with accepts_cash false', async () => {
+    getRegisters.mockResolvedValue([{ ...REGISTER, acceptsCash: false }]);
+    getRegisterById.mockResolvedValue({ ...REGISTER, acceptsCash: false });
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({
+        ...CART,
+        paymentMethod: 'Cash',
+        payments: [
+          { method: 'cash', amount: 12 },
+          { method: 'card', amount: 8 },
+        ],
+      });
+
+    expect(response.status).toBe(422);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('allows a wholly-card sale at a register with accepts_cash false', async () => {
+    getRegisters.mockResolvedValue([{ ...REGISTER, acceptsCash: false }]);
+    getRegisterById.mockResolvedValue({ ...REGISTER, acceptsCash: false });
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Card' });
+
+    expect(response.status).toBe(201);
+  });
+
+  /**
+   * `resolveCallerRegister` (registerContext.ts) only ever returns an active
+   * register: an inactive X-Register-Id is rejected inside it as a 400
+   * before the route ever sees a register object, and the no-header fallback
+   * only ever considers active registers. So the "not active" case actually
+   * surfaces here as a 400 from resolution, not the 409 the route's own
+   * (currently unreachable) defense-in-depth check would raise. This mirrors
+   * existing behavior in drawer.test.ts's equivalent case.
+   */
+  it('rejects checkout when X-Register-Id names an inactive register', async () => {
+    getRegisterById.mockResolvedValue({ ...REGISTER, status: 'disabled' });
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Register-Id', 'reg-1')
+      .send({ ...CART, paymentMethod: 'Card' });
+
+    expect(response.status).toBe(400);
+    expect(createOrder).not.toHaveBeenCalled();
   });
 });
 
