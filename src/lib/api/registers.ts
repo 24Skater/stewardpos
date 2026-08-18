@@ -1,11 +1,19 @@
 import { apiClient } from '../api-client';
 import { qs } from './qs';
+import type { DrawerSession } from './drawer';
 
 /** Mirrors `registers.type` — see migration 015. */
 export type RegisterType = 'fixed' | 'mobile' | 'web' | 'kiosk';
 
 /** Mirrors `registers.status` — see migration 015 and `services/registers.ts`. */
 export type RegisterStatus = 'pending' | 'active' | 'disabled' | 'retired';
+
+/**
+ * Derived from `last_seen_at`, not stored — see `deriveRegisterLiveness` in
+ * `backend/src/services/registers.ts`. `never` (no heartbeat has ever
+ * landed) is distinct from `offline` (one landed, then stopped).
+ */
+export type RegisterLiveness = 'online' | 'idle' | 'offline' | 'never';
 
 /** Mirrors `locations.status` — see migration 015. */
 export type LocationStatus = 'active' | 'retired';
@@ -35,12 +43,19 @@ export interface Register {
   terminalProvider: string | null;
   terminalDeviceId: string | null;
   status: RegisterStatus;
-  /** Epoch ms. Null until the register heartbeats — not wired up yet, so this is usually null. */
+  /** Epoch ms. Null until an enrolled device's first heartbeat lands. */
   lastSeenAt: number | null;
   createdAt: number;
   updatedAt: number;
   /** Present on list and single-register reads; saves a second lookup to name the till's site. */
   locationName?: string;
+  /**
+   * Derived from `lastSeenAt` by the backend, not stored. Present wherever
+   * the backend attaches it (list, single-register read, pair, revoke) —
+   * absent on the plain rows `create`/`update`/`disable`/`activate`/`retire`
+   * return, since those don't route through `withLiveness`.
+   */
+  liveness?: RegisterLiveness;
 }
 
 /**
@@ -106,6 +121,53 @@ export interface CreateLocationRequest {
 export type UpdateLocationRequest = Partial<CreateLocationRequest>;
 
 /**
+ * A freshly issued pairing code (`POST /:id/pairing-code`).
+ *
+ * Shown to the operator exactly once — the backend keeps only a hash of it —
+ * so there is no `get` to re-fetch it. `formattedCode` is `code` grouped as
+ * `XXXX-XXXX` for reading off one screen and typing into another;
+ * `code` is the same value ungrouped.
+ */
+export interface RegisterPairingCode {
+  code: string;
+  formattedCode: string;
+  /** Epoch ms. 15 minutes from issuance — see `PAIRING_CODE_TTL_MS` in `registerEnrolment.ts`. */
+  expiresAt: number;
+  registerId: string;
+}
+
+/**
+ * The result of redeeming a pairing code (`POST /pair`).
+ *
+ * `token` is the device credential itself, returned exactly once — see the
+ * handling rules on `setDeviceToken` in `lib/register-device.ts`.
+ */
+export interface PairDeviceResult {
+  token: string;
+  register: Register;
+}
+
+export interface RevokeRegisterRequest {
+  reason?: string;
+  /**
+   * Required to revoke a register with an open cash drawer session — see
+   * `RevokeRegisterResult.closedDrawerSession`. Omitting it when a drawer is
+   * open gets a 409 back instead of revoking.
+   */
+  force?: boolean;
+}
+
+export interface RevokeRegisterResult {
+  register: Register;
+  /**
+   * Set only when `force: true` closed an open drawer session as part of the
+   * revoke — closed at its own expected cash, never counted, and meant to be
+   * flagged for review rather than trusted as a real reconciliation.
+   */
+  closedDrawerSession: DrawerSession | null;
+}
+
+/**
  * Register endpoints (`backend/src/api/routes/registers.ts`).
  *
  * Registers are never deleted, only retired — permanently, since a retired
@@ -113,6 +175,13 @@ export type UpdateLocationRequest = Partial<CreateLocationRequest>;
  * there is deliberately no `remove`. `update` is a PATCH, unlike most of this
  * SDK's PUT-based updates: registers and locations are the only routes
  * modelled as a partial patch rather than a full-resource replace.
+ *
+ * `pairingCode`, `pair`, `heartbeat` and `revoke` are Phase 3's device
+ * enrolment additions — see `backend/src/services/registerEnrolment.ts`.
+ * `pair` and `heartbeat` authenticate as a device rather than a user
+ * (`X-Register-Token`, attached automatically by `api-client.ts` once one is
+ * stored — see `lib/register-device.ts`), which is why `pair` works with no
+ * session at all.
  */
 export const registersApi = {
   list: (filter?: RegisterListQuery) => apiClient.get<Register[]>(`/api/registers${qs(filter)}`),
@@ -126,6 +195,15 @@ export const registersApi = {
   disable: (id: string) => apiClient.post<Register>(`/api/registers/${id}/disable`),
   /** Brings a pending or disabled register back into service. */
   activate: (id: string) => apiClient.post<Register>(`/api/registers/${id}/activate`),
+  /** Mint a fresh pairing code, invalidating any prior live credential. Admin action; needs a session. */
+  pairingCode: (id: string) => apiClient.post<RegisterPairingCode>(`/api/registers/${id}/pairing-code`),
+  /** Redeem a pairing code for a device token. No session required — see the note on this module. */
+  pair: (code: string) => apiClient.post<PairDeviceResult>('/api/registers/pair', { code }),
+  /** Called by an enrolled device roughly once a minute, not by an admin. */
+  heartbeat: (id: string) => apiClient.post<Register>(`/api/registers/${id}/heartbeat`),
+  /** Destroy a register's live credential and return it to `pending`. See `RevokeRegisterRequest.force`. */
+  revoke: (id: string, body?: RevokeRegisterRequest) =>
+    apiClient.post<RevokeRegisterResult>(`/api/registers/${id}/revoke`, body ?? {}),
 };
 
 /**
