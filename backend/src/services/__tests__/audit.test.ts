@@ -42,6 +42,23 @@ describe('audit', () => {
     expect(written.after.email).toBe('a@b.c');
   });
 
+  it('redacts a PIN hash in both casings, and a raw pin field, but keeps the rest of the row', async () => {
+    await audit(req, {
+      action: 'update',
+      entity: 'user',
+      entityId: 'u1',
+      after: { name: 'Casey', pin: '123456', pinHash: '$2a$10$fakehash', pin_hash: '$2a$10$fakehash' },
+    });
+
+    const written = createAuditLog.mock.calls[0][0];
+    expect(written.after.pin).toBe('[redacted]');
+    expect(written.after.pinHash).toBe('[redacted]');
+    expect(written.after.pin_hash).toBe('[redacted]');
+    expect(written.after.name).toBe('Casey');
+    expect(JSON.stringify(written)).not.toContain('123456');
+    expect(JSON.stringify(written)).not.toContain('$2a$10$fakehash');
+  });
+
   it('redacts nested secrets too', async () => {
     await audit(req, {
       action: 'update',
