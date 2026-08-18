@@ -37,6 +37,7 @@ import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as Setting
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import CashDrawerDialog from "@/components/CashDrawerDialog";
+import RegisterSwitcher from "@/components/RegisterSwitcher";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -883,6 +884,7 @@ export default function POS() {
             </div>
           </div>
           <div className="flex gap-2">
+            <RegisterSwitcher />
             <Button
               variant="outline"
               onClick={() => setDrawerDialogOpen(true)}
