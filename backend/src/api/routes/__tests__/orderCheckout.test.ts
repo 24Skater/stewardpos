@@ -23,6 +23,7 @@ const getOrdersByCustomerEmail = vi.fn();
 const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
 const getOpenDrawerSession = vi.fn();
+const getOpenShiftForRegister = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -43,6 +44,7 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       getRegisters,
       getOpenDrawerSession,
+      getOpenShiftForRegister,
     }),
   },
 }));
@@ -102,6 +104,7 @@ beforeEach(() => {
   getRegisters.mockResolvedValue([REGISTER]);
   getRegisterById.mockResolvedValue(REGISTER);
   getOpenDrawerSession.mockResolvedValue(null);
+  getOpenShiftForRegister.mockResolvedValue(null);
   createOrder.mockImplementation(async (order: Record<string, unknown>) => ({
     id: 'o1',
     createdAt: Date.now(),

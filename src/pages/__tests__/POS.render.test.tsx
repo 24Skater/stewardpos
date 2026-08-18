@@ -75,6 +75,12 @@ vi.mock('@/hooks/queries', () => ({
   // honest default here: this suite covers first paint, and a store that has
   // not finished setup has no registers yet — the header must still render.
   useRegisters: () => ({ data: [], isLoading: false, isError: false }),
+  // No register selected in this suite (nothing has written to
+  // `register-device.ts`'s localStorage key), so the shift/lock-screen gate
+  // in POS.tsx never activates — this just has to exist for the hook call.
+  useRegister: () => ({ data: undefined }),
+  useCurrentShift: () => ({ data: undefined, isPending: false }),
+  useEndShift: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 // Only the network-calling members are replaced. `calculateVariantPrice` and the

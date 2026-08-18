@@ -167,6 +167,47 @@ export interface RevokeRegisterResult {
   closedDrawerSession: DrawerSession | null;
 }
 
+/** Mirrors `services/registerShifts.ts`'s `EndShiftReason`. */
+export type ShiftEndReason = 'signed_out' | 'idle_timeout' | 'superseded' | 'revoked' | 'forced';
+
+/**
+ * Which employee is standing at a register right now — see migration 018
+ * and `backend/src/services/registerShifts.ts`.
+ *
+ * Deliberately not a session: it says who is currently ringing sales at an
+ * already-authenticated till, nothing more. `endedAt`/`endReason` are both
+ * null while the shift is open.
+ */
+export interface Shift {
+  id: string;
+  registerId: string;
+  userId: string;
+  /** Epoch ms. */
+  startedAt: number;
+  /** Epoch ms. Bumped by the server on every authenticated action; drives idle expiry. */
+  lastActivityAt: number;
+  /** Epoch ms, or null while the shift is open. */
+  endedAt: number | null;
+  endReason: ShiftEndReason | null;
+  createdAt: number;
+}
+
+export interface ShiftCashier {
+  id: string;
+  name: string;
+}
+
+export interface StartShiftResult {
+  shift: Shift;
+  cashier: ShiftCashier;
+}
+
+export interface CurrentShiftResult {
+  shift: Shift;
+  /** Present whenever `shift` is — `getUserById` returning null would mean a shift outlived its user, which does not happen in practice. */
+  cashier: ShiftCashier | null;
+}
+
 /**
  * Register endpoints (`backend/src/api/routes/registers.ts`).
  *
@@ -204,6 +245,24 @@ export const registersApi = {
   /** Destroy a register's live credential and return it to `pending`. See `RevokeRegisterRequest.force`. */
   revoke: (id: string, body?: RevokeRegisterRequest) =>
     apiClient.post<RevokeRegisterResult>(`/api/registers/${id}/revoke`, body ?? {}),
+
+  /**
+   * Sign a cashier on to this register with a PIN (`POST /:id/shifts`).
+   *
+   * Authenticates as the device (`X-Register-Token`, attached automatically by
+   * `api-client.ts` — see `lib/register-device.ts`), not a user session, so this
+   * works from the lock screen with nobody signed in. A failure carries a stable
+   * `code` on the thrown `ApiClientError`'s `body` — `PIN_INVALID` or
+   * `PIN_LOCKED` (`backend/src/api/middleware/registerErrorCodes.ts`) — branch on
+   * that, never on the message text.
+   */
+  startShift: (id: string, pin: string) =>
+    apiClient.post<StartShiftResult>(`/api/registers/${id}/shifts`, { pin }),
+  /** Sign out whoever is currently on this register. 404s (as `ApiClientError`) if nothing is open. */
+  endShift: (id: string) => apiClient.post<{ shift: Shift }>(`/api/registers/${id}/shifts/end`),
+  /** Who is on this register right now, or `null`. Used to decide whether to show the lock screen. */
+  currentShift: (id: string) =>
+    apiClient.get<CurrentShiftResult | null>(`/api/registers/${id}/shifts/current`),
 };
 
 /**

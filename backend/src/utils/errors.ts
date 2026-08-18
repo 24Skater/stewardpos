@@ -63,14 +63,23 @@ export class ForbiddenError extends AppError {
 }
 
 export class NotFoundError extends AppError {
+  /**
+   * Takes the *resource* — `'User'`, `'Order'` — and appends "not found".
+   *
+   * 45 call sites across the routes pass `'User not found'` instead, which read
+   * back to the user as "User not found not found". Rather than edit all of
+   * them and rely on nobody making the same reasonable mistake again, the
+   * suffix is stripped here if the caller already supplied it. Both spellings
+   * now produce one correct message.
+   */
   constructor(resource: string = 'Resource') {
-    super(`${resource} not found`, 404);
+    super(`${resource.replace(/\s+not found$/i, '')} not found`, 404);
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409);
+  constructor(message: string, code?: string) {
+    super(message, 409, true, code);
   }
 }
 

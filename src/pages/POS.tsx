@@ -17,8 +17,13 @@ import type {
   StoreCredit,
   ValidatedPromo,
 } from "@/lib/api";
-import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
+import { useCreateOrder, useCurrentShift, useEndShift, useProducts, useRegister, useSettings } from "@/hooks/queries";
 import { useRegisterHeartbeat } from "@/hooks/useRegisterHeartbeat";
+import { useIdleLock } from "@/hooks/useIdleLock";
+import LockScreen from "@/components/register/LockScreen";
+import { getDeviceToken, getSelectedRegisterId, subscribeToSelectedRegisterId } from "@/lib/register-device";
+import { ApiClientError } from "@/lib/api-client";
+import { SHIFT_REQUIRED } from "@/lib/register-error-codes";
 import { logger } from "@/lib/logger";
 import type { AppliedDiscount } from "@/lib/register-math";
 import {
@@ -34,7 +39,7 @@ import {
   receiptLinesFrom as receiptLinesOf,
   toDiscountRequests as discountRequestsOf,
 } from "@/lib/register-math";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet, LogOut, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import CashDrawerDialog from "@/components/CashDrawerDialog";
@@ -115,6 +120,68 @@ export default function POS() {
   // Keeps an enrolled terminal's liveness current on the admin console while
   // this screen is open. No-op on a terminal that hasn't paired a device.
   useRegisterHeartbeat();
+
+  // ── Cashier sign-on (shifts) ──────────────────────────────────────────────
+  // Which register this terminal is set to, kept in sync with changes made
+  // elsewhere (RegisterSwitcher) via the same subscription it uses.
+  const [registerId, setRegisterId] = useState<string | null>(() => getSelectedRegisterId());
+  useEffect(() => subscribeToSelectedRegisterId(setRegisterId), []);
+
+  const { data: currentRegister } = useRegister(registerId ?? undefined);
+  const requiresSignIn = Boolean(currentRegister?.requireSignIn);
+  // `GET /shifts/current` authenticates as the DEVICE (X-Register-Token), not
+  // this browser's user session — see `registers.ts`'s route comment — so it
+  // is only meaningful once this terminal has paired one. An unpaired
+  // terminal on a require-sign-in register cannot ask "who's on" at all;
+  // rather than guess, this leaves the POS usable exactly as it was before
+  // Phase 4, the same fallback `useRegisterHeartbeat` takes.
+  const hasDeviceToken = Boolean(getDeviceToken());
+  const shiftGateActive = requiresSignIn && hasDeviceToken && Boolean(registerId);
+  const currentShiftQuery = useCurrentShift(registerId ?? undefined, shiftGateActive);
+  const openShift = currentShiftQuery.data?.shift ?? null;
+  const cashier = currentShiftQuery.data?.cashier ?? null;
+  const endShift = useEndShift();
+
+  // Forced shut, independent of what the last-fetched shift said — set the
+  // instant this screen decides the till must lock (idle timeout, or a
+  // checkout refused with SHIFT_REQUIRED) rather than waiting on a network
+  // round trip to confirm it. Cleared the moment a new shift opens.
+  const [forceLock, setForceLock] = useState(false);
+
+  // Only consult this once the query has actually resolved once - while it is
+  // still pending, `openShift` reads as null and would otherwise flash the
+  // lock screen open over an already-signed-on till on every mount.
+  const shiftKnown = !currentShiftQuery.isPending;
+  const showLockScreen = shiftGateActive && shiftKnown && (forceLock || !openShift);
+
+  /**
+   * UI convenience only - see the doc comment on `useIdleLock`. The backend
+   * is the real enforcement point (idle expiry is decided lazily, server-side,
+   * the next time anything asks whether a shift is open); this just gets the
+   * lock screen in front of a cashier promptly rather than leaving them to
+   * find out at checkout. It does not touch `cart` - locking only covers the
+   * screen, so a sale in progress is never lost.
+   */
+  useIdleLock(
+    currentRegister?.idleLockSeconds,
+    () => setForceLock(true),
+    shiftGateActive && Boolean(openShift) && !forceLock
+  );
+
+  const handleSignOut = async () => {
+    if (!registerId) return;
+    try {
+      await endShift.mutateAsync(registerId);
+      toast({ title: 'Signed out' });
+    } catch (error: unknown) {
+      toast({ title: 'Could not sign out', description: getErrorMessage(error), variant: 'destructive' });
+    }
+  };
+
+  /** SHIFT_REQUIRED on checkout — see the two catch blocks below that call this. */
+  const isShiftRequiredError = (error: unknown): boolean =>
+    error instanceof ApiClientError && (error.body as { code?: string } | undefined)?.code === SHIFT_REQUIRED;
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -665,6 +732,21 @@ export default function POS() {
       
       // Stock moved server-side; the order mutation invalidates the catalog cache.
     } catch (error: unknown) {
+      if (isShiftRequiredError(error)) {
+        // A cashier who has been away too long, discovered at the worst
+        // possible moment - checkout. The cart is untouched: the checkout
+        // dialog just closes and the lock screen takes over on top of it, the
+        // same overlay the idle timer shows, so signing back in returns
+        // straight to this same cart rather than losing the sale.
+        setCheckoutOpen(false);
+        setForceLock(true);
+        toast({
+          title: 'Sign-in required',
+          description: 'This register requires a cashier to sign in before completing a sale.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: "Error",
         description: getErrorMessage(error, 'Failed to create order'),
@@ -850,6 +932,22 @@ export default function POS() {
       setCheckoutOpen(false);
       setReceiptDialogOpen(true);
     } catch (error: unknown) {
+      if (isShiftRequiredError(error)) {
+        // Same recovery as the cash path: lock, keep the cart, let the
+        // cashier sign back in. Note the card has already been authorised by
+        // this point (`completeCardOrder` only runs after `approved`) - a
+        // shift that lapses in the gap between charging and saving the order
+        // is a pre-existing risk this phase does not add, since the same
+        // exposure exists for any order-save failure after a card capture.
+        setCheckoutOpen(false);
+        setForceLock(true);
+        toast({
+          title: 'Sign-in required',
+          description: 'This register requires a cashier to sign in before completing a sale.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: 'Order save failed',
         description: error instanceof Error ? getErrorMessage(error) : 'Unknown error',
@@ -892,6 +990,27 @@ export default function POS() {
               1024px tablet an unwrapped row pushed 60px off-screen — controls a
               cashier cannot reach, with no scrollbar to hint they exist. */}
           <div className="flex flex-wrap justify-end gap-2 min-w-0">
+            {/* Who's on this till right now, and a way off it. Only shown once
+                a shift is actually open - a register that does not require
+                sign-in, or one this terminal hasn't paired, has nothing to
+                show here. */}
+            {shiftGateActive && openShift && cashier && (
+              <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2">
+                <UserRound className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                <span className="text-sm font-medium truncate max-w-[10rem]" title={cashier.name}>
+                  {cashier.name}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                  disabled={endShift.isPending}
+                  aria-label={`Sign out ${cashier.name}`}
+                >
+                  <LogOut className="w-4 h-4" aria-hidden="true" />
+                </Button>
+              </div>
+            )}
             <RegisterSwitcher />
             <Button
               variant="outline"
@@ -1610,6 +1729,19 @@ export default function POS() {
         onClose={() => setReturnDialogOpen(false)}
         onComplete={() => refetchProducts()}
       />
+
+      {/* Rendered as an overlay sibling, not a route change or an early
+          return - the cart above lives in this component's own state and is
+          never unmounted by locking, only hidden behind an opaque, non-
+          dismissible screen. See LockScreen's doc comment for why it can't be
+          clicked or Escaped away. */}
+      {showLockScreen && currentRegister && registerId && (
+        <LockScreen
+          registerId={registerId}
+          displayCode={currentRegister.displayCode}
+          onSignedOn={() => setForceLock(false)}
+        />
+      )}
     </div>
   );
 }

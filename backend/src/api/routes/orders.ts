@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { resolveCallerRegister } from '../middleware/registerContext';
+import { SHIFT_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import { getOpenShift, touchShift } from '../../services/registerShifts';
 import {
   calculateChange,
   repriceOrder,
@@ -369,6 +371,18 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
       throw new ConflictError(`Register ${register.displayCode} is not active`);
     }
 
+    // A shift, when one is open, is the actual person standing at this till
+    // right now — not merely whoever's browser session this is. A register
+    // that requires sign-in has nothing to fall back to, so it refuses
+    // outright rather than guess.
+    const openShift = await getOpenShift(adapter, register.id);
+    if (!openShift && register.requireSignIn) {
+      throw new ConflictError(
+        `Register ${register.displayCode} requires a cashier to sign in with a PIN before ringing a sale`,
+        SHIFT_REQUIRED
+      );
+    }
+
     const priced = await priceCart(req, orderData.items, orderData.appliedDiscounts);
 
     // The tender has to add up to the repriced total, whether it is one payment
@@ -415,11 +429,11 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
       paymentMethod: tender.summaryMethod,
       payments: tender.payments,
       registerId: register.id,
-      // Phase-1 cashier attribution: whoever authenticated the request. PIN
-      // sign-in and register shifts (a later phase) will override this with
-      // the actually signed-in cashier, who may not be the same person as
-      // whoever is logged into the app on a shared terminal.
-      cashierUserId: req.user?.id,
+      // The signed-in cashier's shift, when one is open, is who actually rang
+      // this sale. Falls back to req.user.id only when no shift is open and
+      // the register does not require one — the pre-Phase-4 behavior, kept
+      // for registers that have not turned PIN sign-in on.
+      cashierUserId: openShift ? String(openShift.userId) : req.user?.id,
       drawerSessionId: drawerSession?.id ?? null,
       // Manager override is a later phase; this stays NULL until then.
       overrideByUserId: null,
@@ -432,6 +446,12 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
         status: 'approved',
         authCode: orderData.cardAuthCode,
       });
+    }
+
+    // A completed sale is activity: postpone this shift's idle clock so a
+    // busy till mid-shift is not force-signed-out from under the cashier.
+    if (openShift) {
+      await touchShift(adapter, String(openShift.id));
     }
 
     await recordDiscountUsage(req, String(order.id), priced.appliedDiscounts, orderData.customerEmail);

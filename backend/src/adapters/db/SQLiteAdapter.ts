@@ -225,6 +225,53 @@ function mapRegisterCredential(row: DbRow): DbRow {
   };
 }
 
+/**
+ * The organization every row implicitly belongs to when `org_id` is NULL —
+ * see migration 014's note on `users.org_id`. Filtering PIN candidates by org
+ * has to fall back the same way `authenticate` does (`auth.ts`,
+ * `DEFAULT_ORG_ID`), or every existing user — none of whom have `org_id` set
+ * — would be invisible to the PIN uniqueness check and to sign-in.
+ */
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Turn a `users` row into the camelCase shape `services/pins.ts` and
+ * `services/registerShifts.ts` need. Includes `pinHash` — like
+ * `mapRegisterCredential` above, this is an internal shape for the service
+ * layer's own `bcrypt.compare` calls, and must never be returned directly by
+ * a route.
+ */
+function mapUserPin(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    email: row.email,
+    name: row.name,
+    status: row.status,
+    orgId: row.org_id ?? null,
+    pinHash: row.pin_hash ?? null,
+    pinSetAt: row.pin_set_at == null ? null : Number(row.pin_set_at),
+    pinFailedCount: Number(row.pin_failed_count ?? 0),
+    pinLockedUntil: row.pin_locked_until == null ? null : Number(row.pin_locked_until),
+    canOverride: Boolean(row.can_override),
+    lastLoginAt: row.last_login_at == null ? null : Number(row.last_login_at),
+    createdAt: Number(row.created_at),
+  };
+}
+
+/** Turn a `register_shifts` row into the camelCase DTO routes and services consume. */
+function mapRegisterShift(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    registerId: String(row.register_id),
+    userId: String(row.user_id),
+    startedAt: Number(row.started_at),
+    lastActivityAt: Number(row.last_activity_at),
+    endedAt: row.ended_at == null ? null : Number(row.ended_at),
+    endReason: row.end_reason ?? null,
+    createdAt: Number(row.created_at),
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -4949,6 +4996,196 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error touching register last seen:', error);
       throw new DatabaseError('Failed to update register heartbeat');
+    }
+  }
+
+  // PIN sign-in (register shifts — migration 018)
+
+  /**
+   * A single user by id, including the PIN columns — see `mapUserPin` for
+   * why this is an internal-only shape. Used by `services/pins.ts` and
+   * `services/registerShifts.ts`, never by a route directly.
+   */
+  async getUserById(id: string): Promise<DbRow | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) as DbRow | undefined;
+      return row ? mapUserPin(row) : null;
+    } catch (error) {
+      logger.error('Error getting user by id:', error);
+      throw new DatabaseError('Failed to get user');
+    }
+  }
+
+  /**
+   * Every active user in an org who has a PIN set. Used two ways: `setPin`
+   * scans it to enforce org-wide PIN uniqueness (comparing a candidate PIN
+   * against every hash here — O(n), fine at a few hundred users), and
+   * `registerShifts.startShift` scans it to work out which employee just
+   * typed their PIN at a till that has no username field, only a keypad.
+   *
+   * `COALESCE(org_id, ...)` mirrors `authenticate`'s own fallback
+   * (`DEFAULT_ORG_ID` in `auth.ts`): every user seeded before a second
+   * organization existed has `org_id IS NULL`, so filtering on a bare
+   * equality would make them invisible to PIN sign-in entirely.
+   */
+  async getActiveUsersWithPin(orgId: string): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM users
+           WHERE status = 'active' AND pin_hash IS NOT NULL
+             AND COALESCE(org_id, ?) = ?`
+        )
+        .all(DEFAULT_ORG_ID, orgId) as DbRow[];
+      return rows.map(mapUserPin);
+    } catch (error) {
+      logger.error('Error getting active users with a PIN:', error);
+      throw new DatabaseError('Failed to get users');
+    }
+  }
+
+  /**
+   * Set (or replace) a user's PIN. Also clears any lockout: issuing a fresh
+   * PIN is a deliberate reset, not something that should stay locked out on
+   * the count run up against the old one.
+   *
+   * Returns a SAFE projection — no `pin_hash` — because unlike
+   * `getUserById`/`getActiveUsersWithPin`, this return value is what a route
+   * is expected to hand back in a response.
+   */
+  /**
+   * Set or clear a user's PIN.
+   *
+   * A null `pinHash` clears it, which is how an admin revokes an employee's
+   * ability to sign on to a till. Clearing also resets the lockout bookkeeping:
+   * leaving a stale `pin_locked_until` behind would lock the *next* PIN issued
+   * to that person before they had ever used it.
+   */
+  async setUserPin(
+    userId: string,
+    payload: { pinHash: string | null; pinSetAt: number | null }
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE users
+           SET pin_hash = ?, pin_set_at = ?, pin_failed_count = 0, pin_locked_until = NULL
+           WHERE id = ?`
+        )
+        .run(payload.pinHash, payload.pinSetAt, userId);
+      if (result.changes === 0) return null;
+
+      const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as DbRow;
+      return {
+        id: String(row.id),
+        email: row.email,
+        name: row.name,
+        status: row.status,
+        pinSetAt: row.pin_set_at == null ? null : Number(row.pin_set_at),
+      };
+    } catch (error) {
+      logger.error('Error setting user PIN:', error);
+      throw new DatabaseError('Failed to set PIN');
+    }
+  }
+
+  /** Record a failed PIN attempt, and lock the account when the caller says the threshold was hit. */
+  async recordPinFailure(
+    userId: string,
+    payload: { failedCount: number; lockedUntil: number | null }
+  ): Promise<void> {
+    try {
+      this.db
+        .prepare('UPDATE users SET pin_failed_count = ?, pin_locked_until = ? WHERE id = ?')
+        .run(payload.failedCount, payload.lockedUntil, userId);
+    } catch (error) {
+      logger.error('Error recording PIN failure:', error);
+      throw new DatabaseError('Failed to record PIN failure');
+    }
+  }
+
+  /** A successful verify resets the counter and clears any lock. */
+  async resetPinFailures(userId: string): Promise<void> {
+    try {
+      this.db
+        .prepare('UPDATE users SET pin_failed_count = 0, pin_locked_until = NULL WHERE id = ?')
+        .run(userId);
+    } catch (error) {
+      logger.error('Error resetting PIN failures:', error);
+      throw new DatabaseError('Failed to reset PIN failures');
+    }
+  }
+
+  // Register shifts (migration 018)
+
+  /** The register's currently open shift, if it has one — see migration 018's partial unique index. */
+  async getOpenShiftForRegister(registerId: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT * FROM register_shifts WHERE register_id = ? AND ended_at IS NULL LIMIT 1')
+        .get(registerId) as DbRow | undefined;
+      return row ? mapRegisterShift(row) : null;
+    } catch (error) {
+      logger.error('Error getting open register shift:', error);
+      throw new DatabaseError('Failed to get open shift');
+    }
+  }
+
+  /**
+   * Open a shift. Callers are expected to have already ended any prior open
+   * shift on this register (`services/registerShifts.ts` does, marking it
+   * `superseded`) — this does not check, and relies on migration 018's
+   * partial unique index to reject a genuine race rather than silently
+   * allowing two open shifts on one register.
+   */
+  async createRegisterShift(payload: { registerId: string; userId: string }): Promise<DbRow> {
+    try {
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      this.db
+        .prepare(
+          `INSERT INTO register_shifts (id, register_id, user_id, started_at, last_activity_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .run(id, payload.registerId, payload.userId, now, now, now);
+
+      const row = this.db.prepare('SELECT * FROM register_shifts WHERE id = ?').get(id) as DbRow;
+      return mapRegisterShift(row);
+    } catch (error) {
+      logger.error('Error creating register shift:', error);
+      throw new DatabaseError('Failed to start shift');
+    }
+  }
+
+  /** Guarded on `ended_at IS NULL` so ending an already-ended shift twice is a no-op, not a second event. */
+  async endRegisterShift(shiftId: string, reason: string): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare('UPDATE register_shifts SET ended_at = ?, end_reason = ? WHERE id = ? AND ended_at IS NULL')
+        .run(Date.now(), reason, shiftId);
+      if (result.changes === 0) return null;
+
+      const row = this.db.prepare('SELECT * FROM register_shifts WHERE id = ?').get(shiftId) as DbRow;
+      return mapRegisterShift(row);
+    } catch (error) {
+      logger.error('Error ending register shift:', error);
+      throw new DatabaseError('Failed to end shift');
+    }
+  }
+
+  /** Bump a shift's idle clock. Guarded on `ended_at IS NULL` so a stale client cannot revive an ended shift. */
+  async touchRegisterShiftActivity(shiftId: string): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare('UPDATE register_shifts SET last_activity_at = ? WHERE id = ? AND ended_at IS NULL')
+        .run(Date.now(), shiftId);
+      if (result.changes === 0) return null;
+
+      const row = this.db.prepare('SELECT * FROM register_shifts WHERE id = ?').get(shiftId) as DbRow;
+      return mapRegisterShift(row);
+    } catch (error) {
+      logger.error('Error touching register shift activity:', error);
+      throw new DatabaseError('Failed to record shift activity');
     }
   }
 

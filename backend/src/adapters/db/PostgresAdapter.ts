@@ -250,6 +250,68 @@ function mapRegisterCredential(row: DbRow): DbRow {
   };
 }
 
+/**
+ * The organization every row implicitly belongs to when `org_id` is NULL —
+ * see migration 014's note on `users.org_id`. Filtering PIN candidates by org
+ * has to fall back the same way `authenticate` does (`auth.ts`,
+ * `DEFAULT_ORG_ID`), or every existing user — none of whom have `org_id` set
+ * — would be invisible to the PIN uniqueness check and to sign-in.
+ */
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Turn a `users` row into the camelCase shape `services/pins.ts` and
+ * `services/registerShifts.ts` need. Includes `pinHash` — like
+ * `mapRegisterCredential` above, this is an internal shape for the service
+ * layer's own `bcrypt.compare` calls, and must never be returned directly by
+ * a route.
+ */
+function mapUserPin(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    email: row.email,
+    name: row.name,
+    status: row.status,
+    orgId: row.org_id ?? null,
+    pinHash: row.pin_hash ?? null,
+    pinSetAt: row.pin_set_at == null ? null : new Date(row.pin_set_at as string).getTime(),
+    pinFailedCount: Number(row.pin_failed_count ?? 0),
+    pinLockedUntil: row.pin_locked_until == null ? null : new Date(row.pin_locked_until as string).getTime(),
+    canOverride: Boolean(row.can_override),
+    lastLoginAt: row.last_login_at == null ? null : new Date(row.last_login_at as string).getTime(),
+    createdAt: new Date(row.created_at as string).getTime(),
+  };
+}
+
+/** Turn a `register_shifts` row into the camelCase DTO routes and services consume. */
+function mapRegisterShift(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    registerId: String(row.register_id),
+    userId: String(row.user_id),
+    startedAt: new Date(row.started_at as string).getTime(),
+    lastActivityAt: new Date(row.last_activity_at as string).getTime(),
+    endedAt: row.ended_at == null ? null : new Date(row.ended_at as string).getTime(),
+    endReason: row.end_reason ?? null,
+    createdAt: new Date(row.created_at as string).getTime(),
+  };
+}
+
+/**
+ * Whether a Postgres error is "that text is not a valid value for this column
+ * type" — in practice, a malformed id where a UUID was expected.
+ *
+ * SQLite stores ids as TEXT and simply matches nothing, so the two adapters
+ * disagree about a bad id unless this is translated: Postgres raises 22P02 and
+ * the route turns a user's typo into a 500 with a stack trace, where SQLite
+ * quietly 404s. Treating it as "not found" makes the dialects behave alike and
+ * keeps malformed input out of the error monitoring that should be reserved for
+ * real faults.
+ */
+function isInvalidTextRepresentation(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === '22P02';
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -5099,6 +5161,199 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error touching register last seen:', error);
       throw new DatabaseError('Failed to update register heartbeat');
+    }
+  }
+
+  // PIN sign-in (register shifts — migration 018)
+
+  /**
+   * A single user by id, including the PIN columns — see `mapUserPin` for
+   * why this is an internal-only shape. Used by `services/pins.ts` and
+   * `services/registerShifts.ts`, never by a route directly.
+   */
+  async getUserById(id: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      return result.rows[0] ? mapUserPin(result.rows[0]) : null;
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
+      logger.error('Error getting user by id:', error);
+      throw new DatabaseError('Failed to get user');
+    }
+  }
+
+  /**
+   * Every active user in an org who has a PIN set. Used two ways: `setPin`
+   * scans it to enforce org-wide PIN uniqueness (comparing a candidate PIN
+   * against every hash here — O(n), fine at a few hundred users), and
+   * `registerShifts.startShift` scans it to work out which employee just
+   * typed their PIN at a till that has no username field, only a keypad.
+   *
+   * `COALESCE(org_id, ...)` mirrors `authenticate`'s own fallback
+   * (`DEFAULT_ORG_ID` in `auth.ts`): every user seeded before a second
+   * organization existed has `org_id IS NULL`, so filtering on a bare
+   * equality would make them invisible to PIN sign-in entirely.
+   */
+  async getActiveUsersWithPin(orgId: string): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM users
+         WHERE status = 'active' AND pin_hash IS NOT NULL
+           AND COALESCE(org_id, $1) = $2`,
+        [DEFAULT_ORG_ID, orgId]
+      );
+      return result.rows.map(mapUserPin);
+    } catch (error) {
+      logger.error('Error getting active users with a PIN:', error);
+      throw new DatabaseError('Failed to get users');
+    }
+  }
+
+  /**
+   * Set (or replace) a user's PIN. Also clears any lockout: issuing a fresh
+   * PIN is a deliberate reset, not something that should stay locked out on
+   * the count run up against the old one.
+   *
+   * Returns a SAFE projection — no `pin_hash` — because unlike
+   * `getUserById`/`getActiveUsersWithPin`, this return value is what a route
+   * is expected to hand back in a response.
+   */
+  /**
+   * Set or clear a user's PIN.
+   *
+   * A null `pinHash` clears it, which is how an admin revokes an employee's
+   * ability to sign on to a till. Clearing also resets the lockout bookkeeping:
+   * leaving a stale `pin_locked_until` behind would lock the *next* PIN issued
+   * to that person before they had ever used it.
+   */
+  async setUserPin(
+    userId: string,
+    payload: { pinHash: string | null; pinSetAt: number | null }
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE users
+         SET pin_hash = $2, pin_set_at = $3, pin_failed_count = 0, pin_locked_until = NULL
+         WHERE id = $1
+         RETURNING id, email, name, status, pin_set_at`,
+        // null clears the PIN; Date(null) would be epoch 0, which reads as a
+        // PIN set in 1970 rather than as no PIN at all.
+        [userId, payload.pinHash, payload.pinSetAt === null ? null : new Date(payload.pinSetAt)]
+      );
+      if (result.rows.length === 0) return null;
+
+      const row = result.rows[0];
+      return {
+        id: String(row.id),
+        email: row.email,
+        name: row.name,
+        status: row.status,
+        pinSetAt: row.pin_set_at == null ? null : new Date(row.pin_set_at as string).getTime(),
+      };
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
+      logger.error('Error setting user PIN:', error);
+      throw new DatabaseError('Failed to set PIN');
+    }
+  }
+
+  /** Record a failed PIN attempt, and lock the account when the caller says the threshold was hit. */
+  async recordPinFailure(
+    userId: string,
+    payload: { failedCount: number; lockedUntil: number | null }
+  ): Promise<void> {
+    try {
+      await this.pool.query('UPDATE users SET pin_failed_count = $2, pin_locked_until = $3 WHERE id = $1', [
+        userId,
+        payload.failedCount,
+        payload.lockedUntil == null ? null : new Date(payload.lockedUntil),
+      ]);
+    } catch (error) {
+      logger.error('Error recording PIN failure:', error);
+      throw new DatabaseError('Failed to record PIN failure');
+    }
+  }
+
+  /** A successful verify resets the counter and clears any lock. */
+  async resetPinFailures(userId: string): Promise<void> {
+    try {
+      await this.pool.query(
+        'UPDATE users SET pin_failed_count = 0, pin_locked_until = NULL WHERE id = $1',
+        [userId]
+      );
+    } catch (error) {
+      logger.error('Error resetting PIN failures:', error);
+      throw new DatabaseError('Failed to reset PIN failures');
+    }
+  }
+
+  // Register shifts (migration 018)
+
+  /** The register's currently open shift, if it has one — see migration 018's partial unique index. */
+  async getOpenShiftForRegister(registerId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM register_shifts WHERE register_id = $1 AND ended_at IS NULL LIMIT 1',
+        [registerId]
+      );
+      return result.rows[0] ? mapRegisterShift(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting open register shift:', error);
+      throw new DatabaseError('Failed to get open shift');
+    }
+  }
+
+  /**
+   * Open a shift. Callers are expected to have already ended any prior open
+   * shift on this register (`services/registerShifts.ts` does, marking it
+   * `superseded`) — this does not check, and relies on migration 018's
+   * partial unique index to reject a genuine race rather than silently
+   * allowing two open shifts on one register.
+   */
+  async createRegisterShift(payload: { registerId: string; userId: string }): Promise<DbRow> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO register_shifts (register_id, user_id)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [payload.registerId, payload.userId]
+      );
+      return mapRegisterShift(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating register shift:', error);
+      throw new DatabaseError('Failed to start shift');
+    }
+  }
+
+  /** Guarded on `ended_at IS NULL` so ending an already-ended shift twice is a no-op, not a second event. */
+  async endRegisterShift(shiftId: string, reason: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE register_shifts SET ended_at = NOW(), end_reason = $2
+         WHERE id = $1 AND ended_at IS NULL
+         RETURNING *`,
+        [shiftId, reason]
+      );
+      return result.rows[0] ? mapRegisterShift(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error ending register shift:', error);
+      throw new DatabaseError('Failed to end shift');
+    }
+  }
+
+  /** Bump a shift's idle clock. Guarded on `ended_at IS NULL` so a stale client cannot revive an ended shift. */
+  async touchRegisterShiftActivity(shiftId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE register_shifts SET last_activity_at = NOW()
+         WHERE id = $1 AND ended_at IS NULL
+         RETURNING *`,
+        [shiftId]
+      );
+      return result.rows[0] ? mapRegisterShift(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error touching register shift activity:', error);
+      throw new DatabaseError('Failed to record shift activity');
     }
   }
 
