@@ -87,6 +87,10 @@ export function mapOrderRow(order: DbRow): DbRow {
     // Null on card and other tenders, and on orders predating the columns.
     amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
     changeGiven: order.change_given == null ? null : parseFloat(order.change_given as string),
+    registerId: order.register_id ?? null,
+    cashierUserId: order.cashier_user_id ?? null,
+    drawerSessionId: order.drawer_session_id ?? null,
+    overrideByUserId: order.override_by_user_id ?? null,
   };
 }
 
@@ -146,6 +150,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     amount: parseFloat(row.amount as string),
     reference: row.reference ?? null,
     createdAt: new Date(row.created_at as string).getTime(),
+    registerId: row.register_id ?? null,
   };
 }
 
@@ -633,8 +638,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
         [
           order.subtotal,
@@ -648,6 +653,10 @@ export class PostgresAdapter {
           order.cardAuthCode ?? null,
           order.amountTendered ?? null,
           order.changeGiven ?? null,
+          order.registerId ?? null,
+          order.cashierUserId ?? null,
+          order.drawerSessionId ?? null,
+          order.overrideByUserId ?? null,
         ]
       );
 
@@ -737,10 +746,16 @@ export class PostgresAdapter {
           }
 
           const inserted = await client.query(
-            `INSERT INTO payments (order_id, method, amount, reference)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO payments (order_id, method, amount, reference, register_id)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [newOrder.id, payment.method, payment.amount, payment.reference ?? null]
+            [
+              newOrder.id,
+              payment.method,
+              payment.amount,
+              payment.reference ?? null,
+              order.registerId ?? null,
+            ]
           );
           payments.push(mapPaymentRow(inserted.rows[0]));
         }
@@ -2643,8 +2658,9 @@ export class PostgresAdapter {
           subtotal, tax_total, total,
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
-          restock_items, restocking_fee, created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          restock_items, restocking_fee, created_by,
+          register_id, cashier_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING *`,
         [
           returnData.originalOrderId,
@@ -2665,6 +2681,8 @@ export class PostgresAdapter {
           returnData.restockItems !== false,
           returnData.restockingFee || 0,
           returnData.createdBy,
+          returnData.registerId ?? null,
+          returnData.cashierUserId ?? null,
         ]
       );
 
@@ -3120,6 +3138,9 @@ export class PostgresAdapter {
       originalOrderTotal: row.original_order_total ? parseFloat(row.original_order_total) : null,
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: new Date(row.updated_at).getTime(),
+      registerId: row.register_id ?? null,
+      cashierUserId: row.cashier_user_id ?? null,
+      overrideByUserId: row.override_by_user_id ?? null,
     };
   }
 
