@@ -72,6 +72,13 @@ const configSchema = z.object({
      * protection exists for.
      */
     maxPairAttempts: z.coerce.number().default(10),
+    /**
+     * Attempts against `POST /api/registers/:id/shifts` per window per IP.
+     * Successes do not count. A six-digit PIN, typed at a till any employee
+     * (or anyone standing at it) can reach, is a few hours of brute force
+     * without this — see `services/pins.ts`.
+     */
+    maxShiftAttempts: z.coerce.number().default(10),
   }),
 
   // Email
@@ -167,6 +174,7 @@ function buildConfig(): AppConfig {
       maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '3000', 10),
       maxLoginAttempts: parseInt(process.env.RATE_LIMIT_MAX_LOGIN_ATTEMPTS || '10', 10),
       maxPairAttempts: parseInt(process.env.RATE_LIMIT_MAX_PAIR_ATTEMPTS || '10', 10),
+      maxShiftAttempts: parseInt(process.env.RATE_LIMIT_MAX_SHIFT_ATTEMPTS || '10', 10),
     },
 
     email: {

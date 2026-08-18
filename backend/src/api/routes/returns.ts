@@ -4,10 +4,12 @@ import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { resolveCallerRegister } from '../middleware/registerContext';
-import { ValidationError, NotFoundError, UnprocessableEntityError } from '../../utils/errors';
+import { SHIFT_REQUIRED } from '../middleware/registerErrorCodes';
+import { ValidationError, NotFoundError, UnprocessableEntityError, ConflictError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import { getOpenShift, touchShift } from '../../services/registerShifts';
 import {
   repriceReturn,
   type OriginalOrder,
@@ -242,6 +244,17 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       );
     }
 
+    // Same rule as checkout: a shift, when one is open, is who is actually
+    // standing at this till; a register that requires sign-in refuses
+    // outright rather than fall back to whoever's session this is.
+    const openShift = await getOpenShift(adapter, register.id);
+    if (!openShift && register.requireSignIn) {
+      throw new ConflictError(
+        `Register ${register.displayCode} requires a cashier to sign in with a PIN before processing a return`,
+        SHIFT_REQUIRED
+      );
+    }
+
     const originalOrder = await adapter.getOrderById(data.originalOrderId);
     if (!originalOrder) {
       throw new NotFoundError('Original order not found');
@@ -277,11 +290,15 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       refundStatus: 'pending',
       createdBy: req.user?.id,
       registerId: register.id,
-      // Phase-1 cashier attribution: whoever authenticated the request. PIN
-      // sign-in and register shifts (a later phase) will override this with
-      // the actually signed-in cashier - see orders.ts for the same note.
-      cashierUserId: req.user?.id,
+      // The signed-in cashier's shift, when one is open, is who actually
+      // processed this return - see orders.ts for the same rule.
+      cashierUserId: openShift ? String(openShift.userId) : req.user?.id,
     });
+
+    // Completing a return is activity: postpone this shift's idle clock.
+    if (openShift) {
+      await touchShift(adapter, String(openShift.id));
+    }
 
     logger.info(`Created return: ${returnNumber} for order ${data.originalOrderId}`);
     await audit(req, { action: 'create', entity: 'return', entityId: String(returnData.id), after: returnData });

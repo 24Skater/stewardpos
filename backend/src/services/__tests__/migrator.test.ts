@@ -87,7 +87,7 @@ describeSqlite('the SQLite migration chain', () => {
       count: number;
     };
 
-    expect(applied.count).toBeGreaterThanOrEqual(17);
+    expect(applied.count).toBeGreaterThanOrEqual(18);
   });
 
   it('records the version it reached', () => {
@@ -95,7 +95,7 @@ describeSqlite('the SQLite migration chain', () => {
       version: number;
     };
 
-    expect(version).toBeGreaterThanOrEqual(17);
+    expect(version).toBeGreaterThanOrEqual(18);
   });
 
   it('applies them in order, with no gaps', () => {
@@ -487,5 +487,75 @@ describeSqlite('re-running', () => {
       count: number;
     };
     expect(after.count).toBe(before.count);
+  });
+});
+
+describeSqlite('018_register_shifts', () => {
+  it('creates the register_shifts table', () => {
+    expect(tables()).toContain('register_shifts');
+  });
+
+  it('adds the PIN columns to users', () => {
+    const cols = columns('users');
+    for (const col of ['pin_hash', 'pin_set_at', 'pin_failed_count', 'pin_locked_until', 'can_override']) {
+      expect(cols, `users is missing column: ${col}`).toContain(col);
+    }
+  });
+
+  it('defaults the PIN failure counter and override flag rather than leaving them null', () => {
+    // A null failure counter would make lockout arithmetic silently produce NaN
+    // on the first bad PIN, so the account would never lock.
+    const info = db.prepare('PRAGMA table_info(users)').all() as Array<{
+      name: string;
+      notnull: number;
+      dflt_value: string | null;
+    }>;
+    const column = (name: string) => info.find((c) => c.name === name)!;
+
+    expect(column('pin_failed_count').notnull).toBe(1);
+    expect(column('pin_failed_count').dflt_value).toBe('0');
+    expect(column('can_override').notnull).toBe(1);
+    expect(column('can_override').dflt_value).toBe('0');
+  });
+
+  it('measures idle from last_activity_at, which must always be present', () => {
+    // Idle timeout read from started_at would force-end a busy six-hour shift
+    // five minutes in, mid-sale. The column carrying the real answer cannot be
+    // nullable or the expiry check has nothing to compare against.
+    const info = db.prepare('PRAGMA table_info(register_shifts)').all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    const lastActivity = info.find((c) => c.name === 'last_activity_at')!;
+
+    expect(lastActivity).toBeDefined();
+    expect(lastActivity.notnull).toBe(1);
+  });
+
+  it('allows a register at most one open shift', () => {
+    // register_id must be NOT NULL for this to mean anything: NULLs are distinct
+    // in a unique index, so a nullable column would let one register hold
+    // unlimited open shifts and "who rang this sale" would be unanswerable.
+    const list = db.prepare("PRAGMA index_list('register_shifts')").all() as Array<{
+      name: string;
+      unique: number;
+    }>;
+    const open = list.find((i) => i.name === 'idx_register_shifts_one_open_per_register');
+
+    expect(open).toBeDefined();
+    expect(open!.unique).toBe(1);
+
+    const cols = (
+      db.prepare("PRAGMA index_info('idx_register_shifts_one_open_per_register')").all() as Array<{
+        name: string;
+      }>
+    ).map((c) => c.name);
+    expect(cols).toEqual(['register_id']);
+
+    const registerId = db
+      .prepare('PRAGMA table_info(register_shifts)')
+      .all()
+      .find((c: { name: string }) => c.name === 'register_id') as { notnull: number };
+    expect(registerId.notnull).toBe(1);
   });
 });
