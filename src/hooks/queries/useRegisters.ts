@@ -95,6 +95,41 @@ export function useActivateRegister() {
   });
 }
 
+/**
+ * Mint a fresh pairing code for a register.
+ *
+ * Invalidates the list: issuing a code on an already-active register drops
+ * it back to `pending` on the backend (its old credential is revoked in the
+ * same operation), and the table needs to reflect that without a manual
+ * refetch.
+ */
+export function useGeneratePairingCode() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => registersApi.pairingCode(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.registers.all });
+    },
+  });
+}
+
+/**
+ * Revoke a register's live credential. The confirmation — including the
+ * force/open-drawer path — belongs at the call site; see `AdminRegisters.tsx`.
+ */
+export function useRevokeRegister() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body?: { reason?: string; force?: boolean } }) =>
+      registersApi.revoke(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.registers.all });
+    },
+  });
+}
+
 export function useLocations() {
   return useQuery({
     queryKey: queryKeys.locations.all,

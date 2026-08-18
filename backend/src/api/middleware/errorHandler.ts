@@ -22,6 +22,9 @@ export function errorHandler(
     return res.status(err.statusCode).json({
       success: false,
       error: err.message,
+      // Only present when the thrower set one. See AppError#code: clients branch
+      // on this, never on the prose in `error`.
+      ...(err.code && { code: err.code }),
       ...(config.nodeEnv === 'development' && { stack: err.stack }),
     });
   }

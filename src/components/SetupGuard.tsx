@@ -15,7 +15,11 @@ interface SetupGuardProps {
 }
 
 // Routes that don't require setup check
-const PUBLIC_ROUTES = ['/setup', '/login'];
+// `/pair` belongs here for the same reason as `/login`: a terminal redeeming a
+// pairing code has no user session yet, and a revoked till is sent straight
+// here by the api client. Making it wait on a setup-status round trip would
+// delay the one screen that exists to get a dead register trading again.
+const PUBLIC_ROUTES = ['/setup', '/login', '/pair'];
 
 export default function SetupGuard({ children }: SetupGuardProps) {
   const [checking, setChecking] = useState(true);

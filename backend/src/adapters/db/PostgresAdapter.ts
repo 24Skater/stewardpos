@@ -225,6 +225,31 @@ function mapRegister(row: DbRow): DbRow {
   };
 }
 
+/**
+ * Turn a `register_credentials` row into the camelCase DTO the service layer
+ * consumes. Includes the hash columns — this is an internal shape used only
+ * by `services/registerEnrolment.ts` for its own `bcrypt.compare` calls,
+ * never returned directly by a route.
+ */
+function mapRegisterCredential(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    registerId: String(row.register_id),
+    pairingCodePrefix: row.pairing_code_prefix,
+    pairingCodeHash: row.pairing_code_hash,
+    pairingExpiresAt: new Date(row.pairing_expires_at as string).getTime(),
+    tokenPrefix: row.token_prefix ?? null,
+    tokenHash: row.token_hash ?? null,
+    enrolledAt: row.enrolled_at == null ? null : new Date(row.enrolled_at as string).getTime(),
+    lastUsedAt: row.last_used_at == null ? null : new Date(row.last_used_at as string).getTime(),
+    revokedAt: row.revoked_at == null ? null : new Date(row.revoked_at as string).getTime(),
+    revokedBy: row.revoked_by ?? null,
+    revokeReason: row.revoke_reason ?? null,
+    createdBy: row.created_by ?? null,
+    createdAt: new Date(row.created_at as string).getTime(),
+  };
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -4884,6 +4909,196 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting org policy:', error);
       throw new DatabaseError('Failed to get organization policy');
+    }
+  }
+
+  // Register credentials (device enrolment — migration 017)
+
+  /**
+   * The register's outstanding, not-yet-redeemed pairing code, if it has
+   * one — `token_hash IS NULL` is what distinguishes it from an enrolled
+   * credential; see `idx_register_credentials_one_pairing_per_register`
+   * (migration 017), which this query mirrors.
+   */
+  async getLiveUnredeemedPairingCredential(registerId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM register_credentials
+         WHERE register_id = $1 AND revoked_at IS NULL AND token_hash IS NULL
+         LIMIT 1`,
+        [registerId]
+      );
+      return result.rows[0] ? mapRegisterCredential(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting live unredeemed pairing credential:', error);
+      throw new DatabaseError('Failed to get register credential');
+    }
+  }
+
+  /**
+   * The register's currently enrolled device credential, if it has one —
+   * `token_hash IS NOT NULL` mirrors `idx_register_credentials_one_enrolled_per_register`.
+   */
+  async getLiveEnrolledCredential(registerId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT * FROM register_credentials
+         WHERE register_id = $1 AND revoked_at IS NULL AND token_hash IS NOT NULL
+         LIMIT 1`,
+        [registerId]
+      );
+      return result.rows[0] ? mapRegisterCredential(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting live enrolled credential:', error);
+      throw new DatabaseError('Failed to get register credential');
+    }
+  }
+
+  /**
+   * Every live row for a register — up to two: an enrolled credential and
+   * an outstanding pairing code can coexist (migration 017's two
+   * independent partial unique indexes). Used by an explicit revoke, which
+   * has to destroy everything live, not just one kind.
+   */
+  async getLiveRegisterCredentials(registerId: string): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM register_credentials WHERE register_id = $1 AND revoked_at IS NULL',
+        [registerId]
+      );
+      return result.rows.map(mapRegisterCredential);
+    } catch (error) {
+      logger.error('Error getting live register credentials:', error);
+      throw new DatabaseError('Failed to get register credentials');
+    }
+  }
+
+  async createPairingCredential(payload: {
+    registerId: string;
+    pairingCodePrefix: string;
+    pairingCodeHash: string;
+    pairingExpiresAt: number;
+    createdBy: string | null;
+  }): Promise<DbRow> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO register_credentials
+          (register_id, pairing_code_prefix, pairing_code_hash, pairing_expires_at, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [
+          payload.registerId,
+          payload.pairingCodePrefix,
+          payload.pairingCodeHash,
+          new Date(payload.pairingExpiresAt),
+          payload.createdBy,
+        ]
+      );
+      return mapRegisterCredential(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating pairing credential:', error);
+      throw new DatabaseError('Failed to create pairing credential');
+    }
+  }
+
+  /**
+   * Every row sharing a 4-character pairing-code prefix, regardless of
+   * revoked/redeemed/expired state — the service layer does the bcrypt
+   * comparison and the state checks, so this is a bare lookup by prefix.
+   */
+  async getPairingCredentialsByPrefix(prefix: string): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM register_credentials WHERE pairing_code_prefix = $1',
+        [prefix]
+      );
+      return result.rows.map(mapRegisterCredential);
+    } catch (error) {
+      logger.error('Error getting pairing credentials by prefix:', error);
+      throw new DatabaseError('Failed to get pairing credentials');
+    }
+  }
+
+  /**
+   * Guarded on `enrolled_at IS NULL AND revoked_at IS NULL` so a race between
+   * two redemption attempts for the same code can only ever mint one token —
+   * the loser gets zero rows changed and reads back as a plain miss.
+   */
+  async redeemPairingCredential(
+    id: string,
+    payload: { tokenPrefix: string; tokenHash: string; enrolledAt: number }
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE register_credentials
+         SET token_prefix = $2, token_hash = $3, enrolled_at = $4
+         WHERE id = $1 AND enrolled_at IS NULL AND revoked_at IS NULL
+         RETURNING *`,
+        [id, payload.tokenPrefix, payload.tokenHash, new Date(payload.enrolledAt)]
+      );
+      return result.rows[0] ? mapRegisterCredential(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error redeeming pairing credential:', error);
+      throw new DatabaseError('Failed to redeem pairing credential');
+    }
+  }
+
+  /** Every row sharing a device-token prefix, revoked or not — see the pairing-code equivalent above. */
+  async getRegisterCredentialsByTokenPrefix(prefix: string): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM register_credentials WHERE token_prefix = $1',
+        [prefix]
+      );
+      return result.rows.map(mapRegisterCredential);
+    } catch (error) {
+      logger.error('Error getting register credentials by token prefix:', error);
+      throw new DatabaseError('Failed to get register credentials');
+    }
+  }
+
+  /** Best-effort: a failure to stamp last-used must not fail the request it describes. */
+  async touchRegisterCredentialLastUsed(id: string): Promise<void> {
+    try {
+      await this.pool.query('UPDATE register_credentials SET last_used_at = NOW() WHERE id = $1', [id]);
+    } catch (error) {
+      logger.error('Error touching register credential last used:', error);
+    }
+  }
+
+  /** Guarded on `revoked_at IS NULL` so revoking twice is a no-op, not a second audit-worthy event. */
+  async revokeRegisterCredentialById(
+    id: string,
+    payload: { revokedBy: string | null; reason: string | null }
+  ): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE register_credentials
+         SET revoked_at = NOW(), revoked_by = $2, revoke_reason = $3
+         WHERE id = $1 AND revoked_at IS NULL
+         RETURNING *`,
+        [id, payload.revokedBy, payload.reason]
+      );
+      return result.rows[0] ? mapRegisterCredential(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error revoking register credential:', error);
+      throw new DatabaseError('Failed to revoke register credential');
+    }
+  }
+
+  /** Cheap by design — called on every device heartbeat, roughly once a minute per till. */
+  async touchRegisterLastSeen(registerId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE registers SET last_seen_at = NOW(), updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [registerId]
+      );
+      return result.rows[0] ? mapRegister(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error touching register last seen:', error);
+      throw new DatabaseError('Failed to update register heartbeat');
     }
   }
 
