@@ -42,6 +42,14 @@ interface CatalogDiscount {
   expiresAt?: number | null;
   maxUses?: number | null;
   currentUses?: number;
+  /**
+   * Set only on `discount_types` rows (quick discounts) — promo codes carry
+   * no approval gate at all, so this and `approvalThreshold` are simply
+   * absent on a `CatalogDiscount` resolved from `getPromoCodeById`/`ByCode`.
+   */
+  requiresApproval?: boolean;
+  /** Dollars. Above this, the discount needs a manager override regardless of `requiresApproval`. */
+  approvalThreshold?: number | null;
 }
 
 /** A staff member's standing discount entitlement. */
@@ -92,6 +100,14 @@ export interface ValidatedDiscount {
   value: number;
   /** Dollars, computed here — never taken from the request. */
   amount: number;
+  /**
+   * Whether this specific applied discount needs a manager override before
+   * checkout can proceed — its catalog entry has `requiresApproval`, or its
+   * computed `amount` exceeds `approvalThreshold`. Checked and enforced by
+   * the route (`api/routes/orders.ts`), not here — this module stays
+   * database-free and testable on its own, per the note above.
+   */
+  requiresOverride: boolean;
 }
 
 export interface ValidatedDiscounts {
@@ -161,6 +177,10 @@ export async function validateAppliedDiscounts(
         type: request.type,
         value: request.value,
         amount: toDollars(cents),
+        // A manual discount has no catalog entry to carry an approval gate —
+        // `mayGrantManualDiscount` above is already the control for who may
+        // apply one at all.
+        requiresOverride: false,
       });
       continue;
     }
@@ -228,6 +248,11 @@ export async function validateAppliedDiscounts(
         type: 'percentage',
         value: entitlement.discountPercentage,
         amount: toDollars(cents),
+        // Above `requiresManagerApprovalAbove` this is refused outright a few
+        // lines up, unless the acting user already may grant one — there is
+        // no register-side override flow for an employee discount today, so
+        // this never asks for one.
+        requiresOverride: false,
       });
       continue;
     }
@@ -269,6 +294,12 @@ export async function validateAppliedDiscounts(
 
     const cents = amountCents(catalog, remainingCents);
     remainingCents -= cents;
+    // Compared in cents, not the rounded dollar `amount` below, to avoid a
+    // discount landing exactly on the threshold disagreeing with itself
+    // across a float round-trip.
+    const requiresOverride =
+      Boolean(catalog.requiresApproval) ||
+      (catalog.approvalThreshold != null && cents > toCents(catalog.approvalThreshold));
     discounts.push({
       source: request.source,
       id: catalog.id,
@@ -277,6 +308,7 @@ export async function validateAppliedDiscounts(
       type: catalog.discountType as 'percentage' | 'fixed',
       value: catalog.discountValue,
       amount: toDollars(cents),
+      requiresOverride,
     });
   }
 

@@ -2,13 +2,14 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { resolveCallerRegister } from '../middleware/registerContext';
-import { SHIFT_REQUIRED } from '../middleware/registerErrorCodes';
+import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
+import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import { getOpenShift, touchShift } from '../../services/registerShifts';
+import { consumeOverride, describeOverrideFailure } from '../../services/registerOverrides';
 import {
   calculateChange,
   repriceOrder,
@@ -385,6 +386,43 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
 
     const priced = await priceCart(req, orderData.items, orderData.appliedDiscounts);
 
+    // A discount whose catalog entry demands approval, or whose amount blew
+    // past `approval_threshold` (migration 004, unenforced until now), needs
+    // a manager override before checkout can proceed. The grant travels as
+    // `X-Override-Token` — see `middleware/registerContext.ts`'s
+    // `readOverrideToken` for why a header rather than a body field.
+    const discountNeedingOverride = priced.appliedDiscounts.find((discount) => discount.requiresOverride);
+    let discountOverrideApproverId: string | null = null;
+    if (discountNeedingOverride) {
+      const overrideToken = readOverrideToken(req);
+      if (!overrideToken) {
+        throw new ConflictError(
+          `"${discountNeedingOverride.name}" needs a supervisor override before checkout can proceed`,
+          OVERRIDE_REQUIRED,
+          { action: 'discount_approval' }
+        );
+      }
+
+      const consumed = await consumeOverride(adapter, {
+        token: overrideToken,
+        action: 'discount_approval',
+        registerId: register.id,
+        // The discount itself, not the not-yet-created order — see
+        // `services/registerOverrides.ts`'s doc comment on why the row
+        // records what was actually done.
+        entity: 'discount',
+        entityId: discountNeedingOverride.id ?? discountNeedingOverride.code ?? discountNeedingOverride.name,
+        afterValue: discountNeedingOverride.amount,
+      });
+      if (typeof consumed === 'string') {
+        throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, {
+          action: 'discount_approval',
+        });
+      }
+
+      discountOverrideApproverId = String(consumed.override.approverUserId);
+    }
+
     // The tender has to add up to the repriced total, whether it is one payment
     // or five. A single `paymentMethod` becomes one payment covering the sale,
     // so existing callers are unchanged.
@@ -435,8 +473,9 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
       // for registers that have not turned PIN sign-in on.
       cashierUserId: openShift ? String(openShift.userId) : req.user?.id,
       drawerSessionId: drawerSession?.id ?? null,
-      // Manager override is a later phase; this stays NULL until then.
-      overrideByUserId: null,
+      // The supervisor who approved the discount override above, when one
+      // was needed. Null on every sale that never touched an approval gate.
+      overrideByUserId: discountOverrideApproverId,
     });
 
     // If this was a card payment, link the terminal transaction to the order

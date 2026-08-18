@@ -3,13 +3,14 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { resolveCallerRegister } from '../middleware/registerContext';
-import { SHIFT_REQUIRED } from '../middleware/registerErrorCodes';
+import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
+import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, UnprocessableEntityError, ConflictError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import { getOpenShift, touchShift } from '../../services/registerShifts';
+import { consumeOverride, describeOverrideFailure } from '../../services/registerOverrides';
 import {
   repriceReturn,
   type OriginalOrder,
@@ -280,6 +281,33 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
 
     // Generate return number
     const returnNumber = generateReturnNumber();
+
+    // A void needs a manager override, unconditionally — unlike a discount
+    // or a drawer variance, there is no threshold under which a void is fine
+    // on its own. Consumed here, with `returnNumber` (generated above, not
+    // the DB-assigned id which doesn't exist yet) as the entity id, so the
+    // override row records which return this was even though the return
+    // itself hasn't been created yet.
+    if (data.returnType === 'void') {
+      const overrideToken = readOverrideToken(req);
+      if (!overrideToken) {
+        throw new ConflictError('Voiding this sale needs a supervisor override', OVERRIDE_REQUIRED, {
+          action: 'void',
+        });
+      }
+
+      const consumed = await consumeOverride(adapter, {
+        token: overrideToken,
+        action: 'void',
+        registerId: register.id,
+        entity: 'return',
+        entityId: returnNumber,
+        afterValue: priced.total,
+      });
+      if (typeof consumed === 'string') {
+        throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, { action: 'void' });
+      }
+    }
 
     // Create the return
     const returnData = await adapter.createReturn({
