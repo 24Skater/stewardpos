@@ -8,6 +8,10 @@ export interface CallerRegister {
   id: string;
   displayCode: string;
   hasCashDrawer: boolean;
+  /** Whether this register may take a cash tender at all — a card-only lane says false. */
+  acceptsCash: boolean;
+  /** Whether this register may process a refund. */
+  canRefund: boolean;
   status: string;
 }
 
@@ -16,6 +20,8 @@ function toCallerRegister(register: Record<string, unknown>): CallerRegister {
     id: String(register.id),
     displayCode: String(register.displayCode),
     hasCashDrawer: Boolean(register.hasCashDrawer),
+    acceptsCash: Boolean(register.acceptsCash),
+    canRefund: Boolean(register.canRefund),
     status: String(register.status),
   };
 }

@@ -194,6 +194,89 @@ describe('drawer history', () => {
   });
 });
 
+describe('order & return attribution round trip', () => {
+  it('stamps register, cashier and drawer session on a cash order, and register on its payment', async () => {
+    const session = await openDrawer(100);
+
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Cash',
+      payments: [{ method: 'cash', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+      drawerSessionId: session.id,
+    });
+    orderIds.push(String(order.id));
+
+    const fetched = await h.adapter.getOrderById(String(order.id));
+    expect(fetched!.registerId).toBe(registerId);
+    expect(fetched!.cashierUserId).toBe(cashier);
+    expect(fetched!.drawerSessionId).toBe(String(session.id));
+    expect((fetched!.payments as Array<Record<string, unknown>>)[0].registerId).toBe(registerId);
+
+    await h.adapter.closeDrawerSession(String(session.id), 112, 112, cashier);
+  });
+
+  it('leaves drawerSessionId unset on a card sale, even with a session open', async () => {
+    const session = await openDrawer(100);
+
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+      // Deliberately omitted: a card-only sale has no cash leg, so the route
+      // never looks up a session to link, regardless of what is open.
+    });
+    orderIds.push(String(order.id));
+
+    const fetched = await h.adapter.getOrderById(String(order.id));
+    expect(fetched!.drawerSessionId).toBeNull();
+
+    await h.adapter.closeDrawerSession(String(session.id), 100, 100, cashier);
+  });
+
+  it('stamps register and cashier on a return', async () => {
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+    });
+    orderIds.push(String(order.id));
+
+    const created = await h.adapter.createReturn({
+      originalOrderId: order.id,
+      returnNumber: `${mark}-ATTR`,
+      status: 'pending',
+      subtotal: 12,
+      taxTotal: 0,
+      total: 12,
+      items: [],
+      registerId,
+      cashierUserId: cashier,
+    });
+    returnIds.push(String(created.id));
+
+    expect(created.registerId).toBe(registerId);
+    expect(created.cashierUserId).toBe(cashier);
+  });
+});
+
 describe('refund transactions', () => {
   it('records a refund against its order', async () => {
     const order = await h.adapter.createOrder({

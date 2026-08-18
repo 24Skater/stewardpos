@@ -3,7 +3,8 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { ValidationError, NotFoundError } from '../../utils/errors';
+import { resolveCallerRegister } from '../middleware/registerContext';
+import { ValidationError, NotFoundError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -234,6 +235,13 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     const data = createReturnSchema.parse(req.body);
     const adapter = db.getAdapter();
 
+    const register = await resolveCallerRegister(req);
+    if (!register.canRefund) {
+      throw new UnprocessableEntityError(
+        `Register ${register.displayCode} cannot process refunds`
+      );
+    }
+
     const originalOrder = await adapter.getOrderById(data.originalOrderId);
     if (!originalOrder) {
       throw new NotFoundError('Original order not found');
@@ -268,6 +276,11 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       status: 'pending',
       refundStatus: 'pending',
       createdBy: req.user?.id,
+      registerId: register.id,
+      // Phase-1 cashier attribution: whoever authenticated the request. PIN
+      // sign-in and register shifts (a later phase) will override this with
+      // the actually signed-in cashier - see orders.ts for the same note.
+      cashierUserId: req.user?.id,
     });
 
     logger.info(`Created return: ${returnNumber} for order ${data.originalOrderId}`);

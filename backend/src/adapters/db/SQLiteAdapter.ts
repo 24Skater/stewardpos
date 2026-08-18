@@ -83,6 +83,10 @@ export function mapOrderRow(order: DbRow): DbRow {
     // Null on card and other tenders, and on orders predating the columns.
     amountTendered: order.amount_tendered ?? null,
     changeGiven: order.change_given ?? null,
+    registerId: order.register_id ?? null,
+    cashierUserId: order.cashier_user_id ?? null,
+    drawerSessionId: order.drawer_session_id ?? null,
+    overrideByUserId: order.override_by_user_id ?? null,
   };
 }
 
@@ -123,6 +127,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     amount: Number(row.amount),
     reference: row.reference ?? null,
     createdAt: row.created_at,
+    registerId: row.register_id ?? null,
   };
 }
 
@@ -564,8 +569,8 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
@@ -579,7 +584,11 @@ export class SQLiteAdapter {
           order.cardTransactionId ?? null,
           order.cardAuthCode ?? null,
           order.amountTendered ?? null,
-          order.changeGiven ?? null
+          order.changeGiven ?? null,
+          order.registerId ?? null,
+          order.cashierUserId ?? null,
+          order.drawerSessionId ?? null,
+          order.overrideByUserId ?? null
         );
 
       const createdOrder = this.db
@@ -670,10 +679,18 @@ export class SQLiteAdapter {
           const paymentId = crypto.randomUUID();
           this.db
             .prepare(
-              `INSERT INTO payments (id, order_id, method, amount, reference, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)`
+              `INSERT INTO payments (id, order_id, method, amount, reference, created_at, register_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`
             )
-            .run(paymentId, createdOrder.id, payment.method, payment.amount, payment.reference ?? null, now);
+            .run(
+              paymentId,
+              createdOrder.id,
+              payment.method,
+              payment.amount,
+              payment.reference ?? null,
+              now,
+              order.registerId ?? null
+            );
 
           payments.push(
             mapPaymentRow(this.db.prepare('SELECT * FROM payments WHERE id = ?').get(paymentId) as DbRow)
@@ -2609,8 +2626,9 @@ export class SQLiteAdapter {
           subtotal, tax_total, total,
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
-          restock_items, restocking_fee, created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          restock_items, restocking_fee, created_by, created_at, updated_at,
+          register_id, cashier_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         returnId,
         returnData.originalOrderId,
@@ -2632,7 +2650,9 @@ export class SQLiteAdapter {
         returnData.restockingFee || 0,
         returnData.createdBy,
         Date.now(),
-        Date.now()
+        Date.now(),
+        returnData.registerId ?? null,
+        returnData.cashierUserId ?? null
       );
 
       // Insert return items
@@ -3056,6 +3076,9 @@ export class SQLiteAdapter {
       originalOrderTotal: row.original_order_total,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      registerId: row.register_id ?? null,
+      cashierUserId: row.cashier_user_id ?? null,
+      overrideByUserId: row.override_by_user_id ?? null,
     };
   }
 

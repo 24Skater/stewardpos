@@ -3,12 +3,11 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 
 /**
- * `returnType: 'exchange'` used to be accepted and then priced as a plain
- * return: a full refund, with nothing charged for the replacement, so the
- * customer left with a new item and their money back.
+ * `POST /api/returns` attribution: which register and which cashier took the
+ * return, and the register-capability gate on refunds (`can_refund`).
  *
- * Nothing anywhere carries replacement items, so there is no exchange to
- * price — only a refund wearing the wrong label.
+ * `exchangeRefusal.test.ts` covers the `returnType` gate on this same route;
+ * this covers the register side of it.
  */
 const getUserByEmail = vi.fn();
 const getOrderById = vi.fn();
@@ -36,19 +35,29 @@ const { default: config } = await import('../../../config');
 const { DEFAULT_ORG_ID } = await import('../../middleware/auth');
 const { default: app } = await import('../../../app');
 
+const REGISTER = {
+  id: 'reg-1',
+  orgId: DEFAULT_ORG_ID,
+  displayCode: 'MAIN-01',
+  registerNumber: 1,
+  hasCashDrawer: true,
+  acceptsCash: true,
+  canRefund: true,
+  status: 'active',
+};
+
 function token(): string {
   return jwt.sign({ id: 'u1', email: 'admin@example.com', roleIds: ['r1'] }, config.jwt.secret, {
     expiresIn: '1h',
   });
 }
 
-function body(returnType: string) {
+function body() {
   return {
     originalOrderId: 'ord-1',
-    returnType,
+    returnType: 'return',
     items: [
       {
-        // Required by `repriceReturn`, so a refund is bounded by what was sold.
         originalOrderItemId: 'oi1',
         productId: 'p1',
         nameSnapshot: 'Tea',
@@ -63,6 +72,9 @@ function body(returnType: string) {
     refundMethod: 'cash',
   };
 }
+
+/** What the route asked the adapter to store. */
+const stored = () => createReturn.mock.calls[0][0];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -83,68 +95,42 @@ beforeEach(() => {
   createReturn.mockResolvedValue({ id: 'ret-1' });
   getReturnsByOrder.mockResolvedValue([]);
   createAuditLog.mockResolvedValue({});
-  getRegisters.mockResolvedValue([
-    {
-      id: 'reg-1',
-      orgId: DEFAULT_ORG_ID,
-      displayCode: 'MAIN-01',
-      registerNumber: 1,
-      hasCashDrawer: true,
-      acceptsCash: true,
-      canRefund: true,
-      status: 'active',
-    },
-  ]);
-  getRegisterById.mockResolvedValue({
-    id: 'reg-1',
-    orgId: DEFAULT_ORG_ID,
-    displayCode: 'MAIN-01',
-    registerNumber: 1,
-    hasCashDrawer: true,
-    acceptsCash: true,
-    canRefund: true,
-    status: 'active',
-  });
+  getRegisters.mockResolvedValue([REGISTER]);
+  getRegisterById.mockResolvedValue(REGISTER);
 });
 
-describe('POST /api/returns', () => {
-  it('refuses an exchange, and says what to do instead', async () => {
+describe('register attribution', () => {
+  it('stamps registerId and cashierUserId on the return', async () => {
+    await request(app).post('/api/returns').set('Authorization', `Bearer ${token()}`).send(body());
+
+    expect(stored().registerId).toBe('reg-1');
+    expect(stored().cashierUserId).toBe('u1');
+  });
+
+  it('rejects a refund at a register with can_refund false', async () => {
+    getRegisters.mockResolvedValue([{ ...REGISTER, canRefund: false }]);
+    getRegisterById.mockResolvedValue({ ...REGISTER, canRefund: false });
+
     const response = await request(app)
       .post('/api/returns')
       .set('Authorization', `Bearer ${token()}`)
-      .send(body('exchange'));
+      .send(body());
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/not supported yet/);
-  });
-
-  it('refuses it before anything is written', async () => {
-    // The refusal is at validation, so no refund is recorded and no stock moves.
-    await request(app)
-      .post('/api/returns')
-      .set('Authorization', `Bearer ${token()}`)
-      .send(body('exchange'));
-
+    expect(response.status).toBe(422);
     expect(createReturn).not.toHaveBeenCalled();
   });
 
-  it('still accepts an ordinary return', async () => {
-    const response = await request(app)
+  it('uses the register named by X-Register-Id instead of the fallback', async () => {
+    const other = { ...REGISTER, id: 'reg-2', displayCode: 'MAIN-02', registerNumber: 2 };
+    getRegisterById.mockResolvedValue(other);
+
+    await request(app)
       .post('/api/returns')
       .set('Authorization', `Bearer ${token()}`)
-      .send(body('return'));
+      .set('X-Register-Id', 'reg-2')
+      .send(body());
 
-    expect(response.status).toBe(201);
-  });
-
-  it('still accepts a void', async () => {
-    // A void is a full cancellation, which a full return already models
-    // correctly — it is only the exchange that had nothing behind it.
-    const response = await request(app)
-      .post('/api/returns')
-      .set('Authorization', `Bearer ${token()}`)
-      .send(body('void'));
-
-    expect(response.status).toBe(201);
+    expect(getRegisterById).toHaveBeenCalledWith('reg-2');
+    expect(stored().registerId).toBe('reg-2');
   });
 });
