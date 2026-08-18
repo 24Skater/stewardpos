@@ -14,11 +14,14 @@ let h: Harness;
 const mark = tag();
 
 let cashier: string;
+let registerId: string;
+let locationId: string;
+let orgId: string;
 const orderIds: string[] = [];
 const returnIds: string[] = [];
 
 async function openDrawer(float = 100) {
-  return h.adapter.openDrawerSession(float, cashier);
+  return h.adapter.openDrawerSession({ registerId, openingFloat: float, userId: cashier });
 }
 
 beforeAll(async () => {
@@ -31,6 +34,28 @@ beforeAll(async () => {
     roleIds: [],
   });
   cashier = String(user.id);
+
+  const org = await h.query('INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id', [
+    `${mark} org`,
+    `${mark}-org`,
+  ]);
+  orgId = String(org.rows[0].id);
+
+  const location = await h.query(
+    'INSERT INTO locations (org_id, name, slug) VALUES ($1, $2, $3) RETURNING id',
+    [orgId, `${mark} location`, `${mark}-location`]
+  );
+  locationId = String(location.rows[0].id);
+
+  const register = await h.adapter.createRegister({
+    org_id: orgId,
+    location_id: locationId,
+    name: `${mark} register`,
+    register_number: 1,
+    display_code: `${mark}-REG-01`,
+  });
+  if (typeof register === 'string') throw new Error(`expected a register row, got ${register}`);
+  registerId = String(register.id);
 }, 30_000);
 
 beforeEach(async () => {
@@ -48,7 +73,13 @@ afterAll(async () => {
     await h.query('DELETE FROM order_items WHERE order_id = ANY($1)', [orderIds]);
     await h.query('DELETE FROM orders WHERE id = ANY($1)', [orderIds]);
   }
-  await h.query('DELETE FROM cash_drawer_sessions WHERE opened_by = $1 OR closed_by = $1', [cashier]);
+  await h.query('DELETE FROM cash_drawer_sessions WHERE opened_by = $1 OR closed_by = $1 OR register_id = $2', [
+    cashier,
+    registerId,
+  ]);
+  await h.query('DELETE FROM registers WHERE id = $1', [registerId]);
+  await h.query('DELETE FROM locations WHERE id = $1', [locationId]);
+  await h.query('DELETE FROM organizations WHERE id = $1', [orgId]);
   await h.query('DELETE FROM users WHERE id = $1', [cashier]);
   await h.close();
 });
@@ -160,6 +191,89 @@ describe('drawer history', () => {
     const sessions = await h.adapter.getDrawerSessions(1);
 
     expect(sessions).toHaveLength(1);
+  });
+});
+
+describe('order & return attribution round trip', () => {
+  it('stamps register, cashier and drawer session on a cash order, and register on its payment', async () => {
+    const session = await openDrawer(100);
+
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Cash',
+      payments: [{ method: 'cash', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+      drawerSessionId: session.id,
+    });
+    orderIds.push(String(order.id));
+
+    const fetched = await h.adapter.getOrderById(String(order.id));
+    expect(fetched!.registerId).toBe(registerId);
+    expect(fetched!.cashierUserId).toBe(cashier);
+    expect(fetched!.drawerSessionId).toBe(String(session.id));
+    expect((fetched!.payments as Array<Record<string, unknown>>)[0].registerId).toBe(registerId);
+
+    await h.adapter.closeDrawerSession(String(session.id), 112, 112, cashier);
+  });
+
+  it('leaves drawerSessionId unset on a card sale, even with a session open', async () => {
+    const session = await openDrawer(100);
+
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+      // Deliberately omitted: a card-only sale has no cash leg, so the route
+      // never looks up a session to link, regardless of what is open.
+    });
+    orderIds.push(String(order.id));
+
+    const fetched = await h.adapter.getOrderById(String(order.id));
+    expect(fetched!.drawerSessionId).toBeNull();
+
+    await h.adapter.closeDrawerSession(String(session.id), 100, 100, cashier);
+  });
+
+  it('stamps register and cashier on a return', async () => {
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: 12,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 12,
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 12 }],
+      registerId,
+      cashierUserId: cashier,
+    });
+    orderIds.push(String(order.id));
+
+    const created = await h.adapter.createReturn({
+      originalOrderId: order.id,
+      returnNumber: `${mark}-ATTR`,
+      status: 'pending',
+      subtotal: 12,
+      taxTotal: 0,
+      total: 12,
+      items: [],
+      registerId,
+      cashierUserId: cashier,
+    });
+    returnIds.push(String(created.id));
+
+    expect(created.registerId).toBe(registerId);
+    expect(created.cashierUserId).toBe(cashier);
   });
 });
 

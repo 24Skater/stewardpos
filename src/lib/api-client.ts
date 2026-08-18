@@ -28,9 +28,33 @@ export class ApiClientError extends Error {
 }
 
 import { authStore } from './auth-store';
+import { getSelectedRegisterId } from './register-device';
 
 async function getToken(): Promise<string | null> {
   return authStore.getToken();
+}
+
+/**
+ * The common request headers: auth, and the caller's selected register when
+ * one is set.
+ *
+ * `X-Register-Id` is deliberately omitted rather than sent empty when no
+ * register is selected - the backend's own fallback (the org's
+ * lowest-numbered active register, see `registerContext.ts`) handles that
+ * case, and an empty header value would be rejected as if it named a
+ * register that doesn't exist.
+ */
+function requestHeaders(
+  token: string | null,
+  extra?: Record<string, string>
+): Record<string, string> {
+  const registerId = getSelectedRegisterId();
+
+  return {
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...(registerId && { 'X-Register-Id': registerId }),
+    ...extra,
+  };
 }
 
 /** The envelope every backend route responds with. */
@@ -129,10 +153,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
     return handleResponse<T>(response);
   },
@@ -141,10 +162,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
     return handleResponse<T>(response);
@@ -154,10 +172,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
     return handleResponse<T>(response);
@@ -172,10 +187,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
     return handleResponse<T>(response);
@@ -185,10 +197,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
     return handleResponse<T>(response);
   },
@@ -204,9 +213,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token),
       body: form,
     });
     return handleResponse<T>(response);
@@ -224,10 +231,7 @@ export const apiClient = {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
     return handleResponseWithMeta<T, M>(response);
   },
