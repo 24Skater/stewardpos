@@ -205,3 +205,42 @@ export async function retireRegister(adapter: DatabaseAdapter, id: string): Prom
 export async function disableRegister(adapter: DatabaseAdapter, id: string): Promise<DbRow | null> {
   return adapter.setRegisterStatus(id, 'disabled');
 }
+
+/** How recently a register must have heartbeat-ed to count as each state. */
+const ONLINE_THRESHOLD_MS = 2 * 60 * 1000;
+const IDLE_THRESHOLD_MS = 15 * 60 * 1000;
+
+export type RegisterLiveness = 'online' | 'idle' | 'offline' | 'never';
+
+/**
+ * A register's liveness, derived from `last_seen_at` rather than stored —
+ * "online" is a function of the clock, not a fact a heartbeat writes down
+ * once and lets go stale.
+ *
+ * `never` is distinct from `offline`: a register that has never enrolled a
+ * device (no heartbeat has ever landed) is a different situation for an
+ * operator to act on than one that WAS online and has since gone quiet.
+ *
+ * A single shared function rather than duplicated per route: two GET
+ * handlers (list, by-id) each computing this independently is exactly how a
+ * threshold drifts between them unnoticed.
+ */
+export function deriveRegisterLiveness(
+  lastSeenAt: number | null | undefined,
+  now: number = Date.now()
+): RegisterLiveness {
+  if (lastSeenAt == null) return 'never';
+
+  const age = now - lastSeenAt;
+  if (age < ONLINE_THRESHOLD_MS) return 'online';
+  if (age < IDLE_THRESHOLD_MS) return 'idle';
+  return 'offline';
+}
+
+/** Attach derived `liveness` to a register row for an API response. */
+export function withLiveness<T extends { lastSeenAt?: number | null }>(
+  register: T,
+  now: number = Date.now()
+): T & { liveness: RegisterLiveness } {
+  return { ...register, liveness: deriveRegisterLiveness(register.lastSeenAt, now) };
+}

@@ -107,6 +107,28 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/auth/login', loginLimiter);
 
+/**
+ * Brute-force protection for device pairing.
+ *
+ * `POST /api/registers/pair` mints a real device credential (a
+ * `X-Register-Token`) and, unlike almost every other write in this API, is
+ * reachable with no session at all — the device pairing it has no user
+ * logged in yet. That combination (credential-issuing + unauthenticated) is
+ * exactly what brute-force protection exists for, same reasoning as
+ * `loginLimiter` above. `skipSuccessfulRequests` for the same reason too: a
+ * shop pairing several new terminals in a row must not exhaust a budget
+ * meant for someone guessing codes.
+ */
+const pairLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxPairAttempts,
+  skipSuccessfulRequests: true,
+  message: 'Too many pairing attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/registers/pair', pairLimiter);
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

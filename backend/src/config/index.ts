@@ -64,6 +64,14 @@ const configSchema = z.object({
     maxRequests: z.coerce.number().default(3000),
     /** Failed sign-in attempts per window per IP. Successes do not count. */
     maxLoginAttempts: z.coerce.number().default(10),
+    /**
+     * Attempts against `POST /api/registers/pair` per window per IP.
+     * Successes do not count — same reasoning as `maxLoginAttempts`. `/pair`
+     * mints a real device credential and is reachable with no session at
+     * all, which makes it exactly the kind of endpoint brute-force
+     * protection exists for.
+     */
+    maxPairAttempts: z.coerce.number().default(10),
   }),
 
   // Email
@@ -158,6 +166,7 @@ function buildConfig(): AppConfig {
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
       maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '3000', 10),
       maxLoginAttempts: parseInt(process.env.RATE_LIMIT_MAX_LOGIN_ATTEMPTS || '10', 10),
+      maxPairAttempts: parseInt(process.env.RATE_LIMIT_MAX_PAIR_ATTEMPTS || '10', 10),
     },
 
     email: {

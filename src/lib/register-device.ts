@@ -1,29 +1,36 @@
 /**
- * Which register this browser/terminal is acting as.
+ * Which register this browser/terminal is acting as, and — since Phase 3 —
+ * the device credential that proves it.
  *
- * The backend resolves every money-moving request via `X-Register-Id` (see
- * `backend/src/api/middleware/registerContext.ts`), falling back to the org's
- * lowest-numbered active register when the header is absent. This module is
- * the frontend half: it remembers which register a terminal was last set to,
- * persisted in `localStorage` so the choice survives a reload, and exposes it
- * for `api-client.ts` to attach to outgoing requests.
+ * The backend resolves every money-moving request via `X-Register-Token`
+ * when one is presented, falling back to the unverified `X-Register-Id`
+ * claim, and finally to the org's lowest-numbered active register (see
+ * `backend/src/api/middleware/registerContext.ts`). This module is the
+ * frontend half: it remembers which register a terminal was last set to and
+ * the token it earned by pairing, both persisted in `localStorage` so they
+ * survive a reload, and exposes them for `api-client.ts` to attach to
+ * outgoing requests.
  *
  * `localStorage` can throw on access — Safari private browsing being the
  * usual case — so every access is guarded. When it is unavailable, the
  * selection still works for the current page load; it just does not survive
  * a reload, which is a strictly better failure mode than crashing the app.
  *
- * Device enrolment (a later phase) will make this authoritative and probably
- * replace the manual picker built on top of it; until then this is a plain
- * per-browser preference, not a verified device identity.
+ * An enrolled terminal's `X-Register-Id` selection and its device token
+ * name the same register — `PairRegister.tsx` sets both on success — so the
+ * legacy picker (`RegisterSwitcher.tsx`) keeps working unchanged for a
+ * terminal that has not yet enrolled a device.
  */
 
 const STORAGE_KEY = 'steward-terminal-register-id';
+const TOKEN_STORAGE_KEY = 'steward-terminal-register-token';
 
 type Listener = (registerId: string | null) => void;
 
 /** Used only when `localStorage` is unreachable. Lost on reload, same as any other in-memory value. */
 let memoryValue: string | null = null;
+/** Used only when `localStorage` is unreachable — same fallback as `memoryValue` above. */
+let memoryToken: string | null = null;
 let storageAvailable: boolean | null = null;
 const listeners = new Set<Listener>();
 
@@ -102,4 +109,52 @@ export function subscribeToSelectedRegisterId(listener: Listener): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+/**
+ * The device credential minted when this terminal pairs (`POST
+ * /api/registers/pair` — see `PairRegister.tsx` and
+ * `backend/src/services/registerEnrolment.ts`).
+ *
+ * Unlike the register id above, this is a bearer credential: anyone holding
+ * it can act as this specific till against every money-moving endpoint.
+ * Treat it accordingly —
+ *
+ * - Never log it, in this module or any caller.
+ * - Never put it in a URL or query string; it belongs in the
+ *   `X-Register-Token` header only (see `api-client.ts`), never anywhere a
+ *   proxy access log or browser history would capture it.
+ * - Never render it back to the screen. The backend returns it exactly once,
+ *   at pairing — `PairRegister.tsx` shows it nowhere and keeps it in local
+ *   state only long enough to hand it to `setDeviceToken`.
+ */
+export function getDeviceToken(): string | null {
+  if (isStorageAvailable()) {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  }
+  return memoryToken;
+}
+
+/** Store the device token minted at pairing. Persisted across reloads when `localStorage` works. */
+export function setDeviceToken(token: string): void {
+  if (isStorageAvailable()) {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    memoryToken = token;
+  }
+}
+
+/**
+ * Clear the device token — e.g. because an admin revoked this register's
+ * credential and the next request came back 401 for it (see the dedicated
+ * 401 handling in `api-client.ts`, which calls this before routing to
+ * `/pair`). The terminal falls back to whatever `X-Register-Id` alone would
+ * resolve to until it is paired again.
+ */
+export function clearDeviceToken(): void {
+  if (isStorageAvailable()) {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } else {
+    memoryToken = null;
+  }
 }

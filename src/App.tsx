@@ -23,6 +23,7 @@ import POS from "./pages/POS";
 import Login from "./pages/Login";
 
 const Setup = lazy(() => import("./pages/Setup"));
+const PairRegister = lazy(() => import("./pages/PairRegister"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -70,6 +71,8 @@ const App = () => (
             <Routes>
               <Route path="/setup" element={<Setup />} />
               <Route path="/login" element={<Login />} />
+              {/* No RequireAuth: the device has no user session when it pairs — see PairRegister.tsx. */}
+              <Route path="/pair" element={<PairRegister />} />
               <Route path="/" element={<RequireAuth><POS /></RequireAuth>} />
               <Route path="/pos" element={<RequireAuth><POS /></RequireAuth>} />
               <Route path="/inventory" element={<RequireAuth permission={{ domain: "inventory", action: "read" }}><Inventory /></RequireAuth>} />

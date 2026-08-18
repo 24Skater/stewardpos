@@ -6,7 +6,23 @@ export class AppError extends Error {
   constructor(
     public message: string,
     public statusCode: number = 500,
-    public isOperational: boolean = true
+    public isOperational: boolean = true,
+    /**
+     * A stable, machine-readable discriminator, surfaced as `code` in the error
+     * envelope.
+     *
+     * Exists because a client that has to branch on behaviour cannot branch on
+     * `message`: the frontend was matching `/x-register-token/i` against prose to
+     * decide whether a 401 meant "this device was revoked" (clear the device
+     * token, go to pairing) or "your session expired" (go to login). Rewording
+     * the message would have silently broken the revoked-device path, and a
+     * revoked till would have gone on retrying forever — the exact failure that
+     * enrolment exists to prevent.
+     *
+     * Only set it where a client genuinely needs to distinguish outcomes that
+     * share a status code. Prose stays in `message`.
+     */
+    public code?: string
   ) {
     super(message);
     this.name = this.constructor.name;
@@ -21,8 +37,8 @@ export class ValidationError extends AppError {
 }
 
 export class AuthenticationError extends AppError {
-  constructor(message: string = 'Authentication failed') {
-    super(message, 401);
+  constructor(message: string = 'Authentication failed', code?: string) {
+    super(message, 401, true, code);
   }
 }
 
