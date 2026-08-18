@@ -63,11 +63,28 @@ class FakeAdapter {
     return { ...row };
   }
 
-  async getLiveRegisterCredential(registerId: string): Promise<FakeCredentialRow | null> {
+  async getLiveUnredeemedPairingCredential(registerId: string): Promise<FakeCredentialRow | null> {
     for (const row of this.credentials.values()) {
-      if (row.registerId === registerId && row.revokedAt == null) return { ...row };
+      if (row.registerId === registerId && row.revokedAt == null && row.tokenHash == null) {
+        return { ...row };
+      }
     }
     return null;
+  }
+
+  async getLiveEnrolledCredential(registerId: string): Promise<FakeCredentialRow | null> {
+    for (const row of this.credentials.values()) {
+      if (row.registerId === registerId && row.revokedAt == null && row.tokenHash != null) {
+        return { ...row };
+      }
+    }
+    return null;
+  }
+
+  async getLiveRegisterCredentials(registerId: string): Promise<FakeCredentialRow[]> {
+    return [...this.credentials.values()]
+      .filter((row) => row.registerId === registerId && row.revokedAt == null)
+      .map((row) => ({ ...row }));
   }
 
   async createPairingCredential(payload: {
@@ -201,7 +218,7 @@ describe('issuePairingCode', () => {
     expect(result).toBe('not_found');
   });
 
-  it('revokes a prior live credential before issuing a new one', async () => {
+  it('issuing twice replaces the outstanding code: the first no longer redeems, the second does', async () => {
     const adapter = fakeAdapter();
     adapter.addRegister('r1', 'pending');
 
@@ -210,15 +227,46 @@ describe('issuePairingCode', () => {
     const second = await issuePairingCode(adapter, 'r1', 'u1');
     if (typeof second !== 'object') throw new Error('expected a pairing code');
 
-    // Only one live credential should remain — the second call's insert.
+    // Only one live pairing row should remain — the second call's insert.
     const live = [...adapter.credentials.values()].filter((c) => c.revokedAt == null);
     expect(live).toHaveLength(1);
     expect(live[0].pairingCodePrefix).toBe(second.code.slice(0, 4));
 
-    // Redeeming the FIRST code must now fail: its row is revoked.
-    const redeemed = await redeemPairingCode(adapter, first.code);
-    expect(redeemed).toBe('unknown');
+    // The FIRST code must now fail to redeem: its row is revoked.
+    const firstRedeem = await redeemPairingCode(adapter, first.code);
+    expect(firstRedeem).toBe('unknown');
+
+    // The SECOND — the one actually left live — must redeem successfully.
+    const secondRedeem = await redeemPairingCode(adapter, second.code);
+    if (typeof secondRedeem !== 'object') throw new Error(`expected a token, got ${secondRedeem}`);
+    expect(secondRedeem.token).toMatch(/^srt_/);
   });
+
+  it(
+    'leaves an active, enrolled register active, with its existing device token still working, ' +
+      'when a fresh pairing code is generated',
+    async () => {
+      const adapter = fakeAdapter();
+      adapter.addRegister('r1', 'pending');
+      const firstCode = await issuePairingCode(adapter, 'r1', 'u1');
+      if (typeof firstCode !== 'object') throw new Error('expected a pairing code');
+      const enrolled = await redeemPairingCode(adapter, firstCode.code);
+      if (typeof enrolled !== 'object') throw new Error('expected a token');
+      expect((await adapter.getRegisterById('r1'))!.status).toBe('active');
+
+      // Generating a fresh code for a register that is already trading on an
+      // enrolled device — the regression this whole change exists to fix.
+      const secondCode = await issuePairingCode(adapter, 'r1', 'u1');
+      expect(typeof secondCode).toBe('object');
+
+      // The register must still be active...
+      expect((await adapter.getRegisterById('r1'))!.status).toBe('active');
+      // ...and the OLD device's token must still authenticate.
+      const stillWorks = await verifyDeviceToken(adapter, enrolled.token);
+      if (typeof stillWorks !== 'object') throw new Error(`expected the token to still work, got ${stillWorks}`);
+      expect(stillWorks.register.id).toBe('r1');
+    }
+  );
 });
 
 describe('redeemPairingCode', () => {
@@ -284,6 +332,31 @@ describe('redeemPairingCode', () => {
     const result = await redeemPairingCode(adapter, issued.code);
 
     expect(result).toBe('retired');
+  });
+
+  it('redeeming a fresh code invalidates the previously enrolled token and installs the new one', async () => {
+    const adapter = fakeAdapter();
+    adapter.addRegister('r1', 'pending');
+    const firstCode = await issuePairingCode(adapter, 'r1', 'u1');
+    if (typeof firstCode !== 'object') throw new Error('expected a pairing code');
+    const firstEnrolment = await redeemPairingCode(adapter, firstCode.code);
+    if (typeof firstEnrolment !== 'object') throw new Error('expected a token');
+
+    // Generated but not yet redeemed: the old token must still be untouched.
+    const secondCode = await issuePairingCode(adapter, 'r1', 'u1');
+    if (typeof secondCode !== 'object') throw new Error('expected a pairing code');
+    expect(await verifyDeviceToken(adapter, firstEnrolment.token)).not.toBe('revoked');
+
+    // Redeeming is the hand-over: the old device stops working the instant
+    // the new one starts.
+    const secondEnrolment = await redeemPairingCode(adapter, secondCode.code);
+    if (typeof secondEnrolment !== 'object') throw new Error('expected a token');
+    expect(secondEnrolment.register.status).toBe('active');
+
+    expect(await verifyDeviceToken(adapter, firstEnrolment.token)).toBe('revoked');
+    const stillWorks = await verifyDeviceToken(adapter, secondEnrolment.token);
+    if (typeof stillWorks !== 'object') throw new Error(`expected the new token to work, got ${stillWorks}`);
+    expect(stillWorks.register.id).toBe('r1');
   });
 
   it('the token is bcrypt-hashed, never stored plainly', async () => {
@@ -358,7 +431,28 @@ describe('revokeCredential', () => {
     const result = await revokeCredential(adapter, 'r1', { userId: 'admin' });
 
     if (result === 'not_found') throw new Error('expected a result');
-    expect(result.credential).toBeNull();
+    expect(result.credentials).toEqual([]);
     expect(result.register.status).toBe('pending');
+  });
+
+  it('destroys BOTH an enrolled token and a coexisting outstanding pairing code, not just one', async () => {
+    const adapter = fakeAdapter();
+    adapter.addRegister('r1', 'pending');
+    const firstCode = await issuePairingCode(adapter, 'r1', 'u1');
+    if (typeof firstCode !== 'object') throw new Error('expected a pairing code');
+    const enrolled = await redeemPairingCode(adapter, firstCode.code);
+    if (typeof enrolled !== 'object') throw new Error('expected a token');
+
+    // A register can legitimately be both enrolled AND mid re-pair at once.
+    const outstandingCode = await issuePairingCode(adapter, 'r1', 'u1');
+    if (typeof outstandingCode !== 'object') throw new Error('expected a pairing code');
+
+    const result = await revokeCredential(adapter, 'r1', { userId: 'admin', reason: 'lost device' });
+    if (result === 'not_found') throw new Error('expected a result');
+
+    expect(result.credentials).toHaveLength(2);
+    expect(result.register.status).toBe('pending');
+    expect(await verifyDeviceToken(adapter, enrolled.token)).toBe('revoked');
+    expect(await redeemPairingCode(adapter, outstandingCode.code)).toBe('unknown');
   });
 });

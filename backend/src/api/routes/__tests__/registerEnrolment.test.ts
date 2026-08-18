@@ -79,11 +79,24 @@ async function touchRegisterLastSeen(id: string): Promise<FakeRegister | null> {
   return { ...row };
 }
 
-async function getLiveRegisterCredential(registerId: string): Promise<FakeCredential | null> {
+async function getLiveUnredeemedPairingCredential(registerId: string): Promise<FakeCredential | null> {
   for (const row of credentials.values()) {
-    if (row.registerId === registerId && row.revokedAt == null) return { ...row };
+    if (row.registerId === registerId && row.revokedAt == null && row.tokenHash == null) return { ...row };
   }
   return null;
+}
+
+async function getLiveEnrolledCredential(registerId: string): Promise<FakeCredential | null> {
+  for (const row of credentials.values()) {
+    if (row.registerId === registerId && row.revokedAt == null && row.tokenHash != null) return { ...row };
+  }
+  return null;
+}
+
+async function getLiveRegisterCredentials(registerId: string): Promise<FakeCredential[]> {
+  return [...credentials.values()]
+    .filter((row) => row.registerId === registerId && row.revokedAt == null)
+    .map((row) => ({ ...row }));
 }
 
 async function createPairingCredential(payload: {
@@ -168,7 +181,9 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       setRegisterStatus,
       touchRegisterLastSeen,
-      getLiveRegisterCredential,
+      getLiveUnredeemedPairingCredential,
+      getLiveEnrolledCredential,
+      getLiveRegisterCredentials,
       createPairingCredential,
       getPairingCredentialsByPrefix,
       redeemPairingCredential,
@@ -273,6 +288,55 @@ describe('issue -> redeem', () => {
 
     expect(token).toMatch(/^srt_/);
     expect((await getRegisterById('rA'))!.status).toBe('active');
+  });
+});
+
+describe('generating a pairing code for a register that is currently trading', () => {
+  it(
+    'is non-destructive: the register stays active and its existing token keeps ' +
+      'authenticating until a new code is actually redeemed, at which point the ' +
+      'hand-over happens atomically',
+    async () => {
+      const oldToken = await enroll('rA');
+      expect((await getRegisterById('rA'))!.status).toBe('active');
+
+      // A manager generates a fresh code to re-pair broken hardware. This
+      // must not take the currently-trading lane offline, and must not
+      // touch the old device's credential at all.
+      const newCode = await issueCode('rA');
+
+      expect((await getRegisterById('rA'))!.status).toBe('active');
+      const stillWorksBeforeRedeem = await request(app)
+        .post('/api/registers/rA/heartbeat')
+        .set('X-Register-Token', oldToken);
+      expect(stillWorksBeforeRedeem.status).toBe(200);
+
+      // Only actually redeeming the new code performs the hand-over.
+      const newToken = await redeem(newCode);
+
+      expect((await getRegisterById('rA'))!.status).toBe('active');
+      const oldNowRevoked = await request(app)
+        .post('/api/registers/rA/heartbeat')
+        .set('X-Register-Token', oldToken);
+      expect(oldNowRevoked.status).toBe(401);
+      const newWorks = await request(app)
+        .post('/api/registers/rA/heartbeat')
+        .set('X-Register-Token', newToken);
+      expect(newWorks.status).toBe(200);
+    }
+  );
+
+  it('never generates it and never redeems it: the register is left completely alone', async () => {
+    const token = await enroll('rA');
+    expect((await getRegisterById('rA'))!.status).toBe('active');
+
+    // Issue a code, then simply never redeem it — the operator was only
+    // looking, or misplaced it.
+    await issueCode('rA');
+
+    expect((await getRegisterById('rA'))!.status).toBe('active');
+    const heartbeat = await request(app).post('/api/registers/rA/heartbeat').set('X-Register-Token', token);
+    expect(heartbeat.status).toBe(200);
   });
 });
 

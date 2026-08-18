@@ -91,17 +91,29 @@ export type IssuePairingCodeResult =
   | 'retired';
 
 /**
- * Issue a fresh pairing code for a register, revoking any prior live
- * credential first.
+ * Issue a fresh pairing code for a register. NON-DESTRUCTIVE: this never
+ * touches an enrolled device's credential, and never touches
+ * `register.status`.
  *
- * That revocation is deliberate, not defensive: the partial unique index
- * (migration 017) permits only one live credential per register, so a
- * second `createPairingCredential` would collide otherwise — and revoking on
- * purpose is exactly the right behavior for both cases this hits. A lost,
- * never-redeemed code should be replaceable. And re-pairing an already
- * enrolled, active register should immediately invalidate its old device
- * token — a register mid re-pair is not authenticated by anything until the
- * new code is redeemed, so it drops back to `pending`.
+ * Generating a code has to read as the innocuous, reversible action it
+ * looks like. A register that is currently trading does not go offline the
+ * moment a manager clicks "generate pairing code" to prepare for a
+ * hardware swap — and a code that is generated and never redeemed (an
+ * operator was only looking, or misplaced it) must leave the till exactly
+ * as it was, not dead until someone re-pairs it by hand.
+ *
+ * The only credential this revokes is a prior UNREDEEMED pairing row
+ * (`token_hash IS NULL`) for the same register — that row authenticates
+ * nothing yet, so replacing a lost or superseded code is harmless. An
+ * enrolled credential (`token_hash IS NOT NULL`) is left alone; the actual
+ * hand-over — revoking the OLD device and activating the new one — happens
+ * atomically in {@link redeemPairingCode}, the one moment a register's
+ * device identity really does change.
+ *
+ * Safe under migration 017's two separate partial unique indexes: "at most
+ * one unredeemed pairing row" and "at most one enrolled credential" are
+ * independent constraints, so an outstanding code and a live token are
+ * explicitly allowed to coexist for the same register.
  */
 export async function issuePairingCode(
   adapter: DatabaseAdapter,
@@ -112,9 +124,9 @@ export async function issuePairingCode(
   if (!register) return 'not_found';
   if (register.status === 'retired') return 'retired';
 
-  const live = await adapter.getLiveRegisterCredential(registerId);
-  if (live) {
-    await adapter.revokeRegisterCredentialById(String(live.id), {
+  const outstanding = await adapter.getLiveUnredeemedPairingCredential(registerId);
+  if (outstanding) {
+    await adapter.revokeRegisterCredentialById(String(outstanding.id), {
       revokedBy: userId,
       reason: 'superseded_by_new_pairing_code',
     });
@@ -132,12 +144,6 @@ export async function issuePairingCode(
     createdBy: userId,
   });
 
-  // Losing its only live credential above means an already-active register
-  // can no longer authenticate as anything until the new code is redeemed.
-  if (register.status === 'active') {
-    await adapter.setRegisterStatus(registerId, 'pending');
-  }
-
   return { code, formattedCode: formatPairingCode(code), expiresAt, registerId };
 }
 
@@ -150,6 +156,15 @@ export type RedeemPairingCodeResult =
 
 /**
  * Redeem a pairing code for a device token.
+ *
+ * This is where the actual hand-over happens, and it is the ONLY place it
+ * happens: whatever credential the register was previously trading on gets
+ * revoked (reason `superseded_by_new_enrolment`) right here, immediately
+ * before the new token is minted and the register is set `active`. A
+ * register that was mid-shift on its old device keeps working on that
+ * device up to this exact moment, then loses access the instant the
+ * replacement pairs — never earlier, at mere code-generation time (see
+ * {@link issuePairingCode}), and never left both credentials live at once.
  *
  * Every row sharing the code's 4-character prefix is fetched and
  * `bcrypt.compare`d — not just the first match — so the number of codes
@@ -190,6 +205,17 @@ export async function redeemPairingCode(
   const register = await adapter.getRegisterById(String(matched.registerId));
   if (!register) return 'unknown';
   if (register.status === 'retired') return 'retired';
+
+  // The atomic hand-over: whatever this register was previously enrolled as
+  // stops working right here, not before. A brand-new `pending` register
+  // has nothing enrolled yet, so this is a no-op on that path.
+  const previouslyEnrolled = await adapter.getLiveEnrolledCredential(String(register.id));
+  if (previouslyEnrolled) {
+    await adapter.revokeRegisterCredentialById(String(previouslyEnrolled.id), {
+      revokedBy: null,
+      reason: 'superseded_by_new_enrolment',
+    });
+  }
 
   const { token, prefix: tokenPrefix, hash: tokenHash } = generateDeviceToken();
 
@@ -248,17 +274,25 @@ export async function verifyDeviceToken(
   return { register, credentialId: String(matched.id) };
 }
 
-export type RevokeCredentialResult = { register: DbRow; credential: DbRow | null } | 'not_found';
+export type RevokeCredentialResult = { register: DbRow; credentials: DbRow[] } | 'not_found';
 
 /**
- * Revoke a register's live credential, if it has one, and return the
+ * Revoke every live credential a register currently holds, and return the
  * register to `pending`.
  *
- * Always sets the register back to `pending`, even when there was no live
- * credential to revoke (a register enrolled, then revoked, then revoked
- * again) — `pending` is simply the correct state for "cannot currently
- * authenticate as a device," and this must not leave a register claiming
- * `active` with nothing behind it.
+ * Plural, not singular: migration 017's two independent partial unique
+ * indexes mean a register can hold up to two live rows at once — an
+ * enrolled device token AND an outstanding, not-yet-redeemed pairing code
+ * (see {@link issuePairingCode}, which deliberately leaves an enrolled
+ * token alone when it issues a fresh code). An explicit revoke is meant to
+ * be destructive, unlike issuing: it must leave NOTHING live behind, or a
+ * lingering pairing code could still be redeemed moments after an operator
+ * believed the till was fully locked down.
+ *
+ * Always sets the register back to `pending`, even when there was nothing
+ * live to revoke (a register revoked twice in a row) — `pending` is simply
+ * the correct state for "cannot currently authenticate as a device," and
+ * this must not leave a register claiming `active` with nothing behind it.
  */
 export async function revokeCredential(
   adapter: DatabaseAdapter,
@@ -268,16 +302,17 @@ export async function revokeCredential(
   const register = await adapter.getRegisterById(registerId);
   if (!register) return 'not_found';
 
-  const live = await adapter.getLiveRegisterCredential(registerId);
-  let credential: DbRow | null = null;
-  if (live) {
-    credential = await adapter.revokeRegisterCredentialById(String(live.id), {
+  const live = await adapter.getLiveRegisterCredentials(registerId);
+  const credentials: DbRow[] = [];
+  for (const row of live) {
+    const revoked = await adapter.revokeRegisterCredentialById(String(row.id), {
       revokedBy: opts.userId ?? null,
       reason: opts.reason ?? null,
     });
+    if (revoked) credentials.push(revoked);
   }
 
   const updated = await adapter.setRegisterStatus(registerId, 'pending');
 
-  return { register: updated ?? register, credential };
+  return { register: updated ?? register, credentials };
 }

@@ -4752,16 +4752,63 @@ export class SQLiteAdapter {
 
   // Register credentials (device enrolment — migration 017)
 
-  /** The register's current live (unrevoked) credential, if it has one. */
-  async getLiveRegisterCredential(registerId: string): Promise<DbRow | null> {
+  /**
+   * The register's outstanding, not-yet-redeemed pairing code, if it has
+   * one — `token_hash IS NULL` is what distinguishes it from an enrolled
+   * credential; see `idx_register_credentials_one_pairing_per_register`
+   * (migration 017), which this query mirrors.
+   */
+  async getLiveUnredeemedPairingCredential(registerId: string): Promise<DbRow | null> {
     try {
       const row = this.db
-        .prepare('SELECT * FROM register_credentials WHERE register_id = ? AND revoked_at IS NULL LIMIT 1')
+        .prepare(
+          `SELECT * FROM register_credentials
+           WHERE register_id = ? AND revoked_at IS NULL AND token_hash IS NULL
+           LIMIT 1`
+        )
         .get(registerId) as DbRow | undefined;
       return row ? mapRegisterCredential(row) : null;
     } catch (error) {
-      logger.error('Error getting live register credential:', error);
+      logger.error('Error getting live unredeemed pairing credential:', error);
       throw new DatabaseError('Failed to get register credential');
+    }
+  }
+
+  /**
+   * The register's currently enrolled device credential, if it has one —
+   * `token_hash IS NOT NULL` mirrors `idx_register_credentials_one_enrolled_per_register`.
+   */
+  async getLiveEnrolledCredential(registerId: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT * FROM register_credentials
+           WHERE register_id = ? AND revoked_at IS NULL AND token_hash IS NOT NULL
+           LIMIT 1`
+        )
+        .get(registerId) as DbRow | undefined;
+      return row ? mapRegisterCredential(row) : null;
+    } catch (error) {
+      logger.error('Error getting live enrolled credential:', error);
+      throw new DatabaseError('Failed to get register credential');
+    }
+  }
+
+  /**
+   * Every live row for a register — up to two: an enrolled credential and
+   * an outstanding pairing code can coexist (migration 017's two
+   * independent partial unique indexes). Used by an explicit revoke, which
+   * has to destroy everything live, not just one kind.
+   */
+  async getLiveRegisterCredentials(registerId: string): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare('SELECT * FROM register_credentials WHERE register_id = ? AND revoked_at IS NULL')
+        .all(registerId) as DbRow[];
+      return rows.map(mapRegisterCredential);
+    } catch (error) {
+      logger.error('Error getting live register credentials:', error);
+      throw new DatabaseError('Failed to get register credentials');
     }
   }
 

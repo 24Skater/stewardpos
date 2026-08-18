@@ -15,10 +15,10 @@
 -- `token_prefix` / `token_hash` are nullable: a freshly issued pairing code
 -- has no token yet, only after `redeemPairingCode` fills them in.
 --
--- `register_id` is NOT NULL — required by the partial unique index below:
+-- `register_id` is NOT NULL — required by the partial unique indexes below:
 -- NULLs are distinct from one another in a unique index, so a nullable
 -- `register_id` would silently let every register share unlimited "live"
--- credentials, which is the exact bug this table exists to prevent.
+-- credentials, which is the exact bug those indexes exist to prevent.
 CREATE TABLE IF NOT EXISTS register_credentials (
   id TEXT PRIMARY KEY,
   register_id TEXT NOT NULL REFERENCES registers(id),
@@ -53,14 +53,27 @@ CREATE INDEX IF NOT EXISTS idx_register_credentials_token_prefix
 CREATE INDEX IF NOT EXISTS idx_register_credentials_register
   ON register_credentials(register_id);
 
--- A register may have at most one LIVE (unrevoked) credential at a time —
--- whether that credential is still an unredeemed pairing code or an
--- enrolled device's active token. Issuing a fresh pairing code therefore has
--- to revoke any prior live credential first, or this insert collides; that
--- collision is deliberate, not a bug to work around, because a lost pairing
--- code — or a device being re-paired — should replace the old credential,
--- not accumulate a second live one beside it.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_register_credentials_one_live_per_register
-  ON register_credentials(register_id) WHERE revoked_at IS NULL;
+-- Two separate partial unique indexes, not one covering both "kinds" of live
+-- row (unredeemed pairing code vs. enrolled device token) — a single
+-- `WHERE revoked_at IS NULL` index would forbid a pending pairing row from
+-- ever coexisting with a live token, which is exactly the case that matters:
+-- generating a fresh code for a register that is CURRENTLY TRADING must not
+-- collide with, and therefore must not force revoking, the token that
+-- register is trading on. Issuing a code is not destructive; only redeeming
+-- one is — see `services/registerEnrolment.ts` for where the actual
+-- hand-over (revoke the old enrolled credential, mint the new one) happens.
+--
+-- At most one unredeemed pairing code per register. Issuing a second
+-- (before the first is redeemed) revokes the first — a lost or unwanted
+-- code should be replaceable — but this never touches an enrolled token.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_register_credentials_one_pairing_per_register
+  ON register_credentials(register_id) WHERE revoked_at IS NULL AND token_hash IS NULL;
+
+-- At most one enrolled (redeemed) credential per register. Redemption is
+-- the one moment a register's device identity actually changes hands, so
+-- it is the one place the OLD enrolled credential gets revoked — atomically
+-- with minting the new token, not sooner.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_register_credentials_one_enrolled_per_register
+  ON register_credentials(register_id) WHERE revoked_at IS NULL AND token_hash IS NOT NULL;
 
 INSERT INTO schema_migrations (version, name) VALUES (17, '017_register_credentials');
