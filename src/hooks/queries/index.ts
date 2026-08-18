@@ -14,11 +14,13 @@ export {
   useCreateLocation,
   useCreateRegister,
   useDisableRegister,
+  useGeneratePairingCode,
   useLocation,
   useLocations,
   useRegister,
   useRegisters,
   useRetireRegister,
+  useRevokeRegister,
   useUpdateLocation,
   useUpdateRegister,
 } from './useRegisters';
