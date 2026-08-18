@@ -368,6 +368,22 @@ beforeEach(() => {
     lastSeenAt: null,
   });
 
+  // A second till in the same shop. Needed to prove the PIN rate limiter is
+  // scoped per register rather than per IP - both of these are reached from
+  // the same supertest client, i.e. the same address.
+  registers.set('rB', {
+    id: 'rB',
+    orgId: DEFAULT_ORG_ID,
+    displayCode: 'MAIN-02',
+    status: 'pending',
+    requireSignIn: false,
+    idleLockSeconds: 300,
+    hasCashDrawer: true,
+    acceptsCash: true,
+    canRefund: true,
+    lastSeenAt: null,
+  });
+
   getProductById.mockResolvedValue(TEA);
   getSettings.mockResolvedValue({ taxRateDefault: 0 });
   getOpenDrawerSession.mockResolvedValue(null);
@@ -664,6 +680,38 @@ describe('checkout attribution', () => {
  * exhausts it.
  */
 describe('POST /api/registers/:id/shifts rate limiting', () => {
+  it('keeps each till on its own budget, so one cannot exhaust another', async () => {
+    // The limiter is keyed on the register, not the caller's IP, and this is
+    // the assertion that pins that down. Three tills in a shop share one NAT
+    // address, so IP keying would let a busy lane - or someone guessing PINs at
+    // it - lock out a quiet lane that has done nothing wrong. Both registers
+    // here come from the same supertest client, i.e. the same address, so this
+    // only passes while the key is the register.
+    const tokenA = await enroll('rA');
+    const tokenB = await enroll('rB');
+    await addCashier('u1', 'Casey', '123456');
+
+    for (let i = 0; i < config.rateLimit.maxShiftAttempts + 15; i++) {
+      await request(app)
+        .post('/api/registers/rA/shifts')
+        .set('X-Register-Token', tokenA)
+        .send({ pin: '000000' });
+    }
+
+    const onA = await request(app)
+      .post('/api/registers/rA/shifts')
+      .set('X-Register-Token', tokenA)
+      .send({ pin: '000000' });
+    expect(onA.status).toBe(429);
+
+    // The other till is untouched, and a *correct* PIN there still signs on.
+    const onB = await request(app)
+      .post('/api/registers/rB/shifts')
+      .set('X-Register-Token', tokenB)
+      .send({ pin: '123456' });
+    expect(onB.status).not.toBe(429);
+  });
+
   it('eventually blocks repeated PIN attempts from one address', async () => {
     const token = await enroll('rA');
     await addCashier('u1', 'Casey', '123456');
