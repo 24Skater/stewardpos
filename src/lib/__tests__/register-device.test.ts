@@ -94,6 +94,71 @@ describe('register-device', () => {
     });
   });
 
+  describe('device token get/set/clear', () => {
+    it('starts with no token', async () => {
+      const { getDeviceToken } = await import('../register-device');
+
+      expect(getDeviceToken()).toBeNull();
+    });
+
+    it('returns what was just set', async () => {
+      const { getDeviceToken, setDeviceToken } = await import('../register-device');
+
+      setDeviceToken('srt_abcd1234_secret');
+
+      expect(getDeviceToken()).toBe('srt_abcd1234_secret');
+    });
+
+    it('persists under its own namespaced localStorage key, separate from the register id', async () => {
+      const { setDeviceToken } = await import('../register-device');
+
+      setDeviceToken('srt_abcd1234_secret');
+
+      expect(localStorage.getItem('steward-terminal-register-token')).toBe('srt_abcd1234_secret');
+      expect(localStorage.getItem('steward-terminal-register-id')).toBeNull();
+    });
+
+    it('survives a fresh module load, same as a page reload would', async () => {
+      const first = await import('../register-device');
+      first.setDeviceToken('srt_abcd1234_secret');
+
+      vi.resetModules();
+      const second = await import('../register-device');
+
+      expect(second.getDeviceToken()).toBe('srt_abcd1234_secret');
+    });
+
+    it('clears the token', async () => {
+      const { getDeviceToken, setDeviceToken, clearDeviceToken } = await import('../register-device');
+
+      setDeviceToken('srt_abcd1234_secret');
+      clearDeviceToken();
+
+      expect(getDeviceToken()).toBeNull();
+    });
+
+    it('overwrites a previous token rather than merging', async () => {
+      const { getDeviceToken, setDeviceToken } = await import('../register-device');
+
+      setDeviceToken('srt_first_secret');
+      setDeviceToken('srt_second_secret');
+
+      expect(getDeviceToken()).toBe('srt_second_secret');
+    });
+
+    it('clearing the token does not clear the selected register id', async () => {
+      const { getSelectedRegisterId, setSelectedRegisterId, setDeviceToken, clearDeviceToken } = await import(
+        '../register-device'
+      );
+
+      setSelectedRegisterId('reg-1');
+      setDeviceToken('srt_abcd1234_secret');
+      clearDeviceToken();
+
+      expect(getSelectedRegisterId()).toBe('reg-1');
+    });
+  });
+
   describe('when localStorage is unavailable', () => {
     it('degrades to an in-memory value instead of throwing (Safari private mode)', async () => {
       const spy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
@@ -147,6 +212,40 @@ describe('register-device', () => {
         setSelectedRegisterId('reg-mem');
 
         expect(listener).toHaveBeenCalledWith('reg-mem');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('degrades the device token to an in-memory value instead of throwing', async () => {
+      const spy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+        throw new DOMException('QuotaExceededError');
+      });
+
+      try {
+        const { getDeviceToken, setDeviceToken } = await import('../register-device');
+
+        expect(() => setDeviceToken('srt_mem_secret')).not.toThrow();
+        expect(getDeviceToken()).toBe('srt_mem_secret');
+        // Never actually reached localStorage - the write is what threw.
+        expect(localStorage.getItem('steward-terminal-register-token')).toBeNull();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('still supports clearing the in-memory device token', async () => {
+      const spy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+        throw new DOMException('QuotaExceededError');
+      });
+
+      try {
+        const { getDeviceToken, setDeviceToken, clearDeviceToken } = await import('../register-device');
+
+        setDeviceToken('srt_mem_secret');
+        clearDeviceToken();
+
+        expect(getDeviceToken()).toBeNull();
       } finally {
         spy.mockRestore();
       }
