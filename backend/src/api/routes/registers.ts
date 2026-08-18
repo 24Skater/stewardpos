@@ -74,10 +74,29 @@ const router = Router();
  * what this budget is protecting. Applying it directly to this one route
  * keeps the blast radius exact.
  */
+/**
+ * Throttle PIN guessing at the till.
+ *
+ * This is the *primary* brute-force defence on this path, not a backstop. The
+ * endpoint takes a bare `{ pin }` and identifies the cashier by comparing it
+ * against every PIN holder in the org, so a wrong guess matches nobody and
+ * cannot be charged to any one account's lockout counter — charging it to all
+ * of them would let a single typo lock out the entire roster. Per-account
+ * lockout in `services/pins.ts` is real and tested, but it only engages once a
+ * hash has already matched. Here, the limiter is what stands in the way.
+ *
+ * Keyed on the **register**, not the caller's IP. Three tills in one shop sit
+ * behind one NAT address, so IP keying would let a busy lane throttle a quiet
+ * one while doing nothing to scope the actual attack surface, which is a person
+ * standing at one particular till trying PINs. The register id is safe to key
+ * on because `requireRegisterToken` has already verified the device credential
+ * that names it — it is authenticated input, not a claim from the request body.
+ */
 const shiftLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxShiftAttempts,
   skipSuccessfulRequests: true,
+  keyGenerator: (req) => `register:${req.params.id ?? 'unknown'}`,
   message: 'Too many PIN attempts. Please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
