@@ -40,6 +40,8 @@ export const queryKeys = {
     list: (filter?: { locationId?: string; status?: string }) =>
       ['registers', 'list', filter?.locationId ?? '', filter?.status ?? ''] as const,
     detail: (id: string) => ['registers', id] as const,
+    /** Who is currently signed on to this register — see `useShifts.ts`. */
+    currentShift: (id: string) => ['registers', id, 'currentShift'] as const,
   },
   locations: {
     /**

@@ -24,3 +24,4 @@ export {
   useUpdateLocation,
   useUpdateRegister,
 } from './useRegisters';
+export { useCurrentShift, useEndShift, useStartShift } from './useShifts';

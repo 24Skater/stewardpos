@@ -30,7 +30,14 @@ export { setupApi } from './setup';
 export { terminalApi } from './terminal';
 export { uploadApi } from './upload';
 
-export type { CreateUserRequest, UpdateUserRequest, RoleInput, AuditQuery } from './admin';
+export type {
+  CreateUserRequest,
+  UpdateUserRequest,
+  RoleInput,
+  AuditQuery,
+  SetPinRequest,
+  UserPinStatus,
+} from './admin';
 export type {
   ApiAuthentication,
   ApiDocs,
@@ -82,6 +89,7 @@ export type { Category, CategoryInput, UnmanagedCategory } from './categories';
 export type {
   CreateLocationRequest,
   CreateRegisterRequest,
+  CurrentShiftResult,
   Location,
   LocationStatus,
   PairDeviceResult,
@@ -93,6 +101,10 @@ export type {
   RegisterType,
   RevokeRegisterRequest,
   RevokeRegisterResult,
+  Shift,
+  ShiftCashier,
+  ShiftEndReason,
+  StartShiftResult,
   UpdateLocationRequest,
   UpdateRegisterRequest,
 } from './registers';
