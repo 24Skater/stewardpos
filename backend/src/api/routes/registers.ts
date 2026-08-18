@@ -27,7 +27,6 @@ import {
   issuePairingCode,
   redeemPairingCode,
   revokeCredential,
-  formatPairingCode,
 } from '../../services/registerEnrolment';
 
 /**
