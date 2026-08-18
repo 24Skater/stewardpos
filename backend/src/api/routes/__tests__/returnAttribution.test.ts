@@ -110,6 +110,12 @@ describe('register attribution', () => {
     expect(stored().cashierUserId).toBe('u1');
   });
 
+  it('leaves overrideByUserId null on an ordinary refund, which needs nobody', async () => {
+    await request(app).post('/api/returns').set('Authorization', `Bearer ${token()}`).send(body());
+
+    expect(stored().overrideByUserId).toBeNull();
+  });
+
   it('rejects a refund at a register with can_refund false', async () => {
     getRegisters.mockResolvedValue([{ ...REGISTER, canRefund: false }]);
     getRegisterById.mockResolvedValue({ ...REGISTER, canRefund: false });

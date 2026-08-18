@@ -2796,8 +2796,8 @@ export class PostgresAdapter {
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
           restock_items, restocking_fee, created_by,
-          register_id, cashier_user_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+          register_id, cashier_user_id, override_by_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         RETURNING *`,
         [
           returnData.originalOrderId,
@@ -2820,6 +2820,7 @@ export class PostgresAdapter {
           returnData.createdBy,
           returnData.registerId ?? null,
           returnData.cashierUserId ?? null,
+          returnData.overrideByUserId ?? null,
         ]
       );
 

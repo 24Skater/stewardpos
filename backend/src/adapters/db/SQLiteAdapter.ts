@@ -2749,8 +2749,8 @@ export class SQLiteAdapter {
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
           restock_items, restocking_fee, created_by, created_at, updated_at,
-          register_id, cashier_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          register_id, cashier_user_id, override_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         returnId,
         returnData.originalOrderId,
@@ -2774,7 +2774,8 @@ export class SQLiteAdapter {
         Date.now(),
         Date.now(),
         returnData.registerId ?? null,
-        returnData.cashierUserId ?? null
+        returnData.cashierUserId ?? null,
+        returnData.overrideByUserId ?? null
       );
 
       // Insert return items
