@@ -18,6 +18,7 @@ import type {
   ValidatedPromo,
 } from "@/lib/api";
 import { useCreateOrder, useProducts, useSettings } from "@/hooks/queries";
+import { useRegisterHeartbeat } from "@/hooks/useRegisterHeartbeat";
 import { logger } from "@/lib/logger";
 import type { AppliedDiscount } from "@/lib/register-math";
 import {
@@ -111,6 +112,9 @@ export default function POS() {
     refetch: refetchProducts,
   } = useProducts();
   const createOrder = useCreateOrder();
+  // Keeps an enrolled terminal's liveness current on the admin console while
+  // this screen is open. No-op on a terminal that hasn't paired a device.
+  useRegisterHeartbeat();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
