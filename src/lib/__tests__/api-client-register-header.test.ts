@@ -20,11 +20,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const ORIGINAL_FETCH = global.fetch;
 
 function mockFetch() {
-  const fetchMock = vi.fn(async () =>
-    new Response(JSON.stringify({ success: true, data: null }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+  // Typed with the real fetch parameters, not `()` — the assertions read
+  // `calls[0][1]`, and a zero-arg mock makes that an out-of-range tuple index.
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, data: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
   );
   global.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
