@@ -19,6 +19,33 @@ export interface CreateUserRequest {
 
 export type UpdateUserRequest = Partial<CreateUserRequest>;
 
+/**
+ * `PUT /api/admin/users/:id/pin` and `DELETE /api/admin/users/:id/pin`.
+ *
+ * **Backend gap, flagged rather than silently worked around**: as of this
+ * phase's backend commits, `services/pins.ts#setPin` and the `users.pin_hash`
+ * column exist and are fully exercised by `POST /:id/shifts`
+ * (`registerShifts.startShift` scans every active PIN holder), but no admin
+ * HTTP route calls `setPin`, and there is no service function at all to clear
+ * a PIN (revoke register access) — `PostgresAdapter`/`SQLiteAdapter` only
+ * expose `setUserPin`, not a clearing counterpart. This SDK method calls a
+ * route that does not exist yet; the paths chosen here follow this file's
+ * existing `PUT/DELETE /api/admin/users/:id` convention so wiring the backend
+ * up later is a small, obvious change. Until it lands, calling these 404s.
+ */
+export interface SetPinRequest {
+  pin: string;
+}
+
+/** The safe projection `setUserPin` already returns server-side — no `pinHash`, ever. */
+export interface UserPinStatus {
+  id: string;
+  email: string;
+  name: string;
+  status: 'active' | 'inactive';
+  pinSetAt: number | null;
+}
+
 export interface RoleInput {
   name: string;
   /** Marks the role as one of the built-in archetypes; omit for custom roles. */
@@ -50,6 +77,11 @@ export const adminApi = {
     update: (id: string, body: UpdateUserRequest) =>
       apiClient.put<User>(`/api/admin/users/${id}`, body),
     remove: (id: string) => apiClient.delete<void>(`/api/admin/users/${id}`),
+    /** Set (or replace) an employee's register PIN. See `SetPinRequest`'s doc comment — not yet wired up server-side. */
+    setPin: (id: string, body: SetPinRequest) =>
+      apiClient.put<UserPinStatus>(`/api/admin/users/${id}/pin`, body),
+    /** Clear an employee's PIN, revoking their register sign-on access. Same caveat as `setPin`. */
+    clearPin: (id: string) => apiClient.delete<UserPinStatus>(`/api/admin/users/${id}/pin`),
   },
 
   roles: {

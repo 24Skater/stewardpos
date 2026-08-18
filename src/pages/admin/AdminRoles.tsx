@@ -16,9 +16,10 @@ import {
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { getCurrentSession, hasAnyRole, type AuthSession } from '@/lib/auth';
+import { getCurrentSession, hasAnyRole, hasPermission, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
+import CashierPinManager from '@/components/admin/CashierPinManager';
 
 interface Role {
   id: string;
@@ -93,6 +94,11 @@ export default function AdminRoles() {
   );
 
   const isAdmin = hasAnyRole(session, ['admin']);
+  // Gates the PIN section below with the same resource the backend's
+  // `/api/admin/users` routes are gated on (`requirePermission('users', 'write')`),
+  // rather than admin-only — a store manager who can create staff accounts
+  // should also be able to set their PINs.
+  const canManagePins = hasPermission(session, 'users', 'write');
 
   const handleAddRole = () => {
     setEditingRole({
@@ -419,6 +425,8 @@ export default function AdminRoles() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {canManagePins && <CashierPinManager />}
         </div>
       </AdminLayout>
     </ProtectedRoute>
