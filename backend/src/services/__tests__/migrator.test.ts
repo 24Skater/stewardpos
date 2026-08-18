@@ -87,7 +87,7 @@ describeSqlite('the SQLite migration chain', () => {
       count: number;
     };
 
-    expect(applied.count).toBeGreaterThanOrEqual(16);
+    expect(applied.count).toBeGreaterThanOrEqual(17);
   });
 
   it('records the version it reached', () => {
@@ -95,7 +95,7 @@ describeSqlite('the SQLite migration chain', () => {
       version: number;
     };
 
-    expect(version).toBeGreaterThanOrEqual(16);
+    expect(version).toBeGreaterThanOrEqual(17);
   });
 
   it('applies them in order, with no gaps', () => {
@@ -341,6 +341,67 @@ describeSqlite('016_register_attribution', () => {
       }>
     ).map((c) => c.name);
     expect(cols).toEqual(['register_id', 'status']);
+  });
+});
+
+describeSqlite('017_register_credentials', () => {
+  it('creates the register_credentials table', () => {
+    expect(tables()).toContain('register_credentials');
+  });
+
+  it('gives it the pairing, token, and revocation columns', () => {
+    const cols = columns('register_credentials');
+    for (const col of [
+      'id', 'register_id',
+      'pairing_code_prefix', 'pairing_code_hash', 'pairing_expires_at',
+      'token_prefix', 'token_hash', 'enrolled_at', 'last_used_at',
+      'revoked_at', 'revoked_by', 'revoke_reason',
+      'created_by', 'created_at',
+    ]) {
+      expect(cols, `register_credentials is missing column: ${col}`).toContain(col);
+    }
+  });
+
+  it('requires register_id and the pairing code columns, but leaves the token columns nullable until redemption', () => {
+    const info = (db.prepare('PRAGMA table_info(register_credentials)').all() as Array<{
+      name: string;
+      notnull: number;
+    }>);
+    const column = (name: string) => info.find((c) => c.name === name)!;
+
+    for (const required of [
+      'register_id', 'pairing_code_prefix', 'pairing_code_hash', 'pairing_expires_at',
+    ]) {
+      expect(column(required).notnull, `${required} is nullable`).toBe(1);
+    }
+
+    for (const optional of ['token_prefix', 'token_hash', 'enrolled_at', 'revoked_at']) {
+      expect(column(optional).notnull, `${optional} is NOT NULL`).toBe(0);
+    }
+  });
+
+  it('declares a partial unique index allowing at most one live credential per register', () => {
+    // Reading names off sqlite_master only proves an index exists under that
+    // name — the same trap the 015/016 uniqueness tests guard against.
+    // PRAGMA index_list carries the `unique`/`partial` flags and PRAGMA
+    // index_info carries the column, which is what "one live credential per
+    // register" actually rests on.
+    const list = db.prepare('PRAGMA index_list(register_credentials)').all() as Array<{
+      name: string;
+      unique: number;
+      partial: number;
+    }>;
+    const entry = list.find((i) => i.name === 'idx_register_credentials_one_live_per_register');
+    expect(entry, 'idx_register_credentials_one_live_per_register does not exist').toBeTruthy();
+    expect(entry!.unique, 'idx_register_credentials_one_live_per_register is not a unique index').toBe(1);
+    expect(entry!.partial, 'idx_register_credentials_one_live_per_register is not a partial index').toBe(1);
+
+    const cols = (
+      db.prepare('PRAGMA index_info(idx_register_credentials_one_live_per_register)').all() as Array<{
+        name: string;
+      }>
+    ).map((c) => c.name);
+    expect(cols).toEqual(['register_id']);
   });
 });
 
