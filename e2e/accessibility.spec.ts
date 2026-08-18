@@ -221,6 +221,10 @@ test.describe('admin accessibility', () => {
     ['reports', '/admin/reports'],
     ['audit', '/admin/audit'],
     ['returns', '/admin/returns'],
+    // Added with register management. This page carries the estate's most
+    // destructive control - revoking a till - behind dialogs, and conveys
+    // liveness and status as badges, both of which are easy to get wrong.
+    ['registers', '/admin/registers'],
   ] as const;
 
   for (const [name, path] of PAGES) {

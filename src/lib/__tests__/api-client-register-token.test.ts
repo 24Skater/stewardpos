@@ -15,7 +15,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const ORIGINAL_FETCH = global.fetch;
 
 function mockFetch(
-  response: { success: boolean; error?: string; data?: unknown } = { success: true, data: null },
+  response: { success: boolean; error?: string; code?: string; data?: unknown } = {
+    success: true,
+    data: null,
+  },
   init: { status?: number } = {}
 ) {
   const status = init.status ?? 200;
@@ -117,7 +120,11 @@ describe('a 401 that identifies a bad X-Register-Token', () => {
     setDeviceToken('srt_revoked_secret');
 
     const fetchMock = mockFetch(
-      { success: false, error: 'X-Register-Token is invalid or has been revoked' },
+      {
+        success: false,
+        error: 'X-Register-Token is invalid or has been revoked',
+        code: 'REGISTER_TOKEN_INVALID',
+      },
       { status: 401 }
     );
     const { apiClient, ApiClientError } = await import('../api-client');
@@ -133,7 +140,11 @@ describe('a 401 that identifies a bad X-Register-Token', () => {
     const { setDeviceToken, getDeviceToken } = await import('../register-device');
     setDeviceToken('srt_wrong_org_secret');
 
-    mockFetch({ success: false, error: 'X-Register-Token does not belong to your organization' }, { status: 401 });
+    mockFetch({
+      success: false,
+      error: 'X-Register-Token does not belong to your organization',
+      code: 'REGISTER_TOKEN_INVALID',
+    }, { status: 401 });
     const { apiClient, ApiClientError } = await import('../api-client');
 
     await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);
@@ -150,7 +161,11 @@ describe('a 401 that identifies a bad X-Register-Token', () => {
     const { setDeviceToken } = await import('../register-device');
     setDeviceToken('srt_revoked_secret');
 
-    mockFetch({ success: false, error: 'X-Register-Token is invalid or has been revoked' }, { status: 401 });
+    mockFetch({
+        success: false,
+        error: 'X-Register-Token is invalid or has been revoked',
+        code: 'REGISTER_TOKEN_INVALID',
+      }, { status: 401 });
     const { apiClient, ApiClientError } = await import('../api-client');
 
     await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);

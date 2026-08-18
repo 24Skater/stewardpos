@@ -404,6 +404,33 @@ describe('using a token after its credential is revoked', () => {
     expect(response.status).toBe(401);
   });
 
+  it('marks the 401 with a machine-readable code, not just prose', async () => {
+    // The terminal has to tell this 401 ("your device credential is dead, go
+    // and re-pair") apart from an ordinary expired-session 401 ("sign in
+    // again"), because the recoveries differ. It branches on this code. If the
+    // code stops being sent, a revoked till silently retries forever instead
+    // of showing the pairing screen - the exact failure enrolment prevents -
+    // so the contract is asserted here rather than left to the wording.
+    const token = await enroll('rA');
+    await request(app).post('/api/registers/rA/revoke').set(adminAuth()).send({});
+
+    const response = await request(app)
+      .post('/api/registers/rA/heartbeat')
+      .set('X-Register-Token', token);
+
+    expect(response.body.code).toBe('REGISTER_TOKEN_INVALID');
+  });
+
+  it('does not mark an ordinary session 401 with that code', async () => {
+    // Same status, different meaning: no device token involved, so the client
+    // must send the user to sign in rather than wiping a healthy terminal's
+    // credential and dumping it on the pairing screen.
+    const response = await request(app).get('/api/registers');
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).not.toBe('REGISTER_TOKEN_INVALID');
+  });
+
   it('refuses checkout and writes no order', async () => {
     const token = await enroll('rA');
     await request(app).post('/api/registers/rA/revoke').set(adminAuth()).send({});

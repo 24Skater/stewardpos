@@ -71,6 +71,13 @@ interface ApiEnvelope<T, M extends ResponseMeta = ResponseMeta> {
   error?: string;
   message?: string;
   errors?: Record<string, string[]>;
+  /**
+   * A stable discriminator on failures that share a status code, set by the
+   * backend's `AppError#code`. Present only where a client genuinely has to
+   * branch — branch on this, never on `error`, which is prose and will be
+   * reworded.
+   */
+  code?: string;
   meta?: M;
   /** Some routes name this `pagination` instead of `meta`; both are accepted. */
   pagination?: M;
@@ -104,7 +111,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(message);
+      handleUnauthorized(body);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -124,7 +131,7 @@ async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(message);
+      handleUnauthorized(body);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -147,8 +154,26 @@ async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
  * substring is reliable today. If the backend ever adds a machine-readable
  * discriminator (an error `code`, say), prefer that over this.
  */
-function isRegisterTokenFailure(message: string): boolean {
-  return /x-register-token/i.test(message);
+/**
+ * Stamped by the backend on a 401 caused by the *device* credential rather than
+ * the user's session. Must match `REGISTER_TOKEN_INVALID` in
+ * `backend/src/api/middleware/registerErrorCodes.ts` — it is part of the API
+ * contract, not a message.
+ */
+const REGISTER_TOKEN_INVALID = 'REGISTER_TOKEN_INVALID';
+
+/**
+ * Whether a 401 means "this terminal was revoked" rather than "sign in again".
+ *
+ * Reads the envelope's machine-readable `code`. It deliberately does **not**
+ * fall back to matching the prose: a silent regex fallback would hide the day
+ * the backend stops sending the code, and the symptom — a revoked till quietly
+ * retrying forever instead of showing the pairing screen — is exactly what
+ * enrolment exists to prevent. Better it fail as an ordinary session 401, which
+ * is visible, than appear to work.
+ */
+function isRegisterTokenFailure(envelope: { code?: string } | undefined): boolean {
+  return envelope?.code === REGISTER_TOKEN_INVALID;
 }
 
 /**
@@ -185,8 +210,8 @@ function onRegisterTokenRevoked(): void {
 }
 
 /** Route a 401 to the right recovery path - see {@link isRegisterTokenFailure}. */
-function handleUnauthorized(message: string): void {
-  if (isRegisterTokenFailure(message)) {
+function handleUnauthorized(envelope: { code?: string } | undefined): void {
+  if (isRegisterTokenFailure(envelope)) {
     onRegisterTokenRevoked();
   } else {
     onUnauthorized();

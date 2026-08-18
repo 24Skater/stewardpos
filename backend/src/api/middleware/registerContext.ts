@@ -3,6 +3,7 @@ import db from '../../services/database';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
 import logger from '../../utils/logger';
 import { verifyDeviceToken } from '../../services/registerEnrolment';
+import { REGISTER_TOKEN_INVALID } from './registerErrorCodes';
 
 /** The subset of a register row that money-moving routes need to act on. */
 export interface CallerRegister {
@@ -68,13 +69,19 @@ export async function resolveCallerRegister(req: AuthRequest): Promise<CallerReg
   if (tokenValue) {
     const result = await verifyDeviceToken(db.getAdapter(), tokenValue);
     if (result === 'invalid' || result === 'revoked') {
-      throw new AuthenticationError('X-Register-Token is invalid or has been revoked');
+      throw new AuthenticationError(
+        'X-Register-Token is invalid or has been revoked',
+        REGISTER_TOKEN_INVALID
+      );
     }
     if (String(result.register.orgId) !== orgId) {
       // Defense in depth: the token already proves a real, unrevoked
       // register, but a session from one org must not be able to act
       // through a device credential belonging to another.
-      throw new AuthenticationError('X-Register-Token does not belong to your organization');
+      throw new AuthenticationError(
+        'X-Register-Token does not belong to your organization',
+        REGISTER_TOKEN_INVALID
+      );
     }
     return toCallerRegister(result.register);
   }
