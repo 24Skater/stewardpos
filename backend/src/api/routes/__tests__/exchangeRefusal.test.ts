@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 /**
  * `returnType: 'exchange'` used to be accepted and then priced as a plain
@@ -18,6 +19,8 @@ const createAuditLog = vi.fn();
 const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
 const getOpenShiftForRegister = vi.fn();
+const getRegisterOverridesByPrefix = vi.fn();
+const consumeRegisterOverride = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -30,6 +33,8 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       getRegisters,
       getOpenShiftForRegister,
+      getRegisterOverridesByPrefix,
+      consumeRegisterOverride,
     }),
   },
 }));
@@ -140,14 +145,47 @@ describe('POST /api/returns', () => {
     expect(response.status).toBe(201);
   });
 
-  it('still accepts a void', async () => {
+  it('still accepts a void, given a valid manager-override grant', async () => {
     // A void is a full cancellation, which a full return already models
-    // correctly — it is only the exchange that had nothing behind it.
+    // correctly — it is only the exchange that had nothing behind it. Since
+    // Phase 5, a void also needs a manager-override grant; this test's
+    // fixture supplies one.
+    const overrideToken = 'ovr_aaaaaaaa_' + 'b'.repeat(32);
+    getRegisterOverridesByPrefix.mockResolvedValue([
+      {
+        id: 'ovr-1',
+        registerId: 'reg-1',
+        action: 'void',
+        grantHash: bcrypt.hashSync(overrideToken, 10),
+        expiresAt: Date.now() + 60_000,
+        consumedAt: null,
+      },
+    ]);
+    consumeRegisterOverride.mockResolvedValue({
+      id: 'ovr-1',
+      registerId: 'reg-1',
+      approverUserId: 'boss-1',
+      action: 'void',
+      consumedAt: Date.now(),
+    });
+
+    const response = await request(app)
+      .post('/api/returns')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Override-Token', overrideToken)
+      .send(body('void'));
+
+    expect(response.status).toBe(201);
+  });
+
+  it('refuses a void with no override grant', async () => {
     const response = await request(app)
       .post('/api/returns')
       .set('Authorization', `Bearer ${token()}`)
       .send(body('void'));
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('OVERRIDE_REQUIRED');
+    expect(createReturn).not.toHaveBeenCalled();
   });
 });

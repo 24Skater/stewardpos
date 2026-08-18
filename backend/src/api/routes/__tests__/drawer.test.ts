@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 const getUserByEmail = vi.fn();
 const getOpenDrawerSession = vi.fn();
@@ -11,6 +12,9 @@ const getDrawerSessions = vi.fn();
 const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
 const createAuditLog = vi.fn();
+const getOrganizationDrawerVarianceThreshold = vi.fn();
+const getRegisterOverridesByPrefix = vi.fn();
+const consumeRegisterOverride = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -24,6 +28,9 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       getRegisters,
       createAuditLog,
+      getOrganizationDrawerVarianceThreshold,
+      getRegisterOverridesByPrefix,
+      consumeRegisterOverride,
     }),
   },
 }));
@@ -91,6 +98,10 @@ beforeEach(() => {
   // org's lowest-numbered active register.
   getRegisters.mockResolvedValue([FALLBACK_REGISTER]);
   getRegisterById.mockResolvedValue(FALLBACK_REGISTER);
+  // NULL disables the variance-override check entirely; most tests in this
+  // file are not exercising it.
+  getOrganizationDrawerVarianceThreshold.mockResolvedValue(null);
+  getRegisterOverridesByPrefix.mockResolvedValue([]);
 });
 
 describe('GET /api/drawer/current', () => {
@@ -349,5 +360,169 @@ describe('POST /api/drawer/close', () => {
 
     expect(response.status).toBe(400);
     expect(closeDrawerSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/drawer/close — variance override', () => {
+  const OVERRIDE_TOKEN = 'ovr_aaaaaaaa_' + 'c'.repeat(32);
+
+  function seedValidGrant(): void {
+    getRegisterOverridesByPrefix.mockResolvedValue([
+      {
+        id: 'ovr-1',
+        registerId: 'reg-1',
+        action: 'drawer_variance',
+        grantHash: bcrypt.hashSync(OVERRIDE_TOKEN, 4),
+        expiresAt: Date.now() + 60_000,
+        consumedAt: null,
+      },
+    ]);
+    consumeRegisterOverride.mockResolvedValue({
+      id: 'ovr-1',
+      registerId: 'reg-1',
+      approverUserId: 'boss-1',
+      action: 'drawer_variance',
+      consumedAt: Date.now(),
+    });
+  }
+
+  it('needs a supervisor override once the variance exceeds the org threshold', async () => {
+    getOrganizationDrawerVarianceThreshold.mockResolvedValue(1); // $1 tolerance
+    // getExpectedDrawerCash resolves 250.5 by default; counted 248 is $2.50 off.
+
+    const response = await request(app)
+      .post('/api/drawer/close')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ countedCash: 248 });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('OVERRIDE_REQUIRED');
+    expect(response.body.data.action).toBe('drawer_variance');
+    expect(closeDrawerSession).not.toHaveBeenCalled();
+  });
+
+  it('closes once a valid override grant is supplied', async () => {
+    getOrganizationDrawerVarianceThreshold.mockResolvedValue(1);
+    seedValidGrant();
+    closeDrawerSession.mockResolvedValue({
+      ...OPEN_SESSION,
+      status: 'closed',
+      countedCash: 248,
+      expectedCash: 250.5,
+      variance: -2.5,
+    });
+
+    const response = await request(app)
+      .post('/api/drawer/close')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Override-Token', OVERRIDE_TOKEN)
+      .send({ countedCash: 248 });
+
+    expect(response.status).toBe(200);
+    expect(consumeRegisterOverride).toHaveBeenCalled();
+    expect(closeDrawerSession).toHaveBeenCalled();
+  });
+
+  it('needs no override when the variance is within tolerance', async () => {
+    getOrganizationDrawerVarianceThreshold.mockResolvedValue(10); // $10 tolerance
+    closeDrawerSession.mockResolvedValue({
+      ...OPEN_SESSION,
+      status: 'closed',
+      countedCash: 248,
+      expectedCash: 250.5,
+      variance: -2.5,
+    });
+
+    const response = await request(app)
+      .post('/api/drawer/close')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ countedCash: 248 });
+
+    expect(response.status).toBe(200);
+    expect(consumeRegisterOverride).not.toHaveBeenCalled();
+  });
+
+  it('a NULL threshold disables the check entirely, no matter how large the variance', async () => {
+    getOrganizationDrawerVarianceThreshold.mockResolvedValue(null);
+    getExpectedDrawerCash.mockResolvedValue(1_000_000);
+    closeDrawerSession.mockResolvedValue({
+      ...OPEN_SESSION,
+      status: 'closed',
+      countedCash: 0,
+      expectedCash: 1_000_000,
+      variance: -1_000_000,
+    });
+
+    const response = await request(app)
+      .post('/api/drawer/close')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ countedCash: 0 });
+
+    expect(response.status).toBe(200);
+    expect(consumeRegisterOverride).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/drawer/no-sale', () => {
+  const OVERRIDE_TOKEN = 'ovr_bbbbbbbb_' + 'd'.repeat(32);
+
+  function seedValidGrant(): void {
+    getRegisterOverridesByPrefix.mockResolvedValue([
+      {
+        id: 'ovr-2',
+        registerId: 'reg-1',
+        action: 'no_sale',
+        grantHash: bcrypt.hashSync(OVERRIDE_TOKEN, 4),
+        expiresAt: Date.now() + 60_000,
+        consumedAt: null,
+      },
+    ]);
+    consumeRegisterOverride.mockResolvedValue({
+      id: 'ovr-2',
+      registerId: 'reg-1',
+      approverUserId: 'boss-1',
+      action: 'no_sale',
+      consumedAt: Date.now(),
+    });
+  }
+
+  it('refuses with 422 when the register cannot open its drawer with no sale', async () => {
+    getRegisterById.mockResolvedValue({ ...FALLBACK_REGISTER, canOpenDrawerNoSale: false });
+    getRegisters.mockResolvedValue([{ ...FALLBACK_REGISTER, canOpenDrawerNoSale: false }]);
+
+    const response = await request(app)
+      .post('/api/drawer/no-sale')
+      .set('Authorization', `Bearer ${token()}`);
+
+    expect(response.status).toBe(422);
+    expect(consumeRegisterOverride).not.toHaveBeenCalled();
+  });
+
+  it('needs a supervisor override even when the register is permitted to no-sale', async () => {
+    getRegisterById.mockResolvedValue({ ...FALLBACK_REGISTER, canOpenDrawerNoSale: true });
+    getRegisters.mockResolvedValue([{ ...FALLBACK_REGISTER, canOpenDrawerNoSale: true }]);
+
+    const response = await request(app)
+      .post('/api/drawer/no-sale')
+      .set('Authorization', `Bearer ${token()}`);
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('OVERRIDE_REQUIRED');
+    expect(response.body.data.action).toBe('no_sale');
+  });
+
+  it('opens with a valid override grant, and writes an override row', async () => {
+    getRegisterById.mockResolvedValue({ ...FALLBACK_REGISTER, canOpenDrawerNoSale: true });
+    getRegisters.mockResolvedValue([{ ...FALLBACK_REGISTER, canOpenDrawerNoSale: true }]);
+    seedValidGrant();
+
+    const response = await request(app)
+      .post('/api/drawer/no-sale')
+      .set('Authorization', `Bearer ${token()}`)
+      .set('X-Override-Token', OVERRIDE_TOKEN);
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.approverUserId).toBe('boss-1');
+    expect(consumeRegisterOverride).toHaveBeenCalled();
   });
 });
