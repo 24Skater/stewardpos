@@ -883,7 +883,11 @@ export default function POS() {
               <p className="text-xs text-muted-foreground">{new Date().toLocaleTimeString()}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          {/* Wraps rather than overflowing: this row has grown a control per
+              phase (drawer, returns, and now the register switcher), and on a
+              1024px tablet an unwrapped row pushed 60px off-screen — controls a
+              cashier cannot reach, with no scrollbar to hint they exist. */}
+          <div className="flex flex-wrap justify-end gap-2 min-w-0">
             <RegisterSwitcher />
             <Button
               variant="outline"

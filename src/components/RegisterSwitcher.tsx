@@ -51,9 +51,14 @@ export default function RegisterSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="border-border" size="sm">
-          <Monitor className="w-4 h-4 mr-1" />
-          {selected ? selected.displayCode : 'Register: Auto'}
+        <Button variant="outline" className="border-border max-w-[14rem]" size="sm">
+          <Monitor className="w-4 h-4 mr-1 shrink-0" />
+          {/* display_code is VARCHAR(50) - 'CHURCH-COFFEE-GROUND-FLOOR-01' is a
+              legitimate value, and unbounded it would push the whole header
+              row off a tablet screen. */}
+          <span className="truncate">
+            {selected ? selected.displayCode : 'Register: Auto'}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
