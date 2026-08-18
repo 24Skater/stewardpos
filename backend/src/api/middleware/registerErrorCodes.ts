@@ -36,3 +36,20 @@ export const PIN_LOCKED = 'PIN_LOCKED';
  * retry, not to treat this like an ordinary validation failure.
  */
 export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';
+
+/**
+ * A privileged action (a discount past its approval threshold, a drawer
+ * closing outside its variance tolerance, a void, opening the drawer with no
+ * sale) was refused because no valid manager-override grant was supplied, or
+ * the one supplied did not check out. Sent with `data: { action }` — see
+ * `services/registerOverrides.ts` for the action vocabulary — so the client
+ * knows which of the four flows to prompt a supervisor PIN for, rather than
+ * having to infer it from which endpoint it just called.
+ *
+ * Deliberately one code for "missing" and "invalid" (expired, spent, wrong
+ * action, wrong register): either way the client's recovery is the same —
+ * prompt a supervisor for a fresh grant — and a client should not be able to
+ * distinguish "no one tried" from "someone tried and it didn't work" any more
+ * finely than that from the outside.
+ */
+export const OVERRIDE_REQUIRED = 'OVERRIDE_REQUIRED';
