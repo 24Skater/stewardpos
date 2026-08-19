@@ -33,6 +33,15 @@ RUN addgroup -g 1001 -S nodejs && \
 WORKDIR /app
 
 # Set NODE_ENV
+# Pin the container clock to UTC.
+#
+# node-postgres serialises a JS Date into a bare TIMESTAMP column, and parses
+# one back, using the process timezone. The two shifts cancel on a round trip,
+# so a non-UTC host looks fine until a client-written value meets one Postgres
+# computed itself (NOW(), EXTRACT) - which is how a register's hourly sales
+# landed four hours out. Pinning UTC removes the ambiguity instead of relying
+# on two wrongs continuing to cancel.
+ENV TZ=UTC
 ENV NODE_ENV=production
 
 # Copy package files
