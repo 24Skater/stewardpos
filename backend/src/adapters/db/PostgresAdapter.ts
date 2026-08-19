@@ -1608,6 +1608,13 @@ export class PostgresAdapter {
         updates.push(`status = $${paramIndex++}`);
         values.push(user.status);
       }
+      // Whether this person may approve a manager override. Without a way to
+      // set it, `can_override` would be false for everybody and the override
+      // flow would be unreachable in production.
+      if (user.canOverride !== undefined) {
+        updates.push(`can_override = $${paramIndex++}`);
+        values.push(Boolean(user.canOverride));
+      }
 
       values.push(id);
 

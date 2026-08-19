@@ -39,6 +39,14 @@ const updateUserSchema = z.object({
   password: z.string().min(6).optional(),
   roleIds: z.array(z.string()).optional(),
   status: z.enum(['active', 'inactive']).optional(),
+  /**
+   * Whether this person may approve a manager override at a till.
+   *
+   * Separate from any role permission on purpose: approving an exception is
+   * about who a store trusts to stand behind a decision, which is not the same
+   * question as which admin screens someone may open.
+   */
+  canOverride: z.boolean().optional(),
 });
 
 /**
