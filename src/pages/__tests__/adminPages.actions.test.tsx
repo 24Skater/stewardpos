@@ -72,6 +72,17 @@ const EMPTY_SHAPES: Record<string, unknown> = {
   'reportsApi.returnsSummary': {
     from: 0, to: 0, returnCount: 0, refunded: 0, pendingCount: 0, pendingAmount: 0, byReason: [],
   },
+  'reportsApi.salesByRegister': {
+    registers: [],
+    capabilitySplit: {
+      drawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+      nonDrawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+    },
+  },
+  'reportsApi.salesByCashier': [],
+  'reportsApi.salesByLocation': [],
+  'reportsApi.drawerVarianceByRegister': [],
+  'reportsApi.noSaleCounts': [],
   // Settings has to come back populated: the pages spread it into form state and
   // read fields off it directly.
   'adminApi.settings.get': {

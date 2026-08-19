@@ -3,13 +3,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { quotesApi } from '@/lib/api';
-import { DollarSign, ShoppingCart, Briefcase, FileText } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { quotesApi, type ReportRangeQuery } from '@/lib/api';
+import { DollarSign, ShoppingCart, Briefcase, FileText, Store, Users, ShieldAlert } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ReportRangePicker from '@/components/ReportRangePicker';
 import SalesReport, { money } from '@/components/reports/SalesReport';
-import { useSalesReport } from '@/hooks/queries';
+import RegisterReport from '@/components/reports/RegisterReport';
+import CashierReport from '@/components/reports/CashierReport';
+import LossPreventionReport from '@/components/reports/LossPreventionReport';
+import {
+  useSalesReport,
+  useRegisterReport,
+  useCashierReport,
+  useLossPreventionReport,
+  useRegisters,
+  useLocations,
+} from '@/hooks/queries';
 import { describeRange, periodRange, type ReportPeriod } from '@/lib/report-range';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -28,11 +40,43 @@ export default function AdminReports() {
   const [range, setRange] = useState(() => periodRange('today'));
 
   /**
+   * The register/location narrowing every report on this screen shares.
+   *
+   * A single Select per filter, `'all'` meaning unfiltered — the same shape
+   * `AdminOverrides.tsx` uses for its register filter — rather than a
+   * multi-select this codebase does not otherwise have. The backend accepts
+   * several ids per filter; this screen only ever asks for zero or one of
+   * each, which is still a valid (single-element) filter list.
+   */
+  const { data: registers } = useRegisters();
+  const { data: locations } = useLocations();
+  const [registerFilterId, setRegisterFilterId] = useState<string>('all');
+  const [locationFilterId, setLocationFilterId] = useState<string>('all');
+
+  /**
+   * Every report on this screen is keyed on both the range and this filter —
+   * see the note on `queryKeys.reports` — so changing either one re-fetches
+   * rather than showing one period's, or one register's, figures under a
+   * different heading.
+   */
+  const query: ReportRangeQuery = useMemo(
+    () => ({
+      ...range,
+      registerIds: registerFilterId === 'all' ? undefined : [registerFilterId],
+      locationIds: locationFilterId === 'all' ? undefined : [locationFilterId],
+    }),
+    [range, registerFilterId, locationFilterId]
+  );
+
+  /**
    * Product sales come from the reporting API — summed by the database over the
    * whole period, rather than by downloading every order and adding them up
    * here, which is what this screen used to do.
    */
-  const { data, isLoading, error } = useSalesReport(range);
+  const { data, isLoading, error } = useSalesReport(query);
+  const registerReport = useRegisterReport(query);
+  const cashierReport = useCashierReport(query);
+  const lossPreventionReport = useLossPreventionReport(query);
 
   const [serviceStats, setServiceStats] = useState({
     grossRevenue: 0,
@@ -136,11 +180,70 @@ export default function AdminReports() {
             />
           </div>
 
+          <div className="mb-6 flex flex-wrap items-end gap-3">
+            <div className="grid gap-1">
+              <Label htmlFor="report-register-filter" className="text-xs text-muted-foreground">
+                Register
+              </Label>
+              <Select value={registerFilterId} onValueChange={setRegisterFilterId}>
+                <SelectTrigger
+                  id="report-register-filter"
+                  className="w-48"
+                  aria-label="Filter reports by register"
+                >
+                  <SelectValue placeholder="All registers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All registers</SelectItem>
+                  {(registers ?? []).map((register) => (
+                    <SelectItem key={register.id} value={register.id}>
+                      {register.displayCode} — {register.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor="report-location-filter" className="text-xs text-muted-foreground">
+                Location
+              </Label>
+              <Select value={locationFilterId} onValueChange={setLocationFilterId}>
+                <SelectTrigger
+                  id="report-location-filter"
+                  className="w-48"
+                  aria-label="Filter reports by location"
+                >
+                  <SelectValue placeholder="All locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All locations</SelectItem>
+                  {(locations ?? []).map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <Tabs defaultValue="sales" className="space-y-6">
-            <TabsList>
+            <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="sales" className="flex items-center gap-2">
                 <ShoppingCart className="w-4 h-4" />
                 Product Sales
+              </TabsTrigger>
+              <TabsTrigger value="registers" className="flex items-center gap-2">
+                <Store className="w-4 h-4" />
+                Registers
+              </TabsTrigger>
+              <TabsTrigger value="cashiers" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Cashiers
+              </TabsTrigger>
+              <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4" />
+                Loss Prevention
               </TabsTrigger>
               <TabsTrigger value="services" className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4" />
@@ -154,6 +257,47 @@ export default function AdminReports() {
                 data={data ?? null}
                 loading={isLoading}
                 error={error ? getErrorMessage(error, 'The report could not be loaded') : null}
+              />
+            </TabsContent>
+
+            {/* Registers Tab — the headline answer: how many sales went
+                through each till, and the web-vs-drawer split. */}
+            <TabsContent value="registers" className="space-y-6">
+              <RegisterReport
+                data={registerReport.data ?? null}
+                loading={registerReport.isLoading}
+                error={
+                  registerReport.error
+                    ? getErrorMessage(registerReport.error, 'The report could not be loaded')
+                    : null
+                }
+              />
+            </TabsContent>
+
+            {/* Cashiers Tab */}
+            <TabsContent value="cashiers" className="space-y-6">
+              <CashierReport
+                data={cashierReport.data ?? null}
+                loading={cashierReport.isLoading}
+                error={
+                  cashierReport.error
+                    ? getErrorMessage(cashierReport.error, 'The report could not be loaded')
+                    : null
+                }
+              />
+            </TabsContent>
+
+            {/* Loss Prevention Tab — drawer variance and no-sale counts, the
+                reports that catch problems. */}
+            <TabsContent value="loss-prevention" className="space-y-6">
+              <LossPreventionReport
+                data={lossPreventionReport.data ?? null}
+                loading={lossPreventionReport.isLoading}
+                error={
+                  lossPreventionReport.error
+                    ? getErrorMessage(lossPreventionReport.error, 'The report could not be loaded')
+                    : null
+                }
               />
             </TabsContent>
 
