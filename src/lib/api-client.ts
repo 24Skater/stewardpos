@@ -228,11 +228,18 @@ export const apiClient = {
     return handleResponse<T>(response);
   },
 
-  async post<T>(path: string, data?: unknown): Promise<T> {
+  /**
+   * `options.headers` layers on top of the common set — used for the one-off
+   * headers a single call needs that every request should not carry, e.g.
+   * `X-Override-Token` on the handful of endpoints a manager override can
+   * unlock (`registerContext.ts`'s `readOverrideToken`). Omit it and this
+   * behaves exactly as before.
+   */
+  async post<T>(path: string, data?: unknown, options?: { headers?: Record<string, string> }): Promise<T> {
     const token = await getToken();
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
+      headers: requestHeaders(token, { 'Content-Type': 'application/json', ...options?.headers }),
       body: JSON.stringify(data),
     });
     return handleResponse<T>(response);

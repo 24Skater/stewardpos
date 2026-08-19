@@ -1,12 +1,14 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { resolveCallerRegister } from '../middleware/registerContext';
-import { ValidationError, NotFoundError, UnprocessableEntityError } from '../../utils/errors';
+import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
+import { OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
+import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import { consumeOverride, describeOverrideFailure } from '../../services/registerOverrides';
 
 const router = Router();
 router.use(authenticate);
@@ -161,6 +163,40 @@ router.post('/close', requirePermission('orders', 'write'), async (req: AuthRequ
     // reconciliation is that one side of it is not the counter's own claim.
     const expectedCash = await adapter.getExpectedDrawerCash(String(open.id));
 
+    // A drawer closing outside the org's tolerance (migration 019; NULL
+    // disables the check) needs a manager override before it can close at
+    // all — checked, and the grant consumed, BEFORE the session is actually
+    // closed, so a missing or invalid grant leaves the session open rather
+    // than closing it and then complaining.
+    const orgId = req.orgId ?? DEFAULT_ORG_ID;
+    const varianceThreshold = await adapter.getOrganizationDrawerVarianceThreshold(orgId);
+    const variance = countedCash - expectedCash;
+    if (varianceThreshold != null && Math.abs(variance) > varianceThreshold) {
+      const overrideToken = readOverrideToken(req);
+      if (!overrideToken) {
+        throw new ConflictError(
+          `Register ${register.displayCode}'s drawer variance of $${variance.toFixed(2)} exceeds this organization's tolerance and needs a supervisor override`,
+          OVERRIDE_REQUIRED,
+          { action: 'drawer_variance' }
+        );
+      }
+
+      const consumed = await consumeOverride(adapter, {
+        token: overrideToken,
+        action: 'drawer_variance',
+        registerId: register.id,
+        entity: 'drawer_session',
+        entityId: String(open.id),
+        beforeValue: expectedCash,
+        afterValue: countedCash,
+      });
+      if (typeof consumed === 'string') {
+        throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, {
+          action: 'drawer_variance',
+        });
+      }
+    }
+
     const closed = await adapter.closeDrawerSession(
       String(open.id),
       countedCash,
@@ -191,6 +227,80 @@ router.post('/close', requirePermission('orders', 'write'), async (req: AuthRequ
     } else {
       next(error);
     }
+  }
+});
+
+/**
+ * POST /api/drawer/no-sale
+ *
+ * Open the drawer with no sale attached — the single best theft signal in a
+ * POS, which is exactly why it needs both a capability flag AND a manager
+ * override, not just one:
+ *
+ * - `can_open_drawer_no_sale` (migration 015) is an absolute, per-register
+ *   gate, refused with 422 before an override is even considered — a till
+ *   that has never had this turned on cannot be argued into it by a
+ *   supervisor PIN. Same reasoning `hasCashDrawer`/`acceptsCash` checks
+ *   elsewhere in this file use.
+ * - A grant is then always required, with no threshold to clear — unlike
+ *   `drawer_variance`, there is no "small enough to not matter" version of
+ *   opening the till for nothing.
+ *
+ * Writes a `register_overrides` row (via `consumeOverride`) rather than a
+ * `cash_drawer_sessions` row: this is not a session, counted cash never
+ * enters into it, only that it happened, who asked, and who allowed it.
+ */
+router.post('/no-sale', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const register = await resolveCallerRegister(req);
+
+    if (!register.canOpenDrawerNoSale) {
+      throw new UnprocessableEntityError(
+        `Register ${register.displayCode} is not permitted to open its drawer without a sale`
+      );
+    }
+
+    const adapter = db.getAdapter();
+    const overrideToken = readOverrideToken(req);
+    if (!overrideToken) {
+      throw new ConflictError(
+        `Opening register ${register.displayCode}'s drawer with no sale needs a supervisor override`,
+        OVERRIDE_REQUIRED,
+        { action: 'no_sale' }
+      );
+    }
+
+    const consumed = await consumeOverride(adapter, {
+      token: overrideToken,
+      action: 'no_sale',
+      registerId: register.id,
+      entity: 'register',
+      entityId: register.id,
+    });
+    if (typeof consumed === 'string') {
+      throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, { action: 'no_sale' });
+    }
+
+    logger.info(
+      `No-sale drawer open on register ${register.displayCode}, approved by ${consumed.override.approverUserId}`
+    );
+    await audit(req, {
+      action: 'create',
+      entity: 'register_override',
+      entityId: String(consumed.override.id),
+      after: { registerId: register.id, action: 'no_sale', approverUserId: consumed.override.approverUserId },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        registerId: register.id,
+        approverUserId: consumed.override.approverUserId,
+        overrideId: consumed.override.id,
+      },
+    });
+  } catch (error) {
+    next(error);
   }
 });
 

@@ -272,6 +272,61 @@ function mapRegisterShift(row: DbRow): DbRow {
   };
 }
 
+/**
+ * Turn a `register_overrides` row into the camelCase shape
+ * `services/registerOverrides.ts` needs. Includes `grantHash` — like
+ * `mapRegisterCredential`, this is an internal shape for the service layer's
+ * own `bcrypt.compare` calls, and must never be returned directly by a
+ * route. The admin listing route (`GET /api/registers/overrides`) selects
+ * its own safe column list instead of using this mapper.
+ */
+function mapRegisterOverride(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    registerId: String(row.register_id),
+    shiftId: row.shift_id == null ? null : String(row.shift_id),
+    approverUserId: String(row.approver_user_id),
+    requestedByUserId: row.requested_by_user_id == null ? null : String(row.requested_by_user_id),
+    action: row.action,
+    grantPrefix: row.grant_prefix,
+    grantHash: row.grant_hash,
+    expiresAt: Number(row.expires_at),
+    consumedAt: row.consumed_at == null ? null : Number(row.consumed_at),
+    entity: row.entity ?? null,
+    entityId: row.entity_id ?? null,
+    beforeValue: row.before_value ?? null,
+    afterValue: row.after_value ?? null,
+    reason: row.reason ?? null,
+    createdAt: Number(row.created_at),
+    // Joined for display. This log exists to answer "who authorised what", and
+    // a table of raw UUIDs cannot answer it.
+    approverName: row.approver_name ?? null,
+    requestedByName: row.requested_by_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
+  };
+}
+
+/** The safe projection of a `register_overrides` row for the admin listing route — never `grant_hash`. */
+function mapRegisterOverrideSummary(row: DbRow): DbRow {
+  return {
+    id: String(row.id),
+    registerId: String(row.register_id),
+    shiftId: row.shift_id == null ? null : String(row.shift_id),
+    approverUserId: String(row.approver_user_id),
+    requestedByUserId: row.requested_by_user_id == null ? null : String(row.requested_by_user_id),
+    action: row.action,
+    grantPrefix: row.grant_prefix,
+    expiresAt: Number(row.expires_at),
+    consumedAt: row.consumed_at == null ? null : Number(row.consumed_at),
+    entity: row.entity ?? null,
+    entityId: row.entity_id ?? null,
+    beforeValue: row.before_value ?? null,
+    afterValue: row.after_value ?? null,
+    reason: row.reason ?? null,
+    createdAt: Number(row.created_at),
+  };
+}
+
 export class SQLiteAdapter {
   private db: Database.Database;
 
@@ -1500,6 +1555,13 @@ export class SQLiteAdapter {
         updates.push('status = ?');
         values.push(user.status);
       }
+      // Whether this person may approve a manager override. Without a way to
+      // set it, `can_override` would be false for everybody and the override
+      // flow would be unreachable in production.
+      if (user.canOverride !== undefined) {
+        updates.push('can_override = ?');
+        values.push(user.canOverride ? 1 : 0);
+      }
 
       if (updates.length > 0) {
         values.push(id);
@@ -2699,8 +2761,8 @@ export class SQLiteAdapter {
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
           restock_items, restocking_fee, created_by, created_at, updated_at,
-          register_id, cashier_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          register_id, cashier_user_id, override_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         returnId,
         returnData.originalOrderId,
@@ -2724,7 +2786,8 @@ export class SQLiteAdapter {
         Date.now(),
         Date.now(),
         returnData.registerId ?? null,
-        returnData.cashierUserId ?? null
+        returnData.cashierUserId ?? null,
+        returnData.overrideByUserId ?? null
       );
 
       // Insert return items
@@ -4797,6 +4860,30 @@ export class SQLiteAdapter {
     }
   }
 
+  /**
+   * Above this, a drawer closing short (or over) needs a manager override —
+   * migration 019. NULL disables the check entirely, which is also the
+   * default: most orgs will never turn this on.
+   *
+   * A separate narrow getter rather than folding into `getOrgPolicy`: that
+   * method's return type is a public contract several callers already
+   * destructure by shape (`{ maxRegisters, pinLength }`), and widening it
+   * would ripple through every one of them for a value only drawer-close
+   * cares about.
+   */
+  async getOrganizationDrawerVarianceThreshold(orgId: string): Promise<number | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT drawer_variance_threshold FROM organizations WHERE id = ?')
+        .get(orgId) as { drawer_variance_threshold: number | null } | undefined;
+      if (!row) return null;
+      return row.drawer_variance_threshold == null ? null : Number(row.drawer_variance_threshold);
+    } catch (error) {
+      logger.error('Error getting organization drawer variance threshold:', error);
+      throw new DatabaseError('Failed to get organization policy');
+    }
+  }
+
   // Register credentials (device enrolment — migration 017)
 
   /**
@@ -5045,6 +5132,29 @@ export class SQLiteAdapter {
   }
 
   /**
+   * Every active, PIN-holding user in an org who may also approve a manager
+   * override (`can_override` — migration 018). The narrower sibling of
+   * {@link getActiveUsersWithPin}: `services/registerOverrides.ts` scans this
+   * instead of the full PIN roster so that a cashier's PIN — real, but not an
+   * approver's — is indistinguishable from a PIN that matches nobody at all.
+   */
+  async getActiveUsersWithOverridePermission(orgId: string): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM users
+           WHERE status = 'active' AND pin_hash IS NOT NULL AND can_override = 1
+             AND COALESCE(org_id, ?) = ?`
+        )
+        .all(DEFAULT_ORG_ID, orgId) as DbRow[];
+      return rows.map(mapUserPin);
+    } catch (error) {
+      logger.error('Error getting active users with override permission:', error);
+      throw new DatabaseError('Failed to get users');
+    }
+  }
+
+  /**
    * Set (or replace) a user's PIN. Also clears any lockout: issuing a fresh
    * PIN is a deliberate reset, not something that should stay locked out on
    * the count run up against the old one.
@@ -5186,6 +5296,160 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error touching register shift activity:', error);
       throw new DatabaseError('Failed to record shift activity');
+    }
+  }
+
+  // Register overrides (manager override — migration 019)
+
+  /**
+   * Mint a grant row. `shiftId` and `requestedByUserId` are nullable at the
+   * schema level — a register can be authenticated with no shift open at
+   * all, e.g. a `require_sign_in = false` till — so both simply go in as
+   * given rather than being defaulted here.
+   */
+  async createRegisterOverride(payload: {
+    registerId: string;
+    shiftId: string | null;
+    approverUserId: string;
+    requestedByUserId: string | null;
+    action: string;
+    grantPrefix: string;
+    grantHash: string;
+    expiresAt: number;
+    reason: string | null;
+  }): Promise<DbRow> {
+    try {
+      const id = crypto.randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO register_overrides
+            (id, register_id, shift_id, approver_user_id, requested_by_user_id, action,
+             grant_prefix, grant_hash, expires_at, reason, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          payload.registerId,
+          payload.shiftId,
+          payload.approverUserId,
+          payload.requestedByUserId,
+          payload.action,
+          payload.grantPrefix,
+          payload.grantHash,
+          payload.expiresAt,
+          payload.reason,
+          Date.now()
+        );
+
+      const row = this.db.prepare('SELECT * FROM register_overrides WHERE id = ?').get(id) as DbRow;
+      return mapRegisterOverride(row);
+    } catch (error) {
+      logger.error('Error creating register override:', error);
+      throw new DatabaseError('Failed to create override grant');
+    }
+  }
+
+  /**
+   * Every row sharing a grant's 8-character prefix, spent or not — the
+   * service layer does the bcrypt comparison and the state checks, same
+   * shape as `getPairingCredentialsByPrefix`/`getRegisterCredentialsByTokenPrefix`.
+   */
+  async getRegisterOverridesByPrefix(prefix: string): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare('SELECT * FROM register_overrides WHERE grant_prefix = ?')
+        .all(prefix) as DbRow[];
+      return rows.map(mapRegisterOverride);
+    } catch (error) {
+      logger.error('Error getting register overrides by prefix:', error);
+      throw new DatabaseError('Failed to get override grants');
+    }
+  }
+
+  /**
+   * Spend a grant. Guarded on `consumed_at IS NULL` so a race between two
+   * concurrent consume attempts for the same grant can only ever succeed
+   * once — the loser gets zero rows changed and reads back as null, the same
+   * shape `redeemPairingCredential` uses for the equivalent race.
+   */
+  async consumeRegisterOverride(
+    id: string,
+    payload: { entity: string | null; entityId: string | null; beforeValue: string | null; afterValue: string | null }
+  ): Promise<DbRow | null> {
+    try {
+      const result = this.db
+        .prepare(
+          `UPDATE register_overrides
+           SET consumed_at = ?, entity = ?, entity_id = ?, before_value = ?, after_value = ?
+           WHERE id = ? AND consumed_at IS NULL`
+        )
+        .run(Date.now(), payload.entity, payload.entityId, payload.beforeValue, payload.afterValue, id);
+      if (result.changes === 0) return null;
+
+      const row = this.db.prepare('SELECT * FROM register_overrides WHERE id = ?').get(id) as DbRow;
+      return mapRegisterOverride(row);
+    } catch (error) {
+      logger.error('Error consuming register override:', error);
+      throw new DatabaseError('Failed to consume override grant');
+    }
+  }
+
+  /**
+   * The override log for the admin listing route — every grant ever issued
+   * in the org, spent or not, newest first. Scoped to `orgId` via a join on
+   * `registers`, since `register_overrides` carries no `org_id` of its own.
+   * Uses {@link mapRegisterOverrideSummary}, never the internal mapper: this
+   * is the one path that hands override rows back to a route, and the grant
+   * hash must never be part of that response.
+   */
+  async getRegisterOverrides(filter: {
+    orgId: string;
+    limit: number;
+    offset: number;
+    registerId?: string;
+    approverUserId?: string;
+  }): Promise<{ overrides: DbRow[]; total: number }> {
+    try {
+      const conditions = ['r.org_id = ?'];
+      const params: unknown[] = [filter.orgId];
+      if (filter.registerId) {
+        conditions.push('o.register_id = ?');
+        params.push(filter.registerId);
+      }
+      if (filter.approverUserId) {
+        conditions.push('o.approver_user_id = ?');
+        params.push(filter.approverUserId);
+      }
+      const where = conditions.join(' AND ');
+
+      const { count } = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM register_overrides o
+           JOIN registers r ON r.id = o.register_id
+           WHERE ${where}`
+        )
+        .get(...params) as { count: number };
+
+      const rows = this.db
+        .prepare(
+          `SELECT o.*,
+                  a.name AS approver_name,
+                  q.name AS requested_by_name,
+                  r.display_code AS register_display_code
+           FROM register_overrides o
+           JOIN registers r ON r.id = o.register_id
+           LEFT JOIN users a ON a.id = o.approver_user_id
+           LEFT JOIN users q ON q.id = o.requested_by_user_id
+           WHERE ${where}
+           ORDER BY o.created_at DESC
+           LIMIT ? OFFSET ?`
+        )
+        .all(...params, filter.limit, filter.offset) as DbRow[];
+
+      return { overrides: rows.map(mapRegisterOverrideSummary), total: Number(count) };
+    } catch (error) {
+      logger.error('Error getting register overrides:', error);
+      throw new DatabaseError('Failed to get override log');
     }
   }
 

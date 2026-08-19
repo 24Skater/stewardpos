@@ -87,7 +87,7 @@ describeSqlite('the SQLite migration chain', () => {
       count: number;
     };
 
-    expect(applied.count).toBeGreaterThanOrEqual(18);
+    expect(applied.count).toBeGreaterThanOrEqual(19);
   });
 
   it('records the version it reached', () => {
@@ -95,7 +95,7 @@ describeSqlite('the SQLite migration chain', () => {
       version: number;
     };
 
-    expect(version).toBeGreaterThanOrEqual(18);
+    expect(version).toBeGreaterThanOrEqual(19);
   });
 
   it('applies them in order, with no gaps', () => {
@@ -557,5 +557,41 @@ describeSqlite('018_register_shifts', () => {
       .all()
       .find((c: { name: string }) => c.name === 'register_id') as { notnull: number };
     expect(registerId.notnull).toBe(1);
+  });
+});
+
+describeSqlite('019_register_overrides', () => {
+  it('creates the register_overrides table', () => {
+    expect(tables()).toContain('register_overrides');
+  });
+
+  it('records both people involved, which is the point of the row', () => {
+    const cols = columns('register_overrides');
+    for (const col of [
+      'register_id', 'shift_id', 'approver_user_id', 'requested_by_user_id',
+      'action', 'grant_prefix', 'grant_hash', 'expires_at', 'consumed_at',
+      'entity', 'entity_id', 'before_value', 'after_value', 'reason',
+    ]) {
+      expect(cols, `register_overrides is missing column: ${col}`).toContain(col);
+    }
+  });
+
+  it('will not accept an override that cannot name a register, an approver, or an action', () => {
+    // An override that cannot be tied to a till, a person, and a specific act
+    // is not an audit record, it is a rumour.
+    const info = db.prepare('PRAGMA table_info(register_overrides)').all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    const column = (name: string) => info.find((c) => c.name === name)!;
+
+    expect(column('register_id').notnull).toBe(1);
+    expect(column('approver_user_id').notnull).toBe(1);
+    expect(column('action').notnull).toBe(1);
+    expect(column('expires_at').notnull).toBe(1);
+  });
+
+  it('adds the drawer variance threshold to organizations', () => {
+    expect(columns('organizations')).toContain('drawer_variance_threshold');
   });
 });

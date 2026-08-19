@@ -17,6 +17,8 @@ export interface CallerRegister {
   status: string;
   /** Whether a cashier must have an open PIN shift before this register can ring a sale or a return. */
   requireSignIn: boolean;
+  /** Whether this register may open its drawer with no sale attached — migration 015, unused until now. */
+  canOpenDrawerNoSale: boolean;
 }
 
 function toCallerRegister(register: Record<string, unknown>): CallerRegister {
@@ -28,6 +30,7 @@ function toCallerRegister(register: Record<string, unknown>): CallerRegister {
     canRefund: Boolean(register.canRefund),
     status: String(register.status),
     requireSignIn: Boolean(register.requireSignIn),
+    canOpenDrawerNoSale: Boolean(register.canOpenDrawerNoSale),
   };
 }
 
@@ -35,6 +38,19 @@ function readHeader(req: AuthRequest, name: string): string | null {
   const value = req.headers[name];
   const single = Array.isArray(value) ? value[0] : value;
   return single || null;
+}
+
+/**
+ * The manager-override grant token, when the caller sent one.
+ *
+ * Carried as `X-Override-Token` rather than a body field, chosen so every
+ * enforcement site (checkout, drawer close, void, no-sale) reads it the same
+ * way regardless of how different each endpoint's body schema otherwise is —
+ * `services/registerOverrides.ts` is the consumer and knows nothing about
+ * HTTP, so the one place a route needs to know the header name is here.
+ */
+export function readOverrideToken(req: AuthRequest): string | null {
+  return readHeader(req, 'x-override-token');
 }
 
 /**

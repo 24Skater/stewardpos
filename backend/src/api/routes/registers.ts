@@ -32,6 +32,7 @@ import {
   revokeCredential,
 } from '../../services/registerEnrolment';
 import { startShift, endShift, getOpenShift } from '../../services/registerShifts';
+import { requestOverride, type OverrideAction } from '../../services/registerOverrides';
 
 /**
  * Register API routes.
@@ -98,6 +99,21 @@ const shiftLimiter = rateLimit({
   skipSuccessfulRequests: true,
   keyGenerator: (req) => `register:${req.params.id ?? 'unknown'}`,
   message: 'Too many PIN attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
+ * Throttle override-PIN guessing at the till. Same reasoning and same
+ * per-register keying as `shiftLimiter` above — a supervisor's PIN is typed
+ * at the same public keypad a cashier's is.
+ */
+const overrideLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxOverrideAttempts,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => `register:${req.params.id ?? 'unknown'}`,
+  message: 'Too many override attempts. Please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -314,6 +330,80 @@ router.get(
   }
 );
 
+const overrideActionEnum = z.enum(['discount_approval', 'drawer_variance', 'void', 'no_sale']);
+
+const requestOverrideSchema = z.object({
+  action: overrideActionEnum,
+  pin: z.string().trim().min(1, 'A PIN is required'),
+  reason: z.string().trim().max(500).optional(),
+});
+
+/**
+ * POST /api/registers/:id/overrides
+ *
+ * Request a manager-override grant for one action on this till. Rate-limited
+ * (`overrideLimiter` above) and authenticated by `X-Register-Token`, same
+ * reasoning as `POST /:id/shifts` — a PIN entered at a device-authenticated
+ * till, not a user session. Returns the grant token and its expiry ONCE;
+ * see `services/registerOverrides.ts` for why it can never be fetched again.
+ * NEVER touches the cashier's open shift — see that module for why.
+ */
+router.post(
+  '/:id/overrides',
+  overrideLimiter,
+  requireRegisterToken,
+  requireMatchingRegister,
+  async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
+    try {
+      const body = requestOverrideSchema.parse(req.body);
+      const adapter = db.getAdapter();
+
+      const result = await requestOverride(adapter, {
+        registerId: req.params.id,
+        action: body.action as OverrideAction,
+        pin: body.pin,
+        reason: body.reason ?? null,
+      });
+
+      if (result === 'register_not_found') {
+        throw new NotFoundError('Register');
+      }
+      if (result === 'bad_pin') {
+        throw new AuthenticationError('That PIN was not recognized as an override approver', PIN_INVALID);
+      }
+      if (result === 'locked') {
+        throw new AuthenticationError(
+          'This PIN is locked after too many failed attempts. Try again later.',
+          PIN_LOCKED
+        );
+      }
+
+      logger.info(
+        `Override granted on register ${req.params.id} for ${body.action}, approved by ${result.approver.id}`
+      );
+      await audit(req, {
+        action: 'create',
+        entity: 'register_override',
+        entityId: String(result.override.id),
+        after: {
+          registerId: req.params.id,
+          action: body.action,
+          approverUserId: result.approver.id,
+          requestedByUserId: result.override.requestedByUserId,
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        data: { token: result.token, expiresAt: result.expiresAt, action: body.action },
+        message: 'Save this token now — it will not be shown again.',
+      });
+    } catch (error) {
+      next(asValidationError(error));
+    }
+  }
+);
+
 router.use(authenticate);
 
 const typeEnum = z.enum(['fixed', 'mobile', 'web', 'kiosk']);
@@ -387,6 +477,58 @@ router.get('/', requirePermission('registers', 'read'), async (req: AuthRequest,
     next(asValidationError(error));
   }
 });
+
+const OVERRIDE_LIMIT_DEFAULT = 50;
+const OVERRIDE_LIMIT_MAX = 200;
+
+const overrideQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(OVERRIDE_LIMIT_MAX).default(OVERRIDE_LIMIT_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0),
+  registerId: z.string().trim().min(1).optional(),
+  approverUserId: z.string().trim().min(1).optional(),
+});
+
+/**
+ * GET /api/registers/overrides[?registerId=&approverUserId=&limit=&offset=]
+ *
+ * The override log: every grant ever issued in the org, spent or not, newest
+ * first — see `services/registerOverrides.ts`'s doc comment on why one row
+ * serves as both the grant and the audit record. Paginated the same way
+ * `GET /api/admin/audit` is. Registered ahead of `GET /:id` below, or Express
+ * would try to look up a register literally named "overrides".
+ */
+router.get(
+  '/overrides',
+  requirePermission('registers', 'read'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const query = overrideQuerySchema.parse(req.query);
+      const orgId = req.orgId ?? DEFAULT_ORG_ID;
+
+      const { overrides, total } = await db.getAdapter().getRegisterOverrides({
+        orgId,
+        limit: query.limit,
+        offset: query.offset,
+        registerId: query.registerId,
+        approverUserId: query.approverUserId,
+      });
+
+      res.json({
+        success: true,
+        data: overrides,
+        meta: {
+          total,
+          limit: query.limit,
+          offset: query.offset,
+          page: Math.floor(query.offset / query.limit) + 1,
+          hasMore: query.offset + overrides.length < total,
+        },
+      });
+    } catch (error) {
+      next(asValidationError(error));
+    }
+  }
+);
 
 /**
  * GET /api/registers/:id
