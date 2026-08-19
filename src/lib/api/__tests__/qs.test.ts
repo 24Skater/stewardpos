@@ -30,4 +30,14 @@ describe('qs', () => {
   it('skips object values rather than serialising them as [object Object]', () => {
     expect(qs({ nested: { a: 1 }, limit: 2 })).toBe('?limit=2');
   });
+
+  it('joins a string array comma-separated', () => {
+    expect(qs({ registerIds: ['a', 'b', 'c'] })).toBe('?registerIds=a%2Cb%2Cc');
+  });
+
+  it('drops an empty array rather than sending an empty filter', () => {
+    // A multi-select cleared down to nothing means "no filter", the same as
+    // the field never having been set — not "filter to zero results".
+    expect(qs({ registerIds: [], limit: 2 })).toBe('?limit=2');
+  });
 });

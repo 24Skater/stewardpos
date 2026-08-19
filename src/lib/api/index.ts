@@ -67,11 +67,21 @@ export type {
 export type { DrawerSession, DrawerSessionStatus } from './drawer';
 export type { ReceiptEmailLog, ReceiptSearchQuery } from './receipts';
 export type {
+  CashierSales,
+  DrawerCapabilitySplit,
+  DrawerVarianceByRegister,
+  NoSaleCount,
   PaymentMix,
+  RegisterCapabilityBucket,
+  RegisterHourly,
+  RegisterHourlyQuery,
+  RegisterSales,
   ReportRangeQuery,
   ReturnsByReason,
   ReturnsSummary,
   SalesByDay,
+  SalesByLocation,
+  SalesByRegisterResult,
   SalesSummary,
   TopProduct,
   TopProductsQuery,
