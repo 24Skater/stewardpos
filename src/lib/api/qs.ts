@@ -6,8 +6,12 @@
  * `''` (not `'?'`) when nothing survives, keeping it safe to append.
  *
  * Takes any object rather than an index-signature type so the hand-written query
- * interfaces in this directory can be passed directly; non-primitive values are
- * skipped because the backend has no endpoint that expects one in the query.
+ * interfaces in this directory can be passed directly. A `string[]` is joined
+ * comma-separated (`?registerIds=a,b`) — the form the reporting filters use and
+ * that `parseIdList` on the backend already splits back apart — and an empty
+ * array is dropped entirely rather than sent as `?registerIds=`, matching "no
+ * filter" rather than "filter to nothing". Any other non-primitive value is
+ * skipped, since no endpoint expects one in the query.
  */
 export function qs(params?: object): string {
   if (!params) return '';
@@ -15,6 +19,11 @@ export function qs(params?: object): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      search.set(key, value.join(','));
+      continue;
+    }
     if (typeof value === 'object') continue;
     search.set(key, String(value));
   }
