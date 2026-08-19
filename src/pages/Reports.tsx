@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ReportRangePicker from "@/components/ReportRangePicker";
 import SalesReport from "@/components/reports/SalesReport";
-import { useSalesReport } from "@/hooks/queries";
+import { useSalesReport, useRegisters, useLocations } from "@/hooks/queries";
 import { describeRange, periodRange, type ReportPeriod } from "@/lib/report-range";
 import { getErrorMessage } from "@/lib/errors";
+import type { ReportRangeQuery } from "@/lib/api";
 
 /**
  * The register's own report screen.
@@ -22,7 +25,24 @@ export default function Reports() {
   const [range, setRange] = useState(() => periodRange('7days'));
   const navigate = useNavigate();
 
-  const { data, isLoading, error } = useSalesReport(range);
+  // Same register/location narrowing AdminReports.tsx offers — this screen
+  // carries the same product-sales report, so it composes with the range
+  // picker the same way there.
+  const { data: registers } = useRegisters();
+  const { data: locations } = useLocations();
+  const [registerFilterId, setRegisterFilterId] = useState<string>('all');
+  const [locationFilterId, setLocationFilterId] = useState<string>('all');
+
+  const query: ReportRangeQuery = useMemo(
+    () => ({
+      ...range,
+      registerIds: registerFilterId === 'all' ? undefined : [registerFilterId],
+      locationIds: locationFilterId === 'all' ? undefined : [locationFilterId],
+    }),
+    [range, registerFilterId, locationFilterId]
+  );
+
+  const { data, isLoading, error } = useSalesReport(query);
 
   return (
     <div className="min-h-screen bg-background">
@@ -51,6 +71,52 @@ export default function Reports() {
               setRange(nextRange);
             }}
           />
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="grid gap-1">
+            <Label htmlFor="reports-register-filter" className="text-xs text-muted-foreground">
+              Register
+            </Label>
+            <Select value={registerFilterId} onValueChange={setRegisterFilterId}>
+              <SelectTrigger
+                id="reports-register-filter"
+                className="w-44"
+                aria-label="Filter reports by register"
+              >
+                <SelectValue placeholder="All registers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All registers</SelectItem>
+                {(registers ?? []).map((register) => (
+                  <SelectItem key={register.id} value={register.id}>
+                    {register.displayCode} — {register.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="reports-location-filter" className="text-xs text-muted-foreground">
+              Location
+            </Label>
+            <Select value={locationFilterId} onValueChange={setLocationFilterId}>
+              <SelectTrigger
+                id="reports-location-filter"
+                className="w-44"
+                aria-label="Filter reports by location"
+              >
+                <SelectValue placeholder="All locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations</SelectItem>
+                {(locations ?? []).map((location) => (
+                  <SelectItem key={location.id} value={location.id}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </header>
 
