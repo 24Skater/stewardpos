@@ -53,9 +53,19 @@ const topProductsSchema = rangeSchema.extend({
   limit: z.string().optional(),
 });
 
-const registerHourlySchema = rangeSchema.extend({
-  registerId: z.string().trim().min(1, '"registerId" is required'),
-});
+/**
+ * The one report that is about a single till, so it takes `registerId` and
+ * drops the list filters the others share.
+ *
+ * `.omit` rather than inheriting them and ignoring them: a schema that accepts
+ * `?locationIds=` here would report success while doing nothing with it, and a
+ * caller would reasonably conclude the narrowing had been applied.
+ */
+const registerHourlySchema = rangeSchema
+  .omit({ registerIds: true, locationIds: true, cashierUserIds: true })
+  .extend({
+    registerId: z.string().trim().min(1, '"registerId" is required'),
+  });
 
 /** Zod failures are 400s, not 500s. */
 function badRequest(error: unknown): Error {

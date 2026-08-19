@@ -385,6 +385,20 @@ describe('GET /api/reports/register-hourly', () => {
     expect(response.body.success).toBe(false);
   });
 
+  it('does not carry the other reports list filters into the service', async () => {
+    // This report is about one till, so it has no use for locationIds. The
+    // schema deliberately omits them, and zod strips what it does not model -
+    // so the guarantee worth asserting is that nothing reaches the service
+    // claiming to narrow a report it cannot narrow.
+    await request(app)
+      .get('/api/reports/register-hourly?registerId=r1&locationIds=l1')
+      .set(auth());
+
+    expect(getRegisterHourly).toHaveBeenCalledWith(expect.anything(), 'r1');
+    const [range] = getRegisterHourly.mock.calls[0];
+    expect(range).not.toHaveProperty('locationIds');
+  });
+
   it('returns the hourly series for the given register', async () => {
     const response = await request(app)
       .get('/api/reports/register-hourly?registerId=r1')
