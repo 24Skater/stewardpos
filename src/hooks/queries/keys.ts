@@ -42,6 +42,24 @@ export const queryKeys = {
     detail: (id: string) => ['registers', id] as const,
     /** Who is currently signed on to this register — see `useShifts.ts`. */
     currentShift: (id: string) => ['registers', id, 'currentShift'] as const,
+    /**
+     * The manager-override log — see `useOverrides.ts`. Keyed on the filter,
+     * so switching register or approver re-fetches rather than showing the
+     * previous filter's page under a new heading. `overridesAll` is the
+     * shared prefix every one of those keys sits under, so a newly-granted
+     * override can invalidate the whole log in one call regardless of which
+     * filter is currently on screen.
+     */
+    overridesAll: ['registers', 'overrides'] as const,
+    overrides: (filter?: { registerId?: string; approverUserId?: string; limit?: number; offset?: number }) =>
+      [
+        'registers',
+        'overrides',
+        filter?.registerId ?? '',
+        filter?.approverUserId ?? '',
+        filter?.limit ?? '',
+        filter?.offset ?? '',
+      ] as const,
   },
   locations: {
     /**

@@ -21,9 +21,11 @@ import { useCreateOrder, useCurrentShift, useEndShift, useProducts, useRegister,
 import { useRegisterHeartbeat } from "@/hooks/useRegisterHeartbeat";
 import { useIdleLock } from "@/hooks/useIdleLock";
 import LockScreen from "@/components/register/LockScreen";
+import OverridePrompt, { type OverrideGrant } from "@/components/register/OverridePrompt";
 import { getDeviceToken, getSelectedRegisterId, subscribeToSelectedRegisterId } from "@/lib/register-device";
 import { ApiClientError } from "@/lib/api-client";
-import { SHIFT_REQUIRED } from "@/lib/register-error-codes";
+import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from "@/lib/register-error-codes";
+import type { OverrideAction } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { AppliedDiscount } from "@/lib/register-math";
 import {
@@ -181,6 +183,44 @@ export default function POS() {
   /** SHIFT_REQUIRED on checkout — see the two catch blocks below that call this. */
   const isShiftRequiredError = (error: unknown): boolean =>
     error instanceof ApiClientError && (error.body as { code?: string } | undefined)?.code === SHIFT_REQUIRED;
+
+  /**
+   * OVERRIDE_REQUIRED on checkout — a discount past its approval threshold.
+   * Returns the refused action's name so the caller can build the right
+   * description, `null` when the error is not this.
+   */
+  const overrideRequiredAction = (error: unknown): OverrideAction | null => {
+    if (!(error instanceof ApiClientError)) return null;
+    const body = error.body as { code?: string; data?: { action?: string } } | undefined;
+    if (body?.code !== OVERRIDE_REQUIRED) return null;
+    return (body.data?.action as OverrideAction | undefined) ?? null;
+  };
+
+  /**
+   * What's being authorised, in plain language — see `OverridePrompt.tsx`'s
+   * doc comment on why this can never read as a generic "Enter PIN".
+   */
+  const describeDiscountOverride = (discounts: AppliedDiscount[]): string => {
+    if (discounts.length === 1) {
+      const [discount] = discounts;
+      return discount.type === 'percentage'
+        ? `Approve a ${discount.value}% discount ("${discount.name}")`
+        : `Approve a $${discount.amount.toFixed(2)} discount ("${discount.name}")`;
+    }
+    const total = discounts.reduce((sum, d) => sum + d.amount, 0);
+    return `Approve ${discounts.length} discounts totalling $${total.toFixed(2)}`;
+  };
+
+  // A privileged action a cashier hit was refused with OVERRIDE_REQUIRED —
+  // `run` retries that exact action once a supervisor's grant lands.
+  // `grantExpired` distinguishes "ask for the first time" from "that grant
+  // didn't survive the round trip, ask again" — see `OverridePrompt.tsx`.
+  const [pendingOverride, setPendingOverride] = useState<{
+    action: OverrideAction;
+    description: string;
+    run: (token: string) => void;
+    grantExpired: boolean;
+  } | null>(null);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -659,7 +699,7 @@ export default function POS() {
     setCheckoutOpen(true);
   };
 
-  const handleCompleteCheckout = async () => {
+  const handleCompleteCheckout = async (overrideToken?: string) => {
     try {
       const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
@@ -697,7 +737,7 @@ export default function POS() {
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
       };
 
-      const response = await createOrder.mutateAsync(orderData);
+      const response = await createOrder.mutateAsync({ body: orderData, overrideToken });
       
       // Discount usage and promo redemption are recorded by the server as part
       // of creating the order, from the amounts it validated.
@@ -747,6 +787,21 @@ export default function POS() {
         });
         return;
       }
+      const refused = overrideRequiredAction(error);
+      if (refused === 'discount_approval') {
+        // The cart is deliberately left exactly as it is. A cashier who has
+        // scanned twenty items and needs a discount approved must not lose
+        // them - `run` closes over this same cart and retries the identical
+        // order once a supervisor's grant lands.
+        setPendingOverride({
+          action: 'discount_approval',
+          description: describeDiscountOverride(appliedDiscounts),
+          run: (token: string) => void handleCompleteCheckout(token),
+          grantExpired: false,
+        });
+        return;
+      }
+
       toast({
         title: "Error",
         description: getErrorMessage(error, 'Failed to create order'),
@@ -865,7 +920,7 @@ export default function POS() {
     setTerminalState({ phase: 'idle' });
   };
 
-  const completeCardOrder = async (chargeId: string, authCode?: string) => {
+  const completeCardOrder = async (chargeId: string, authCode?: string, overrideToken?: string) => {
     try {
       const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
@@ -899,7 +954,7 @@ export default function POS() {
         cardAuthCode: authCode,
       };
 
-      const response = await createOrder.mutateAsync(orderData);
+      const response = await createOrder.mutateAsync({ body: orderData, overrideToken });
 
       // Discount usage and promo redemption are recorded by the server as part
       // of creating the order, from the amounts it validated.
@@ -948,6 +1003,20 @@ export default function POS() {
         });
         return;
       }
+      const refused = overrideRequiredAction(error);
+      if (refused === 'discount_approval') {
+        // The card is already authorised at this point, so the sale must be
+        // recoverable rather than abandoned: the retry re-saves the identical
+        // order with the same charge id, it does not charge again.
+        setPendingOverride({
+          action: 'discount_approval',
+          description: describeDiscountOverride(appliedDiscounts),
+          run: (token: string) => void completeCardOrder(chargeId, authCode, token),
+          grantExpired: false,
+        });
+        return;
+      }
+
       toast({
         title: 'Order save failed',
         description: error instanceof Error ? getErrorMessage(error) : 'Unknown error',
@@ -1740,6 +1809,27 @@ export default function POS() {
           registerId={registerId}
           displayCode={currentRegister.displayCode}
           onSignedOn={() => setForceLock(false)}
+        />
+      )}
+
+      {/* A supervisor authorising one action. Unlike the lock screen this is
+          dismissible: cancelling an override means "we won't do that", which
+          is a legitimate answer, and it must leave the cart exactly as it was. */}
+      {pendingOverride && registerId && (
+        <OverridePrompt
+          open
+          onOpenChange={(next) => {
+            if (!next) setPendingOverride(null);
+          }}
+          registerId={registerId}
+          action={pendingOverride.action}
+          description={pendingOverride.description}
+          grantExpired={pendingOverride.grantExpired}
+          onGranted={(grant: OverrideGrant) => {
+            const retry = pendingOverride.run;
+            setPendingOverride(null);
+            retry(grant.token);
+          }}
         />
       )}
     </div>

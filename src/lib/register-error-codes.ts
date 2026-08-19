@@ -19,3 +19,19 @@ export const PIN_LOCKED = 'PIN_LOCKED';
 
 /** Checkout refused because the register requires a cashier sign-in and none is open. */
 export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';
+
+/**
+ * A privileged action (a discount past its approval threshold, a drawer
+ * closing outside its variance tolerance, a void, opening the drawer with no
+ * sale) was refused because no valid manager-override grant was supplied, or
+ * the one supplied did not check out — missing, expired, already spent, or
+ * issued for a different action or register. Carried with `data: { action }`
+ * naming which of the four flows to prompt a supervisor PIN for; see
+ * `OverridePrompt.tsx`.
+ *
+ * Deliberately one code for every one of those reasons — the backend does not
+ * let a client tell "nobody tried" apart from "somebody tried and it didn't
+ * work" any more finely than that. See
+ * `backend/src/services/registerOverrides.ts`'s `describeOverrideFailure`.
+ */
+export const OVERRIDE_REQUIRED = 'OVERRIDE_REQUIRED';

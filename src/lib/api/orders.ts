@@ -16,7 +16,18 @@ export const ordersApi = {
   get: (id: string) => apiClient.get<Order>(`/api/orders/${id}`),
   listByCustomerEmail: (email: string) =>
     apiClient.get<Order[]>(`/api/orders/customer/${encodeURIComponent(email)}`),
-  create: (body: CreateOrderRequest) => apiClient.post<Order>('/api/orders', body),
+  /**
+   * `overrideToken` carries a manager-override grant (`registersApi.requestOverride`)
+   * as `X-Override-Token`, for a sale a discount past its approval threshold
+   * refused with `OVERRIDE_REQUIRED` — see `OverridePrompt.tsx` and
+   * `backend/src/api/routes/orders.ts`.
+   */
+  create: (body: CreateOrderRequest, overrideToken?: string) =>
+    apiClient.post<Order>(
+      '/api/orders',
+      body,
+      overrideToken ? { headers: { 'X-Override-Token': overrideToken } } : undefined
+    ),
   /**
    * What a cart will cost, without committing to it.
    *
