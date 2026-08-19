@@ -3,13 +3,14 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
-import { resolveCallerRegister } from '../middleware/registerContext';
-import { SHIFT_REQUIRED } from '../middleware/registerErrorCodes';
+import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
+import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, UnprocessableEntityError, ConflictError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import { getOpenShift, touchShift } from '../../services/registerShifts';
+import { consumeOverride, describeOverrideFailure } from '../../services/registerOverrides';
 import {
   repriceReturn,
   type OriginalOrder,
@@ -281,6 +282,44 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     // Generate return number
     const returnNumber = generateReturnNumber();
 
+    // Set when a supervisor authorises a void, so the return row itself names
+    // the approver. Stays null on an ordinary refund, which needs nobody.
+    let overrideByUserId: string | null = null;
+
+    // A void needs a manager override, unconditionally — unlike a discount
+    // or a drawer variance, there is no threshold under which a void is fine
+    // on its own. Consumed here, with `returnNumber` (generated above, not
+    // the DB-assigned id which doesn't exist yet) as the entity id, so the
+    // override row records which return this was even though the return
+    // itself hasn't been created yet.
+    if (data.returnType === 'void') {
+      const overrideToken = readOverrideToken(req);
+      if (!overrideToken) {
+        throw new ConflictError('Voiding this sale needs a supervisor override', OVERRIDE_REQUIRED, {
+          action: 'void',
+        });
+      }
+
+      const consumed = await consumeOverride(adapter, {
+        token: overrideToken,
+        action: 'void',
+        registerId: register.id,
+        entity: 'return',
+        entityId: returnNumber,
+        afterValue: priced.total,
+      });
+      if (typeof consumed === 'string') {
+        throw new ConflictError(describeOverrideFailure(consumed), OVERRIDE_REQUIRED, { action: 'void' });
+      }
+
+      // Stamp the approver on the return itself, not only on the override row.
+      // `orders.override_by_user_id` is filled the same way for an approved
+      // discount, and a reader asking "which refunds did a manager authorise"
+      // should not have to know that one of the two tables answers by join and
+      // the other by column.
+      overrideByUserId = String(consumed.override.approverUserId);
+    }
+
     // Create the return
     const returnData = await adapter.createReturn({
       ...data,
@@ -293,6 +332,7 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
       // The signed-in cashier's shift, when one is open, is who actually
       // processed this return - see orders.ts for the same rule.
       cashierUserId: openShift ? String(openShift.userId) : req.user?.id,
+      overrideByUserId,
     });
 
     // Completing a return is activity: postpone this shift's idle clock.

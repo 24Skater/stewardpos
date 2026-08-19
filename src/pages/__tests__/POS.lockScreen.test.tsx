@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { Product } from '@/lib/api';
@@ -18,6 +18,21 @@ import type { Product } from '@/lib/api';
  * trapping) has its own test file; here it is stubbed to a simple marker so
  * these tests stay about POS's wiring, not LockScreen's internals.
  */
+
+vi.mock('@/components/register/OverridePrompt', () => ({
+  default: ({
+    description,
+    onOpenChange,
+  }: {
+    description: string;
+    onOpenChange: (open: boolean) => void;
+  }) => (
+    <div data-testid="override-prompt">
+      {description}
+      <button onClick={() => onOpenChange(false)}>Cancel</button>
+    </div>
+  ),
+}));
 
 vi.mock('@/components/register/LockScreen', () => ({
   default: ({ displayCode, onSignedOn }: { displayCode: string; onSignedOn?: () => void }) => (
@@ -281,5 +296,71 @@ describe('idle lock', () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(screen.queryByTestId('lock-screen')).not.toBeInTheDocument();
+  });
+});
+
+describe('OVERRIDE_REQUIRED on checkout', () => {
+  it('prompts for a supervisor override and keeps the cart', async () => {
+    // The property that matters: a cashier who has scanned items and needs a
+    // discount approved must not lose them to the round trip. Losing the cart
+    // would make the override worse than logging a supervisor in, which is the
+    // workflow it exists to replace.
+    currentShiftData = { shift: { id: 's1' }, cashier: { id: 'u1', name: 'Alex' } };
+    mutateAsync.mockRejectedValueOnce(
+      new ApiClientError(409, 'This discount needs a supervisor override', undefined, {
+        code: 'OVERRIDE_REQUIRED',
+        data: { action: 'discount_approval' },
+      })
+    );
+    renderRegister();
+
+    fireEvent.click(await screen.findByText('Blue Shirt'));
+    await screen.findByText('Current Order');
+    fireEvent.click(screen.getByRole('button', { name: /checkout/i }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /Complete Sale/i }));
+
+    expect(await screen.findByTestId('override-prompt')).toBeInTheDocument();
+    expect(screen.getAllByText('Blue Shirt').length).toBeGreaterThan(0);
+  });
+
+  it('leaves the cart alone when the supervisor cancels', async () => {
+    // Declining is a legitimate answer, not an error path, and it must not
+    // cost the sale.
+    currentShiftData = { shift: { id: 's1' }, cashier: { id: 'u1', name: 'Alex' } };
+    mutateAsync.mockRejectedValueOnce(
+      new ApiClientError(409, 'Needs approval', undefined, {
+        code: 'OVERRIDE_REQUIRED',
+        data: { action: 'discount_approval' },
+      })
+    );
+    renderRegister();
+
+    fireEvent.click(await screen.findByText('Blue Shirt'));
+    await screen.findByText('Current Order');
+    fireEvent.click(screen.getByRole('button', { name: /checkout/i }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /Complete Sale/i }));
+
+    const prompt = await screen.findByTestId('override-prompt');
+    fireEvent.click(within(prompt).getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByTestId('override-prompt')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Blue Shirt').length).toBeGreaterThan(0);
+  });
+
+  it('does not prompt for an unrelated checkout failure', async () => {
+    currentShiftData = { shift: { id: 's1' }, cashier: { id: 'u1', name: 'Alex' } };
+    mutateAsync.mockRejectedValueOnce(new Error('Only 2 left in stock'));
+    renderRegister();
+
+    fireEvent.click(await screen.findByText('Blue Shirt'));
+    await screen.findByText('Current Order');
+    fireEvent.click(screen.getByRole('button', { name: /checkout/i }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /Complete Sale/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+    expect(screen.queryByTestId('override-prompt')).not.toBeInTheDocument();
   });
 });

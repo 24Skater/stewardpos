@@ -25,3 +25,4 @@ export {
   useUpdateRegister,
 } from './useRegisters';
 export { useCurrentShift, useEndShift, useStartShift } from './useShifts';
+export { useRegisterOverrides, useRequestOverride } from './useOverrides';

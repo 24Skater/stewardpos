@@ -22,12 +22,17 @@ export function useOrder(id: string | undefined) {
  *
  * Also invalidates products: an order decrements variant stock server-side, so a
  * catalog left cached here would show a cashier quantities that no longer exist.
+ *
+ * `overrideToken` is optional and only needed on a retry after checkout was
+ * refused with `OVERRIDE_REQUIRED` — see `OverridePrompt.tsx` and `POS.tsx`'s
+ * `submitCashOrder`/`completeCardOrder`.
  */
 export function useCreateOrder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (body: CreateOrderRequest) => ordersApi.create(body),
+    mutationFn: ({ body, overrideToken }: { body: CreateOrderRequest; overrideToken?: string }) =>
+      ordersApi.create(body, overrideToken),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });

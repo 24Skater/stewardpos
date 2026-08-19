@@ -225,6 +225,10 @@ test.describe('admin accessibility', () => {
     // destructive control - revoking a till - behind dialogs, and conveys
     // liveness and status as badges, both of which are easy to get wrong.
     ['registers', '/admin/registers'],
+    // The override log: a wide table whose most important column is a status
+    // badge, which is exactly the shape that ends up conveying meaning by
+    // colour alone if nobody scans it.
+    ['overrides', '/admin/overrides'],
   ] as const;
 
   for (const [name, path] of PAGES) {

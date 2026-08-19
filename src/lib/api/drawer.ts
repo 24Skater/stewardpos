@@ -40,7 +40,31 @@ export const drawerApi = {
   history: (limit?: number) => apiClient.get<DrawerSession[]>(`/api/drawer${qs({ limit })}`),
   open: (openingFloat: number) =>
     apiClient.post<DrawerSession>('/api/drawer/open', { openingFloat }),
-  /** Close and reconcile. The variance is computed, never sent. */
-  close: (countedCash: number, notes?: string) =>
-    apiClient.post<DrawerSession>('/api/drawer/close', { countedCash, notes }),
+  /**
+   * Close and reconcile. The variance is computed, never sent.
+   *
+   * `overrideToken` carries a manager-override grant as `X-Override-Token`,
+   * required when the variance is outside the organization's tolerance — see
+   * `OverridePrompt.tsx` and `backend/src/api/routes/drawer.ts`.
+   */
+  close: (countedCash: number, notes?: string, overrideToken?: string) =>
+    apiClient.post<DrawerSession>(
+      '/api/drawer/close',
+      { countedCash, notes },
+      overrideToken ? { headers: { 'X-Override-Token': overrideToken } } : undefined
+    ),
+  /**
+   * Open the drawer with no sale attached (`POST /api/drawer/no-sale`) — a
+   * manager-override grant is always required, with no threshold to clear.
+   * Refused with 422 outright, before an override is even considered, on a
+   * register whose `canOpenDrawerNoSale` is false — see `CashDrawerDialog.tsx`,
+   * which hides the control in that case rather than offering a button that
+   * always fails.
+   */
+  noSale: (overrideToken?: string) =>
+    apiClient.post<{ registerId: string; approverUserId: string; overrideId: string }>(
+      '/api/drawer/no-sale',
+      {},
+      overrideToken ? { headers: { 'X-Override-Token': overrideToken } } : undefined
+    ),
 };
