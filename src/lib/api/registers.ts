@@ -263,6 +263,10 @@ export interface RegisterOverride {
   afterValue: string | null;
   reason: string | null;
   createdAt: number;
+  /** Joined for display — the log answers "who authorised what", not "which UUID". */
+  approverName: string | null;
+  requestedByName: string | null;
+  registerDisplayCode: string | null;
 }
 
 export interface RegisterOverrideQuery {

@@ -298,6 +298,11 @@ function mapRegisterOverride(row: DbRow): DbRow {
     afterValue: row.after_value ?? null,
     reason: row.reason ?? null,
     createdAt: Number(row.created_at),
+    // Joined for display. This log exists to answer "who authorised what", and
+    // a table of raw UUIDs cannot answer it.
+    approverName: row.approver_name ?? null,
+    requestedByName: row.requested_by_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
   };
 }
 
@@ -5420,8 +5425,14 @@ export class SQLiteAdapter {
 
       const rows = this.db
         .prepare(
-          `SELECT o.* FROM register_overrides o
+          `SELECT o.*,
+                  a.name AS approver_name,
+                  q.name AS requested_by_name,
+                  r.display_code AS register_display_code
+           FROM register_overrides o
            JOIN registers r ON r.id = o.register_id
+           LEFT JOIN users a ON a.id = o.approver_user_id
+           LEFT JOIN users q ON q.id = o.requested_by_user_id
            WHERE ${where}
            ORDER BY o.created_at DESC
            LIMIT ? OFFSET ?`
