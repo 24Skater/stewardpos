@@ -6,10 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Download, 
-  FileText, 
-  Table as TableIcon, 
+import {
+  Download,
+  FileText,
+  Table as TableIcon,
   Calendar,
   TrendingUp,
   Users,
@@ -17,7 +17,9 @@ import {
   Briefcase,
   FileSpreadsheet,
   BarChart3,
-  RotateCcw
+  RotateCcw,
+  Store,
+  ShieldAlert
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -63,6 +65,16 @@ import {
   exportReturnsToPDF,
   exportReturnsByReasonToPDF,
 } from '@/lib/export-utils';
+import {
+  exportRegisterReportToCSV,
+  exportRegisterReportToExcel,
+  exportCashierReportToCSV,
+  exportCashierReportToExcel,
+  exportDrawerVarianceReportToCSV,
+  exportDrawerVarianceReportToExcel,
+  exportNoSaleReportToCSV,
+  exportNoSaleReportToExcel,
+} from '@/lib/export-register-reports';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 import type { Product } from '@/lib/api';
@@ -275,15 +287,26 @@ export default function AdminExports() {
           // the exported totals are the screen's totals by construction and not
           // by two implementations happening to agree.
           const range = { from: startDate || undefined, to: endDate || undefined };
-          const [summary, byDay, topProducts, paymentMix, returnsSummary] = await Promise.all([
-            reportsApi.salesSummary(range),
-            reportsApi.salesByDay(range),
-            reportsApi.topProducts({ ...range, limit: 100 }),
-            reportsApi.paymentMix(range),
-            reportsApi.returnsSummary(range),
-          ]);
+          const [summary, byDay, topProducts, paymentMix, returnsSummary, registerSales, cashierSales] =
+            await Promise.all([
+              reportsApi.salesSummary(range),
+              reportsApi.salesByDay(range),
+              reportsApi.topProducts({ ...range, limit: 100 }),
+              reportsApi.paymentMix(range),
+              reportsApi.returnsSummary(range),
+              reportsApi.salesByRegister(range),
+              reportsApi.salesByCashier(range),
+            ]);
 
-          const payload = { summary, byDay, topProducts, paymentMix, returns: returnsSummary };
+          const payload = {
+            summary,
+            byDay,
+            topProducts,
+            paymentMix,
+            returns: returnsSummary,
+            byRegister: registerSales.registers,
+            byCashier: cashierSales,
+          };
 
           if (format === 'pdf') {
             await exportSalesSummaryToPDF(payload, {
@@ -295,6 +318,53 @@ export default function AdminExports() {
             await exportSalesSummaryToExcel(payload);
           } else {
             exportSalesSummaryToCSV(payload);
+          }
+          break;
+        }
+
+        case 'sales-register': {
+          // Fetched fresh for the range on screen, same as sales-summary —
+          // this is the report the whole reporting phase exists to answer,
+          // and an export of it should not disagree with the Reports screen.
+          const range = { from: startDate || undefined, to: endDate || undefined };
+          const { registers } = await reportsApi.salesByRegister(range);
+          if (format === 'excel') {
+            await exportRegisterReportToExcel(registers, range);
+          } else {
+            exportRegisterReportToCSV(registers, range);
+          }
+          break;
+        }
+
+        case 'sales-cashier': {
+          const range = { from: startDate || undefined, to: endDate || undefined };
+          const cashiers = await reportsApi.salesByCashier(range);
+          if (format === 'excel') {
+            await exportCashierReportToExcel(cashiers, range);
+          } else {
+            exportCashierReportToCSV(cashiers, range);
+          }
+          break;
+        }
+
+        case 'drawer-variance': {
+          const range = { from: startDate || undefined, to: endDate || undefined };
+          const variance = await reportsApi.drawerVarianceByRegister(range);
+          if (format === 'excel') {
+            await exportDrawerVarianceReportToExcel(variance, range);
+          } else {
+            exportDrawerVarianceReportToCSV(variance, range);
+          }
+          break;
+        }
+
+        case 'no-sale-counts': {
+          const range = { from: startDate || undefined, to: endDate || undefined };
+          const noSales = await reportsApi.noSaleCounts(range);
+          if (format === 'excel') {
+            await exportNoSaleReportToExcel(noSales, range);
+          } else {
+            exportNoSaleReportToCSV(noSales, range);
           }
           break;
         }
@@ -592,10 +662,14 @@ export default function AdminExports() {
           </Card>
 
           <Tabs defaultValue="sales" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="sales" className="flex items-center gap-2">
                 <ShoppingCart className="w-4 h-4" />
                 Sales
+              </TabsTrigger>
+              <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4" />
+                Loss Prevention
               </TabsTrigger>
               <TabsTrigger value="returns" className="flex items-center gap-2">
                 <RotateCcw className="w-4 h-4" />
@@ -687,6 +761,35 @@ export default function AdminExports() {
                   </CardContent>
                 </Card>
 
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Store className="w-5 h-5 text-indigo-500" />
+                      Sales by Register
+                    </CardTitle>
+                    <CardDescription>
+                      Per-till transactions, net and average ticket, including the web-vs-drawer split
+                      and any retired or disabled register that still traded in range.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="sales-register" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5 text-teal-500" />
+                      Sales by Cashier
+                    </CardTitle>
+                    <CardDescription>Per-cashier transactions, net and average ticket</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="sales-cashier" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                  </CardContent>
+                </Card>
+
                 <Card className="md:col-span-2">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -700,6 +803,44 @@ export default function AdminExports() {
                   </CardHeader>
                   <CardContent>
                     <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Loss Prevention Tab — drawer variance and no-sale counts, the
+                reports that catch problems. */}
+            <TabsContent value="loss-prevention" className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ShieldAlert className="w-5 h-5 text-red-500" />
+                      Drawer Variance by Register
+                    </CardTitle>
+                    <CardDescription>
+                      Closed drawer sessions whose counted cash did not match what was expected —
+                      sessions, total variance, worst session, and short count per till.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="drawer-variance" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ShieldAlert className="w-5 h-5 text-amber-500" />
+                      No-Sale Counts
+                    </CardTitle>
+                    <CardDescription>
+                      Drawers opened with nothing rung up, per register — the single best theft signal
+                      a POS can report on.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ExportButtons reportType="no-sale-counts" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
                   </CardContent>
                 </Card>
               </div>
