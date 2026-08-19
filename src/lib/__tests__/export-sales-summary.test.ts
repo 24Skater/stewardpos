@@ -195,6 +195,47 @@ describe('salesSummarySheets', () => {
       'Top Products',
       'Payment Mix',
       'Returns by Reason',
+      'By Register',
+      'By Cashier',
+    ]);
+  });
+
+  it('carries the register and cashier breakdown through when the caller supplied it', () => {
+    const withBreakdown: SalesSummaryExport = {
+      ...PAYLOAD,
+      byRegister: [
+        {
+          displayCode: 'MAIN-01',
+          name: 'Front Counter',
+          locationName: 'Main Street',
+          type: 'fixed',
+          hasCashDrawer: true,
+          status: 'active',
+          orderCount: 2,
+          net: 30,
+          avgTicket: 15,
+        },
+      ],
+      byCashier: [
+        { cashierUserId: 'u1', cashierName: 'Alex', orderCount: 2, net: 30, avgTicket: 15 },
+      ],
+    };
+
+    const report = generateSalesSummaryReport(withBreakdown);
+    expect(report.byRegister).toEqual([
+      {
+        Register: 'MAIN-01 — Front Counter',
+        Location: 'Main Street',
+        Type: 'fixed',
+        Drawer: 'Yes',
+        Status: 'active',
+        Transactions: 2,
+        Net: 30,
+        'Avg Ticket': 15,
+      },
+    ]);
+    expect(report.byCashier).toEqual([
+      { Cashier: 'Alex', Transactions: 2, Net: 30, 'Avg Ticket': 15 },
     ]);
   });
 });
