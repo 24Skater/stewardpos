@@ -3,13 +3,21 @@ import logger from '../../utils/logger';
 import { escapeLike } from './like';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { DbRow, asRows } from './types';
+import { bucketOrdersByLocalHour } from './timezoneBucketing';
 import type {
   AuditLogQuery,
+  DrawerVarianceByRegister,
+  NoSaleCount,
   PaymentMix,
+  RegisterFilter,
+  RegisterHourly,
   ReportRange,
   ReturnsByReason,
   ReturnsTotals,
+  SalesByCashier,
   SalesByDay,
+  SalesByLocation,
+  SalesByRegister,
   SalesTotals,
   TopProduct,
 } from './reports.types';
@@ -3848,9 +3856,64 @@ export class PostgresAdapter {
   // Timestamps are compared with `to_timestamp(ms / 1000.0)`, matching
   // `getDiscountStats` and the way the row mappers read `created_at` back. Both
   // ends are inclusive; the service decides what instant a date means.
+  //
+  // `RegisterFilter` narrows every one of these, threaded through as an
+  // additional, optional predicate starting at whatever `$n` the query's own
+  // parameters leave off. `locationIds` is always expressed as a subquery
+  // against `registers` rather than an extra JOIN, so it applies uniformly
+  // whether or not the query already joins that table. Unlike the SQLite
+  // adapter's `?` placeholders, a `$n` placeholder can be referenced more than
+  // once in a query without repeating the value in the params array — used by
+  // `getPaymentMix` below, whose two UNION branches share one filter clause.
 
-  async getSalesTotals(range: ReportRange): Promise<SalesTotals> {
+  /**
+   * Builds ` AND ...` fragments for a {@link RegisterFilter}, `$n`-parameterised
+   * starting at `nextIndex`.
+   *
+   * `registerCol`/`cashierCol` are the columns on the query's own rows —
+   * `o.register_id`, `r.id`, `s.register_id`, whatever the caller already
+   * joined to. An empty array in the filter is treated as "not filtering on
+   * this field", same as `undefined`.
+   */
+  private registerFilterSQL(
+    filter: RegisterFilter | undefined,
+    registerCol: string,
+    cashierCol: string | undefined,
+    nextIndex: number
+  ): { clause: string; params: unknown[]; nextIndex: number } {
+    const parts: string[] = [];
+    const params: unknown[] = [];
+    let idx = nextIndex;
+
+    if (filter?.registerIds?.length) {
+      parts.push(`${registerCol} = ANY($${idx}::uuid[])`);
+      params.push(filter.registerIds);
+      idx += 1;
+    }
+    if (filter?.locationIds?.length) {
+      parts.push(
+        `${registerCol} IN (SELECT id FROM registers WHERE location_id = ANY($${idx}::uuid[]))`
+      );
+      params.push(filter.locationIds);
+      idx += 1;
+    }
+    if (cashierCol && filter?.cashierUserIds?.length) {
+      parts.push(`${cashierCol} = ANY($${idx}::uuid[])`);
+      params.push(filter.cashierUserIds);
+      idx += 1;
+    }
+
+    return { clause: parts.length ? ` AND ${parts.join(' AND ')}` : '', params, nextIndex: idx };
+  }
+
+  async getSalesTotals(range: ReportRange, filter?: RegisterFilter): Promise<SalesTotals> {
     try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'register_id',
+        'cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT
            COUNT(*) as order_count,
@@ -3860,8 +3923,8 @@ export class PostgresAdapter {
            COALESCE(SUM(total), 0) as net
          FROM orders
          WHERE created_at >= to_timestamp($1 / 1000.0)
-           AND created_at <= to_timestamp($2 / 1000.0)`,
-        [range.from, range.to]
+           AND created_at <= to_timestamp($2 / 1000.0)${clause}`,
+        [range.from, range.to, ...filterParams]
       );
 
       const row = result.rows[0];
@@ -3878,8 +3941,14 @@ export class PostgresAdapter {
     }
   }
 
-  async getSalesByDay(range: ReportRange): Promise<SalesByDay[]> {
+  async getSalesByDay(range: ReportRange, filter?: RegisterFilter): Promise<SalesByDay[]> {
     try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'register_id',
+        'cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT
            to_char(created_at, 'YYYY-MM-DD') as date,
@@ -3888,10 +3957,10 @@ export class PostgresAdapter {
            COALESCE(SUM(total), 0) as net
          FROM orders
          WHERE created_at >= to_timestamp($1 / 1000.0)
-           AND created_at <= to_timestamp($2 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)${clause}
          GROUP BY 1
          ORDER BY 1`,
-        [range.from, range.to]
+        [range.from, range.to, ...filterParams]
       );
 
       return result.rows.map((row) => ({
@@ -3906,12 +3975,22 @@ export class PostgresAdapter {
     }
   }
 
-  async getTopProducts(range: ReportRange, limit: number): Promise<TopProduct[]> {
+  async getTopProducts(
+    range: ReportRange,
+    limit: number,
+    filter?: RegisterFilter
+  ): Promise<TopProduct[]> {
     try {
       // `name_snapshot`, not a join to `products`: the name as sold is what the
       // report is about, and a product renamed or deleted since must not change
       // or vanish from a period that has already been reported on. MIN() picks
       // one deterministically when a product was renamed mid-range.
+      const { clause, params: filterParams, nextIndex } = this.registerFilterSQL(
+        filter,
+        'o.register_id',
+        'o.cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT
            oi.product_id,
@@ -3921,11 +4000,11 @@ export class PostgresAdapter {
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          WHERE o.created_at >= to_timestamp($1 / 1000.0)
-           AND o.created_at <= to_timestamp($2 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
          GROUP BY oi.product_id
          ORDER BY revenue DESC, quantity DESC
-         LIMIT $3`,
-        [range.from, range.to, limit]
+         LIMIT $${nextIndex}`,
+        [range.from, range.to, ...filterParams, limit]
       );
 
       return result.rows.map((row) => ({
@@ -3940,7 +4019,7 @@ export class PostgresAdapter {
     }
   }
 
-  async getPaymentMix(range: ReportRange): Promise<PaymentMix[]> {
+  async getPaymentMix(range: ReportRange, filter?: RegisterFilter): Promise<PaymentMix[]> {
     try {
       // Two sources, deliberately. `payments` carries the split-tender breakdown
       // and is the truth for anything sold since it existed, but orders taken
@@ -3949,6 +4028,16 @@ export class PostgresAdapter {
       // having been paid by nothing. Those orders fall back to their own
       // denormalised `payment_method`, and the NOT EXISTS keeps a split sale
       // from being counted twice.
+      //
+      // `$3`+ (the filter clause) is written once and referenced from both
+      // UNION branches — a `$n` placeholder, unlike SQLite's `?`, can be
+      // reused without repeating the value in the params array.
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'o.register_id',
+        'o.cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
          FROM (
@@ -3956,17 +4045,17 @@ export class PostgresAdapter {
            FROM payments p
            JOIN orders o ON o.id = p.order_id
            WHERE o.created_at >= to_timestamp($1 / 1000.0)
-             AND o.created_at <= to_timestamp($2 / 1000.0)
+             AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
            UNION ALL
            SELECT LOWER(o.payment_method) as method, o.total as amount
            FROM orders o
            WHERE o.created_at >= to_timestamp($1 / 1000.0)
-             AND o.created_at <= to_timestamp($2 / 1000.0)
+             AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
              AND NOT EXISTS (SELECT 1 FROM payments p2 WHERE p2.order_id = o.id)
          ) mix
          GROUP BY method
          ORDER BY amount DESC, method`,
-        [range.from, range.to]
+        [range.from, range.to, ...filterParams]
       );
 
       return result.rows.map((row) => ({
@@ -3980,8 +4069,14 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsTotals(range: ReportRange): Promise<ReturnsTotals> {
+  async getReturnsTotals(range: ReportRange, filter?: RegisterFilter): Promise<ReturnsTotals> {
     try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'register_id',
+        'cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT
            COUNT(*) FILTER (WHERE status = 'completed') as return_count,
@@ -3990,8 +4085,8 @@ export class PostgresAdapter {
            COALESCE(SUM(total) FILTER (WHERE status IN ('pending', 'approved')), 0) as pending_amount
          FROM returns
          WHERE created_at >= to_timestamp($1 / 1000.0)
-           AND created_at <= to_timestamp($2 / 1000.0)`,
-        [range.from, range.to]
+           AND created_at <= to_timestamp($2 / 1000.0)${clause}`,
+        [range.from, range.to, ...filterParams]
       );
 
       const row = result.rows[0];
@@ -4007,8 +4102,17 @@ export class PostgresAdapter {
     }
   }
 
-  async getReturnsByReason(range: ReportRange): Promise<ReturnsByReason[]> {
+  async getReturnsByReason(
+    range: ReportRange,
+    filter?: RegisterFilter
+  ): Promise<ReturnsByReason[]> {
     try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'register_id',
+        'cashier_user_id',
+        3
+      );
       const result = await this.pool.query(
         `SELECT
            COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
@@ -4017,10 +4121,10 @@ export class PostgresAdapter {
          FROM returns
          WHERE status = 'completed'
            AND created_at >= to_timestamp($1 / 1000.0)
-           AND created_at <= to_timestamp($2 / 1000.0)
+           AND created_at <= to_timestamp($2 / 1000.0)${clause}
          GROUP BY 1
          ORDER BY refunded DESC, reason_code`,
-        [range.from, range.to]
+        [range.from, range.to, ...filterParams]
       );
 
       return result.rows.map((row) => ({
@@ -4031,6 +4135,357 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting returns by reason:', error);
       throw new DatabaseError('Failed to get returns by reason');
+    }
+  }
+
+  /**
+   * How many sales went through each till — the question this whole phase
+   * exists to answer.
+   *
+   * `JOIN orders o ON o.register_id = r.id AND o.created_at BETWEEN ...` puts
+   * the range predicate in the join condition rather than the WHERE clause.
+   * With an INNER JOIN the two are equivalent, but writing it this way makes
+   * it obvious this is *not* a LEFT JOIN: a register that sold nothing in
+   * range does not appear, and nothing here filters on `r.status`, so a
+   * retired or disabled register that DID trade in range appears exactly like
+   * an active one.
+   */
+  async getSalesByRegister(
+    range: ReportRange,
+    filter?: RegisterFilter
+  ): Promise<SalesByRegister[]> {
+    try {
+      const {
+        clause: orderClause,
+        params: orderParams,
+        nextIndex,
+      } = this.registerFilterSQL(filter, 'o.register_id', 'o.cashier_user_id', 3);
+      const { clause: registerClause, params: registerParams } = this.registerFilterSQL(
+        filter,
+        'r.id',
+        undefined,
+        nextIndex
+      );
+      const result = await this.pool.query(
+        `SELECT
+           r.id as register_id,
+           r.display_code as display_code,
+           r.name as name,
+           r.location_id as location_id,
+           l.name as location_name,
+           r.type as type,
+           r.has_cash_drawer as has_cash_drawer,
+           r.status as status,
+           COUNT(o.id) as order_count,
+           COALESCE(SUM(o.subtotal), 0) as gross,
+           COALESCE(SUM(o.discount_total), 0) as discounts,
+           COALESCE(SUM(o.tax_total), 0) as tax,
+           COALESCE(SUM(o.total), 0) as net
+         FROM registers r
+         JOIN locations l ON l.id = r.location_id
+         JOIN orders o ON o.register_id = r.id
+           AND o.created_at >= to_timestamp($1 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)${orderClause}
+         WHERE 1=1${registerClause}
+         GROUP BY r.id, r.display_code, r.name, r.location_id, l.name, r.type, r.has_cash_drawer, r.status
+         ORDER BY l.name ASC, r.register_number ASC`,
+        [range.from, range.to, ...orderParams, ...registerParams]
+      );
+
+      return result.rows.map((row) => ({
+        registerId: row.register_id as string,
+        displayCode: row.display_code as string,
+        name: row.name as string,
+        locationId: row.location_id as string,
+        locationName: row.location_name as string,
+        type: row.type as string,
+        hasCashDrawer: Boolean(row.has_cash_drawer),
+        status: row.status as string,
+        orderCount: parseInt(row.order_count, 10),
+        gross: parseFloat(row.gross),
+        discounts: parseFloat(row.discounts),
+        tax: parseFloat(row.tax),
+        net: parseFloat(row.net),
+      }));
+    } catch (error) {
+      logger.error('Error getting sales by register:', error);
+      throw new DatabaseError('Failed to get sales by register');
+    }
+  }
+
+  /**
+   * Sales attributed to whoever rang them, not whoever is signed in now.
+   *
+   * Groups on `orders.cashier_user_id` as it was written at checkout —
+   * `services/registerShifts.ts` sets it once, from the shift open at the
+   * moment the sale completed, and it is never rewritten by a later shift on
+   * the same register. Orders from before migration 016 carry no cashier at
+   * all; those fall into the `'unknown'` bucket below rather than vanishing,
+   * so this report's total still reconciles with the unfiltered range.
+   * `::text` on the COALESCE is required — `cashier_user_id` is `UUID`, and
+   * `'unknown'` is not a valid literal of that type.
+   */
+  async getSalesByCashier(range: ReportRange, filter?: RegisterFilter): Promise<SalesByCashier[]> {
+    try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'o.register_id',
+        'o.cashier_user_id',
+        3
+      );
+      const result = await this.pool.query(
+        `SELECT
+           COALESCE(o.cashier_user_id::text, 'unknown') as cashier_user_id,
+           COALESCE(u.name, 'Unknown') as cashier_name,
+           COUNT(*) as order_count,
+           COALESCE(SUM(o.subtotal), 0) as gross,
+           COALESCE(SUM(o.total), 0) as net
+         FROM orders o
+         LEFT JOIN users u ON u.id = o.cashier_user_id
+         WHERE o.created_at >= to_timestamp($1 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
+         GROUP BY COALESCE(o.cashier_user_id::text, 'unknown'), COALESCE(u.name, 'Unknown')
+         ORDER BY net DESC`,
+        [range.from, range.to, ...filterParams]
+      );
+
+      return result.rows.map((row) => ({
+        cashierUserId: row.cashier_user_id as string,
+        cashierName: row.cashier_name as string,
+        orderCount: parseInt(row.order_count, 10),
+        gross: parseFloat(row.gross),
+        net: parseFloat(row.net),
+      }));
+    } catch (error) {
+      logger.error('Error getting sales by cashier:', error);
+      throw new DatabaseError('Failed to get sales by cashier');
+    }
+  }
+
+  /**
+   * Sales rolled up to the site. `registerCount` is `COUNT(DISTINCT
+   * o.register_id)` — how many tills actually rang something in range, not
+   * how many the location owns — matching `getSalesByRegister`'s "only
+   * registers that traded" framing.
+   *
+   * No separate location-scoped clause: `registerCol: 'r.id'` below already
+   * covers `locationIds` (translated to `r.id IN (SELECT id FROM registers
+   * WHERE location_id = ANY(...))`), since `registerFilterSQL`'s `locationIds`
+   * branch is always expressed as a subquery against `registers` regardless
+   * of which register-identifying column it is applied to. Applying it again
+   * against `l.id` directly would compare a location id to a set of register
+   * ids — never equal, so it would silently zero out every result whenever
+   * `registerIds` was the only filter in play. Found by the integration test
+   * below.
+   */
+  async getSalesByLocation(range: ReportRange, filter?: RegisterFilter): Promise<SalesByLocation[]> {
+    try {
+      const {
+        clause: orderClause,
+        params: orderParams,
+        nextIndex: afterOrder,
+      } = this.registerFilterSQL(filter, 'o.register_id', 'o.cashier_user_id', 3);
+      const { clause: registerClause, params: registerParams } = this.registerFilterSQL(
+        filter,
+        'r.id',
+        undefined,
+        afterOrder
+      );
+      const result = await this.pool.query(
+        `SELECT
+           l.id as location_id,
+           l.name as location_name,
+           COUNT(DISTINCT o.register_id) as register_count,
+           COUNT(o.id) as order_count,
+           COALESCE(SUM(o.total), 0) as net
+         FROM locations l
+         JOIN registers r ON r.location_id = l.id
+         JOIN orders o ON o.register_id = r.id
+           AND o.created_at >= to_timestamp($1 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)${orderClause}
+         WHERE 1=1${registerClause}
+         GROUP BY l.id, l.name
+         ORDER BY l.name ASC`,
+        [range.from, range.to, ...orderParams, ...registerParams]
+      );
+
+      return result.rows.map((row) => ({
+        locationId: row.location_id as string,
+        locationName: row.location_name as string,
+        registerCount: parseInt(row.register_count, 10),
+        orderCount: parseInt(row.order_count, 10),
+        net: parseFloat(row.net),
+      }));
+    } catch (error) {
+      logger.error('Error getting sales by location:', error);
+      throw new DatabaseError('Failed to get sales by location');
+    }
+  }
+
+  /**
+   * Drawer reconciliation by register — the report that catches theft and
+   * counting mistakes.
+   *
+   * Scoped to `status = 'closed'` sessions whose `closed_at` falls in range:
+   * an open session's `variance` is NULL, and a session is only reportable
+   * once it has one. `cashierUserIds` is deliberately not applied here —
+   * `cash_drawer_sessions` carries `opened_by`/`closed_by`, not a
+   * `cashier_user_id` in the shift-attribution sense `orders` uses, and
+   * guessing which of the two "is" the cashier would silently hide sessions
+   * rather than report on them.
+   */
+  async getDrawerVarianceByRegister(
+    range: ReportRange,
+    filter?: RegisterFilter
+  ): Promise<DrawerVarianceByRegister[]> {
+    try {
+      const { clause, params: filterParams } = this.registerFilterSQL(
+        filter,
+        'r.id',
+        undefined,
+        3
+      );
+      const result = await this.pool.query(
+        `SELECT
+           r.id as register_id,
+           r.display_code as display_code,
+           r.name as name,
+           COUNT(s.id) as session_count,
+           COALESCE(SUM(s.variance), 0) as total_variance,
+           COALESCE(MIN(s.variance), 0) as worst_variance,
+           COUNT(*) FILTER (WHERE s.variance < 0) as short_count
+         FROM registers r
+         JOIN cash_drawer_sessions s ON s.register_id = r.id
+           AND s.status = 'closed'
+           AND s.closed_at >= to_timestamp($1 / 1000.0)
+           AND s.closed_at <= to_timestamp($2 / 1000.0)
+         WHERE 1=1${clause}
+         GROUP BY r.id, r.display_code, r.name
+         ORDER BY total_variance ASC`,
+        [range.from, range.to, ...filterParams]
+      );
+
+      return result.rows.map((row) => ({
+        registerId: row.register_id as string,
+        displayCode: row.display_code as string,
+        name: row.name as string,
+        sessionCount: parseInt(row.session_count, 10),
+        totalVariance: parseFloat(row.total_variance),
+        worstVariance: parseFloat(row.worst_variance),
+        shortCount: parseInt(row.short_count, 10),
+      }));
+    } catch (error) {
+      logger.error('Error getting drawer variance by register:', error);
+      throw new DatabaseError('Failed to get drawer variance by register');
+    }
+  }
+
+  /**
+   * `register_overrides` rows with `action = 'no_sale'` — a drawer opened
+   * with nothing rung up, and the single best theft signal a POS can report
+   * on. `cashierUserIds` is matched against `requested_by_user_id`: that is
+   * the person who was standing at the till asking for the drawer to open,
+   * where `approver_user_id` is the supervisor who authorised it.
+   */
+  async getNoSaleCounts(range: ReportRange, filter?: RegisterFilter): Promise<NoSaleCount[]> {
+    try {
+      const {
+        clause: overrideClause,
+        params: overrideParams,
+        nextIndex,
+      } = this.registerFilterSQL(filter, 'o.register_id', 'o.requested_by_user_id', 3);
+      const { clause: registerClause, params: registerParams } = this.registerFilterSQL(
+        filter,
+        'r.id',
+        undefined,
+        nextIndex
+      );
+      const result = await this.pool.query(
+        `SELECT
+           r.id as register_id,
+           r.display_code as display_code,
+           r.name as name,
+           COUNT(o.id) as no_sale_count
+         FROM registers r
+         JOIN register_overrides o ON o.register_id = r.id
+           AND o.action = 'no_sale'
+           AND o.created_at >= to_timestamp($1 / 1000.0)
+           AND o.created_at <= to_timestamp($2 / 1000.0)${overrideClause}
+         WHERE 1=1${registerClause}
+         GROUP BY r.id, r.display_code, r.name
+         ORDER BY no_sale_count DESC`,
+        [range.from, range.to, ...overrideParams, ...registerParams]
+      );
+
+      return result.rows.map((row) => ({
+        registerId: row.register_id as string,
+        displayCode: row.display_code as string,
+        name: row.name as string,
+        noSaleCount: parseInt(row.no_sale_count, 10),
+      }));
+    } catch (error) {
+      logger.error('Error getting no-sale counts:', error);
+      throw new DatabaseError('Failed to get no-sale counts');
+    }
+  }
+
+  /**
+   * One register's trading by hour of its **location's local day** — see
+   * `timezoneBucketing.ts` for why the bucketing itself happens in
+   * TypeScript rather than SQL. This method's job is only to fetch the raw
+   * `(createdAt, total)` rows and the register's location timezone; the
+   * shared helper does the rest, identically on both adapters.
+   *
+   * `created_at` is fetched as `EXTRACT(EPOCH FROM created_at) * 1000`,
+   * **not** as the raw `TIMESTAMP` read into `new Date(string).getTime()`
+   * the way other mappers in this file do. `orders.created_at` is `TIMESTAMP
+   * WITHOUT TIME ZONE`, and node-postgres's default parser for that type
+   * constructs the `Date` by reading the stored wall-clock digits as the
+   * **Node process's own local timezone**, not UTC. Every other place in
+   * this codebase that does `new Date(row.x).getTime()` happens to be
+   * correct only because the process it runs in is set to UTC; this method
+   * builds instants from those digits directly and then re-interprets them
+   * in an *arbitrary* location timezone, so a wrong local offset here would
+   * silently corrupt every hour it buckets. `EXTRACT(EPOCH FROM ...)`
+   * computes the offset from Unix epoch treating the stored value as UTC —
+   * the same convention `to_timestamp($n / 1000.0)` uses to write it —
+   * making the round trip exact regardless of the server process's own
+   * timezone. Caught by the integration test below failing under a non-UTC
+   * `TZ`.
+   */
+  async getRegisterHourly(range: ReportRange, registerId: string): Promise<RegisterHourly[]> {
+    try {
+      const locationResult = await this.pool.query(
+        `SELECT l.timezone as timezone
+         FROM registers r
+         JOIN locations l ON l.id = r.location_id
+         WHERE r.id = $1`,
+        [registerId]
+      );
+
+      const ordersResult = await this.pool.query(
+        `SELECT EXTRACT(EPOCH FROM created_at) * 1000 as created_at_ms, total
+         FROM orders
+         WHERE register_id = $1
+           AND created_at >= to_timestamp($2 / 1000.0)
+           AND created_at <= to_timestamp($3 / 1000.0)`,
+        [registerId, range.from, range.to]
+      );
+
+      const timezone = locationResult.rows[0]?.timezone
+        ? (locationResult.rows[0].timezone as string)
+        : 'UTC';
+
+      return bucketOrdersByLocalHour(
+        ordersResult.rows.map((row) => ({
+          createdAt: Math.round(parseFloat(row.created_at_ms)),
+          total: parseFloat(row.total),
+        })),
+        timezone
+      );
+    } catch (error) {
+      logger.error('Error getting register hourly report:', error);
+      throw new DatabaseError('Failed to get register hourly report');
     }
   }
 
