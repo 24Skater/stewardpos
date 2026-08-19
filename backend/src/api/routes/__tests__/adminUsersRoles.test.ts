@@ -285,6 +285,41 @@ describe('GET /api/admin/audit', () => {
   });
 });
 
+describe('override approvers', () => {
+  it('can be granted the right to approve an override', async () => {
+    // users.can_override is checked by the override service, so without a way
+    // to set it the whole manager-override flow is unreachable: nobody would
+    // ever be an approver.
+    updateUser.mockResolvedValue({ id: 'u2', email: PERSON.email, name: PERSON.name });
+
+    const response = await request(app)
+      .put('/api/admin/users/u2')
+      .set(auth())
+      .send({ canOverride: true });
+
+    expect(response.status).toBe(200);
+    expect(updateUser).toHaveBeenCalledWith('u2', expect.objectContaining({ canOverride: true }));
+  });
+
+  it('can have it taken away again', async () => {
+    updateUser.mockResolvedValue({ id: 'u2', email: PERSON.email, name: PERSON.name });
+
+    await request(app).put('/api/admin/users/u2').set(auth()).send({ canOverride: false });
+
+    expect(updateUser).toHaveBeenCalledWith('u2', expect.objectContaining({ canOverride: false }));
+  });
+
+  it('leaves it untouched when the caller does not mention it', async () => {
+    // A rename must not quietly revoke someone's approver status.
+    updateUser.mockResolvedValue({ id: 'u2', email: PERSON.email, name: 'Renamed' });
+
+    await request(app).put('/api/admin/users/u2').set(auth()).send({ name: 'Renamed' });
+
+    const [, payload] = updateUser.mock.calls[0];
+    expect(payload).not.toHaveProperty('canOverride');
+  });
+});
+
 describe('till PINs', () => {
   it('sets one and never echoes it back', async () => {
     const response = await request(app)

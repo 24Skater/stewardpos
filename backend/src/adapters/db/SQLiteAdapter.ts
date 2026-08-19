@@ -1555,6 +1555,13 @@ export class SQLiteAdapter {
         updates.push('status = ?');
         values.push(user.status);
       }
+      // Whether this person may approve a manager override. Without a way to
+      // set it, `can_override` would be false for everybody and the override
+      // flow would be unreachable in production.
+      if (user.canOverride !== undefined) {
+        updates.push('can_override = ?');
+        values.push(user.canOverride ? 1 : 0);
+      }
 
       if (updates.length > 0) {
         values.push(id);
