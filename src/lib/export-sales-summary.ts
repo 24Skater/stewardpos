@@ -19,6 +19,28 @@ import { cellNum, cellStr, createPDFHeader, exportToCSV, exportToExcel, loadPdfK
  * two implementations of "revenue", one of which counts tax and one of which
  * does not. Here there is one set of figures and two renderings of it.
  */
+/** One register's totals, as `sales-by-register` returns it. */
+export interface SalesSummaryRegister {
+  displayCode: string;
+  name: string;
+  locationName: string;
+  type: string;
+  hasCashDrawer: boolean;
+  status: string;
+  orderCount: number;
+  net: number;
+  avgTicket: number;
+}
+
+/** One cashier's totals, as `sales-by-cashier` returns it. */
+export interface SalesSummaryCashier {
+  cashierUserId: string;
+  cashierName: string;
+  orderCount: number;
+  net: number;
+  avgTicket: number;
+}
+
 export interface SalesSummaryExport {
   summary: {
     from: number;
@@ -37,6 +59,14 @@ export interface SalesSummaryExport {
   topProducts: { productId: string; name: string; quantity: number; revenue: number }[];
   paymentMix: { method: string; count: number; amount: number }[];
   returns: { byReason: { reasonCode: string; returnCount: number; refunded: number }[] };
+  /**
+   * Optional: the register and cashier breakdown, when the caller fetched
+   * them alongside the summary. Omitted entirely (not an empty array) by a
+   * caller that has no reason to pull them, so an export built before this
+   * phase existed still type-checks and still prints the same document.
+   */
+  byRegister?: SalesSummaryRegister[];
+  byCashier?: SalesSummaryCashier[];
 }
 
 /** `YYYY-MM-DD` in UTC, matching how the server buckets a day. */
@@ -56,6 +86,8 @@ export function generateSalesSummaryReport(data: SalesSummaryExport): {
   topProducts: ExportRow[];
   paymentMix: ExportRow[];
   returnsByReason: ExportRow[];
+  byRegister: ExportRow[];
+  byCashier: ExportRow[];
 } {
   const { summary } = data;
 
@@ -95,6 +127,22 @@ export function generateSalesSummaryReport(data: SalesSummaryExport): {
       Returns: row.returnCount,
       Refunded: row.refunded,
     })),
+    byRegister: (data.byRegister ?? []).map((row) => ({
+      Register: `${row.displayCode} — ${row.name}`,
+      Location: row.locationName,
+      Type: row.type,
+      Drawer: row.hasCashDrawer ? 'Yes' : 'No',
+      Status: row.status,
+      Transactions: row.orderCount,
+      Net: row.net,
+      'Avg Ticket': row.avgTicket,
+    })),
+    byCashier: (data.byCashier ?? []).map((row) => ({
+      Cashier: row.cashierUserId === 'unknown' ? 'Unattributed (before shift tracking)' : row.cashierName,
+      Transactions: row.orderCount,
+      Net: row.net,
+      'Avg Ticket': row.avgTicket,
+    })),
   };
 }
 
@@ -108,6 +156,8 @@ export function salesSummarySheets(data: SalesSummaryExport): { name: string; da
     { name: 'Top Products', data: report.topProducts },
     { name: 'Payment Mix', data: report.paymentMix },
     { name: 'Returns by Reason', data: report.returnsByReason },
+    { name: 'By Register', data: report.byRegister },
+    { name: 'By Cashier', data: report.byCashier },
   ];
 }
 
@@ -172,6 +222,28 @@ export async function exportSalesSummaryToPDF(data: SalesSummaryExport, settings
         cellStr(row.Reason),
         cellNum(row.Returns),
         `$${cellNum(row.Refunded).toFixed(2)}`,
+      ]),
+    ],
+    [
+      'Sales by register',
+      ['Register', 'Location', 'Drawer', 'Transactions', 'Net', 'Avg Ticket'],
+      report.byRegister.map((row) => [
+        cellStr(row.Register),
+        cellStr(row.Location),
+        cellStr(row.Drawer),
+        cellNum(row.Transactions),
+        `$${cellNum(row.Net).toFixed(2)}`,
+        `$${cellNum(row['Avg Ticket']).toFixed(2)}`,
+      ]),
+    ],
+    [
+      'Sales by cashier',
+      ['Cashier', 'Transactions', 'Net', 'Avg Ticket'],
+      report.byCashier.map((row) => [
+        cellStr(row.Cashier),
+        cellNum(row.Transactions),
+        `$${cellNum(row.Net).toFixed(2)}`,
+        `$${cellNum(row['Avg Ticket']).toFixed(2)}`,
       ]),
     ],
   ];

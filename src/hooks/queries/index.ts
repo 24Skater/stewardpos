@@ -8,7 +8,14 @@ export {
 } from './useProducts';
 export { useCreateOrder, useOrder, useOrders } from './useOrders';
 export { useSettings, useUpdateSettings } from './useSettings';
-export { useSalesReport } from './useReports';
+export {
+  useSalesReport,
+  useRegisterReport,
+  useCashierReport,
+  useLocationReport,
+  useLossPreventionReport,
+  useRegisterHourly,
+} from './useReports';
 export {
   useActivateRegister,
   useCreateLocation,

@@ -106,6 +106,20 @@ const EMPTY_SHAPES: Record<string, unknown> = {
     pendingAmount: 0,
     byReason: [],
   },
+  // `sales-by-register` composes two adapter calls into one object, both of
+  // which COALESCE to zero on an empty range — see `getRegisterCapabilitySplit`
+  // — so the empty response is a populated envelope, not `[]` or `{}`.
+  'reportsApi.salesByRegister': {
+    registers: [],
+    capabilitySplit: {
+      drawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+      nonDrawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+    },
+  },
+  'reportsApi.salesByCashier': [],
+  'reportsApi.salesByLocation': [],
+  'reportsApi.drawerVarianceByRegister': [],
+  'reportsApi.noSaleCounts': [],
 };
 
 /**
