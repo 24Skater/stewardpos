@@ -17,6 +17,12 @@ const getReturnsByReason = vi.fn();
 const getSalesByDay = vi.fn();
 const getTopProducts = vi.fn();
 const getPaymentMix = vi.fn();
+const getSalesByRegister = vi.fn();
+const getSalesByCashier = vi.fn();
+const getSalesByLocation = vi.fn();
+const getDrawerVarianceByRegister = vi.fn();
+const getNoSaleCounts = vi.fn();
+const getRegisterHourly = vi.fn();
 
 vi.mock('../database', () => ({
   default: {
@@ -27,6 +33,12 @@ vi.mock('../database', () => ({
       getSalesByDay,
       getTopProducts,
       getPaymentMix,
+      getSalesByRegister,
+      getSalesByCashier,
+      getSalesByLocation,
+      getDrawerVarianceByRegister,
+      getNoSaleCounts,
+      getRegisterHourly,
     }),
   },
 }));
@@ -172,5 +184,198 @@ describe('getReturnsSummary', () => {
     expect(summary.byReason).toHaveLength(2);
     // The breakdown adds up to the total it is a breakdown of.
     expect(summary.byReason.reduce((sum, r) => sum + r.refunded, 0)).toBe(summary.refunded);
+  });
+});
+
+describe('parseRegisterFilter', () => {
+  it('leaves every field undefined when nothing was supplied', () => {
+    expect(reports.parseRegisterFilter({})).toEqual({
+      registerIds: undefined,
+      locationIds: undefined,
+      cashierUserIds: undefined,
+    });
+  });
+
+  it('accepts what qs hands back for a repeated query parameter', () => {
+    // `?registerIds=a&registerIds=b` arrives as an array already.
+    const filter = reports.parseRegisterFilter({ registerIds: ['r1', 'r2'] });
+
+    expect(filter.registerIds).toEqual(['r1', 'r2']);
+  });
+
+  it('splits a comma-separated value', () => {
+    const filter = reports.parseRegisterFilter({ locationIds: 'l1,l2,l3' });
+
+    expect(filter.locationIds).toEqual(['l1', 'l2', 'l3']);
+  });
+
+  it('treats an emptied multi-select as no filter, not a filter matching nothing', () => {
+    const filter = reports.parseRegisterFilter({ cashierUserIds: '' });
+
+    expect(filter.cashierUserIds).toBeUndefined();
+  });
+});
+
+describe('getSalesByRegister', () => {
+  const RANGE = { from: 0, to: 100 };
+
+  it('threads the filter through to the adapter', async () => {
+    getSalesByRegister.mockResolvedValue([]);
+    const filter = { registerIds: ['r1'] };
+
+    await reports.getSalesByRegister(RANGE, filter);
+
+    expect(getSalesByRegister).toHaveBeenCalledWith(RANGE, filter);
+  });
+
+  it('defaults to an empty filter when none is given', async () => {
+    getSalesByRegister.mockResolvedValue([]);
+
+    await reports.getSalesByRegister(RANGE);
+
+    expect(getSalesByRegister).toHaveBeenCalledWith(RANGE, {});
+  });
+
+  it('adds avgTicket per register, rounded to the cent', async () => {
+    getSalesByRegister.mockResolvedValue([
+      {
+        registerId: 'r1',
+        displayCode: 'MAIN-01',
+        name: 'Register 1',
+        locationId: 'l1',
+        locationName: 'Main',
+        type: 'fixed',
+        hasCashDrawer: true,
+        status: 'active',
+        orderCount: 3,
+        gross: 100,
+        discounts: 0,
+        tax: 0,
+        net: 100,
+      },
+    ]);
+
+    const rows = await reports.getSalesByRegister(RANGE);
+
+    // 100 / 3 in floating dollars is 33.333333333333336, which is not money.
+    expect(rows[0].avgTicket).toBe(33.33);
+  });
+
+  it('reports zero rather than dividing by no orders', async () => {
+    getSalesByRegister.mockResolvedValue([
+      {
+        registerId: 'r1',
+        displayCode: 'MAIN-01',
+        name: 'Register 1',
+        locationId: 'l1',
+        locationName: 'Main',
+        type: 'fixed',
+        hasCashDrawer: true,
+        status: 'active',
+        orderCount: 0,
+        gross: 0,
+        discounts: 0,
+        tax: 0,
+        net: 0,
+      },
+    ]);
+
+    const rows = await reports.getSalesByRegister(RANGE);
+
+    expect(rows[0].avgTicket).toBe(0);
+    expect(Number.isNaN(rows[0].avgTicket)).toBe(false);
+  });
+});
+
+describe('getSalesByCashier', () => {
+  it('adds avgTicket per cashier, rounded to the cent', async () => {
+    getSalesByCashier.mockResolvedValue([
+      { cashierUserId: 'u1', cashierName: 'Alex', orderCount: 3, gross: 10, net: 10 },
+    ]);
+
+    const rows = await reports.getSalesByCashier({ from: 0, to: 1 });
+
+    expect(rows[0].avgTicket).toBe(3.33);
+  });
+});
+
+describe('getSalesByLocation, getDrawerVarianceByRegister, getNoSaleCounts, getRegisterHourly', () => {
+  it('pass their filter straight through to the adapter', async () => {
+    const RANGE = { from: 0, to: 1 };
+    const filter = { locationIds: ['l1'] };
+    getSalesByLocation.mockResolvedValue([]);
+    getDrawerVarianceByRegister.mockResolvedValue([]);
+    getNoSaleCounts.mockResolvedValue([]);
+    getRegisterHourly.mockResolvedValue([]);
+
+    await reports.getSalesByLocation(RANGE, filter);
+    await reports.getDrawerVarianceByRegister(RANGE, filter);
+    await reports.getNoSaleCounts(RANGE, filter);
+    await reports.getRegisterHourly(RANGE, 'r1');
+
+    expect(getSalesByLocation).toHaveBeenCalledWith(RANGE, filter);
+    expect(getDrawerVarianceByRegister).toHaveBeenCalledWith(RANGE, filter);
+    expect(getNoSaleCounts).toHaveBeenCalledWith(RANGE, filter);
+    expect(getRegisterHourly).toHaveBeenCalledWith(RANGE, 'r1');
+  });
+});
+
+describe('getRegisterCapabilitySplit', () => {
+  const RANGE = { from: 0, to: 1 };
+
+  function register(overrides: Partial<Record<string, unknown>>) {
+    return {
+      registerId: 'r',
+      displayCode: 'MAIN-01',
+      name: 'Register',
+      locationId: 'l1',
+      locationName: 'Main',
+      type: 'fixed',
+      hasCashDrawer: true,
+      status: 'active',
+      orderCount: 1,
+      gross: 10,
+      discounts: 0,
+      tax: 0,
+      net: 10,
+      ...overrides,
+    };
+  }
+
+  it('classifies a web/no-drawer register separately from a fixed/drawer one', async () => {
+    getSalesByRegister.mockResolvedValue([
+      register({ registerId: 'fixed-1', type: 'fixed', hasCashDrawer: true, orderCount: 2, net: 20 }),
+      register({ registerId: 'web-1', type: 'web', hasCashDrawer: false, orderCount: 5, net: 50 }),
+    ]);
+
+    const split = await reports.getRegisterCapabilitySplit(RANGE);
+
+    expect(split.drawerCapable).toEqual({ registerCount: 1, orderCount: 2, net: 20 });
+    expect(split.nonDrawerCapable).toEqual({ registerCount: 1, orderCount: 5, net: 50 });
+  });
+
+  it('sums net in cents so several rows do not drift in floating-point dollars', async () => {
+    // 19.44 + 10.80 + 9.99 as naive JS float addition can land a fraction of a
+    // cent off; composed in cents it must land exactly on 40.23.
+    getSalesByRegister.mockResolvedValue([
+      register({ registerId: 'a', hasCashDrawer: true, net: 19.44 }),
+      register({ registerId: 'b', hasCashDrawer: true, net: 10.8 }),
+      register({ registerId: 'c', hasCashDrawer: true, net: 9.99 }),
+    ]);
+
+    const split = await reports.getRegisterCapabilitySplit(RANGE);
+
+    expect(split.drawerCapable.net).toBe(40.23);
+  });
+
+  it('returns zeroed buckets rather than nulls when nothing traded', async () => {
+    getSalesByRegister.mockResolvedValue([]);
+
+    const split = await reports.getRegisterCapabilitySplit(RANGE);
+
+    expect(split).toEqual({
+      drawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+      nonDrawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+    });
   });
 });
