@@ -2,11 +2,18 @@ import { ValidationError } from '../utils/errors';
 import { toCents, toDollars } from './pricing';
 import db from './database';
 import type {
+  DrawerVarianceByRegister,
+  NoSaleCount,
   PaymentMix,
+  RegisterFilter,
+  RegisterHourly,
   ReportRange,
   ReturnsByReason,
   ReturnsTotals,
+  SalesByCashier,
   SalesByDay,
+  SalesByLocation,
+  SalesByRegister,
   TopProduct,
 } from '../adapters/db/reports.types';
 
@@ -99,6 +106,47 @@ export function parseTopProductsLimit(value: string | undefined): number {
   return Math.min(limit, TOP_PRODUCTS_MAX);
 }
 
+/**
+ * One `?registerIds=`-shaped query value into a clean id list.
+ *
+ * Express (via `qs`) turns `?registerIds=a&registerIds=b` into `['a', 'b']`
+ * already, so a bare array is accepted as-is. A single value may itself be
+ * comma-separated (`?registerIds=a,b`), which is split too, so either
+ * convention a caller reaches for works. An empty result — nothing supplied,
+ * or a multi-select cleared down to `?registerIds=` — comes back as
+ * `undefined` rather than `[]`, so the SQL layer's "empty array means no
+ * filter" rule stays in exactly one place instead of being duplicated here.
+ */
+function parseIdList(value: string | string[] | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+
+  const raw = Array.isArray(value) ? value : [value];
+  const ids = raw
+    .flatMap((entry) => entry.split(','))
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+
+  return ids.length > 0 ? ids : undefined;
+}
+
+/**
+ * The register/location/cashier narrowing every report endpoint now accepts,
+ * on top of its date range. Additive and always optional — a request with
+ * none of these query parameters gets back the same unfiltered report as
+ * before this phase.
+ */
+export function parseRegisterFilter(query: {
+  registerIds?: string | string[];
+  locationIds?: string | string[];
+  cashierUserIds?: string | string[];
+}): RegisterFilter {
+  return {
+    registerIds: parseIdList(query.registerIds),
+    locationIds: parseIdList(query.locationIds),
+    cashierUserIds: parseIdList(query.cashierUserIds),
+  };
+}
+
 export interface SalesSummary extends ReportRange {
   orderCount: number;
   gross: number;
@@ -122,11 +170,14 @@ export interface SalesSummary extends ReportRange {
  * something sold in it came back this week would not reconcile with anything
  * printed from it earlier.
  */
-export async function getSalesSummary(range: ReportRange): Promise<SalesSummary> {
+export async function getSalesSummary(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<SalesSummary> {
   const adapter = db.getAdapter();
   const [totals, returns] = await Promise.all([
-    adapter.getSalesTotals(range),
-    adapter.getReturnsTotals(range),
+    adapter.getSalesTotals(range, filter),
+    adapter.getReturnsTotals(range, filter),
   ]);
 
   const netCents = toCents(totals.net);
@@ -148,28 +199,162 @@ export async function getSalesSummary(range: ReportRange): Promise<SalesSummary>
   };
 }
 
-export async function getSalesByDay(range: ReportRange): Promise<SalesByDay[]> {
-  return db.getAdapter().getSalesByDay(range);
+export async function getSalesByDay(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<SalesByDay[]> {
+  return db.getAdapter().getSalesByDay(range, filter);
 }
 
-export async function getTopProducts(range: ReportRange, limit: number): Promise<TopProduct[]> {
-  return db.getAdapter().getTopProducts(range, limit);
+export async function getTopProducts(
+  range: ReportRange,
+  limit: number,
+  filter: RegisterFilter = {}
+): Promise<TopProduct[]> {
+  return db.getAdapter().getTopProducts(range, limit, filter);
 }
 
-export async function getPaymentMix(range: ReportRange): Promise<PaymentMix[]> {
-  return db.getAdapter().getPaymentMix(range);
+export async function getPaymentMix(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<PaymentMix[]> {
+  return db.getAdapter().getPaymentMix(range, filter);
 }
 
 export interface ReturnsSummary extends ReportRange, ReturnsTotals {
   byReason: ReturnsByReason[];
 }
 
-export async function getReturnsSummary(range: ReportRange): Promise<ReturnsSummary> {
+export async function getReturnsSummary(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<ReturnsSummary> {
   const adapter = db.getAdapter();
   const [totals, byReason] = await Promise.all([
-    adapter.getReturnsTotals(range),
-    adapter.getReturnsByReason(range),
+    adapter.getReturnsTotals(range, filter),
+    adapter.getReturnsByReason(range, filter),
   ]);
 
   return { ...range, ...totals, byReason };
+}
+
+/**
+ * `net` rounded to the cent per order, `0` rather than a division by zero.
+ * Shared by the per-register and per-cashier compositions below — the same
+ * rule `getSalesSummary` applies to the unfiltered range, applied per group.
+ */
+function averageTicket(net: number, orderCount: number): number {
+  if (orderCount === 0) return 0;
+  return toDollars(Math.round(toCents(net) / orderCount));
+}
+
+export interface RegisterSales extends SalesByRegister {
+  avgTicket: number;
+}
+
+/** How many sales went through each till — the report this whole phase exists for. */
+export async function getSalesByRegister(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<RegisterSales[]> {
+  const rows = await db.getAdapter().getSalesByRegister(range, filter);
+  return rows.map((row) => ({ ...row, avgTicket: averageTicket(row.net, row.orderCount) }));
+}
+
+export interface CashierSales extends SalesByCashier {
+  avgTicket: number;
+}
+
+/** Sales attributed to whoever rang them at checkout, not whoever is signed in now. */
+export async function getSalesByCashier(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<CashierSales[]> {
+  const rows = await db.getAdapter().getSalesByCashier(range, filter);
+  return rows.map((row) => ({ ...row, avgTicket: averageTicket(row.net, row.orderCount) }));
+}
+
+export async function getSalesByLocation(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<SalesByLocation[]> {
+  return db.getAdapter().getSalesByLocation(range, filter);
+}
+
+/** The report that catches problems: which drawers are closing short, and by how much. */
+export async function getDrawerVarianceByRegister(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<DrawerVarianceByRegister[]> {
+  return db.getAdapter().getDrawerVarianceByRegister(range, filter);
+}
+
+/** The single best theft signal a POS can report on: drawers opened with nothing rung up. */
+export async function getNoSaleCounts(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<NoSaleCount[]> {
+  return db.getAdapter().getNoSaleCounts(range, filter);
+}
+
+/** One register's trading by hour of its location's local day, for staffing decisions. */
+export async function getRegisterHourly(
+  range: ReportRange,
+  registerId: string
+): Promise<RegisterHourly[]> {
+  return db.getAdapter().getRegisterHourly(range, registerId);
+}
+
+interface CapabilityBucket {
+  registerCount: number;
+  orderCount: number;
+  net: number;
+}
+
+export interface DrawerCapabilitySplit {
+  drawerCapable: CapabilityBucket;
+  nonDrawerCapable: CapabilityBucket;
+}
+
+/**
+ * Web-vs-drawer, as the user asked for it explicitly: how much of the
+ * period's trading went through a till that can even hold cash.
+ *
+ * Derived here from `getSalesByRegister`'s own `hasCashDrawer` flag rather
+ * than persisted anywhere — `type` (`fixed | mobile | web | kiosk`) is
+ * descriptive of the till, but `hasCashDrawer` is the actual capability that
+ * matters for this split, since a mobile or kiosk register may or may not
+ * carry a drawer. Composed in integer cents: summing several rows' already-
+ * rounded dollar amounts as JavaScript floating-point numbers can reintroduce
+ * the same drift `pricing.ts` describes, even though each row arrived from
+ * the database already exact.
+ */
+export async function getRegisterCapabilitySplit(
+  range: ReportRange,
+  filter: RegisterFilter = {}
+): Promise<DrawerCapabilitySplit> {
+  const registers = await db.getAdapter().getSalesByRegister(range, filter);
+
+  const drawerCapable = { registerCount: 0, orderCount: 0, netCents: 0 };
+  const nonDrawerCapable = { registerCount: 0, orderCount: 0, netCents: 0 };
+
+  for (const register of registers) {
+    const bucket = register.hasCashDrawer ? drawerCapable : nonDrawerCapable;
+    bucket.registerCount += 1;
+    bucket.orderCount += register.orderCount;
+    bucket.netCents += toCents(register.net);
+  }
+
+  return {
+    drawerCapable: {
+      registerCount: drawerCapable.registerCount,
+      orderCount: drawerCapable.orderCount,
+      net: toDollars(drawerCapable.netCents),
+    },
+    nonDrawerCapable: {
+      registerCount: nonDrawerCapable.registerCount,
+      orderCount: nonDrawerCapable.orderCount,
+      net: toDollars(nonDrawerCapable.netCents),
+    },
+  };
 }

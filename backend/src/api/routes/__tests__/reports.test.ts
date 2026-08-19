@@ -19,6 +19,12 @@ const getReturnsByReason = vi.fn();
 const getSalesByDay = vi.fn();
 const getTopProducts = vi.fn();
 const getPaymentMix = vi.fn();
+const getSalesByRegister = vi.fn();
+const getSalesByCashier = vi.fn();
+const getSalesByLocation = vi.fn();
+const getDrawerVarianceByRegister = vi.fn();
+const getNoSaleCounts = vi.fn();
+const getRegisterHourly = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -30,6 +36,12 @@ vi.mock('../../../services/database', () => ({
       getSalesByDay,
       getTopProducts,
       getPaymentMix,
+      getSalesByRegister,
+      getSalesByCashier,
+      getSalesByLocation,
+      getDrawerVarianceByRegister,
+      getNoSaleCounts,
+      getRegisterHourly,
     }),
   },
 }));
@@ -61,6 +73,11 @@ const ENDPOINTS = [
   '/api/reports/top-products',
   '/api/reports/payment-mix',
   '/api/reports/returns-summary',
+  '/api/reports/sales-by-register',
+  '/api/reports/sales-by-cashier',
+  '/api/reports/sales-by-location',
+  '/api/reports/drawer-variance-by-register',
+  '/api/reports/no-sale-counts',
 ];
 
 beforeEach(() => {
@@ -85,6 +102,44 @@ beforeEach(() => {
     { productId: 'p1', name: 'Loose Leaf Tea', quantity: 4, revenue: 20 },
   ]);
   getPaymentMix.mockResolvedValue([{ method: 'cash', count: 2, amount: 97.2 }]);
+  getSalesByRegister.mockResolvedValue([
+    {
+      registerId: 'r1',
+      displayCode: 'MAIN-01',
+      name: 'Register 1',
+      locationId: 'l1',
+      locationName: 'Main',
+      type: 'fixed',
+      hasCashDrawer: true,
+      status: 'active',
+      orderCount: 2,
+      gross: 100,
+      discounts: 10,
+      tax: 7.2,
+      net: 97.2,
+    },
+  ]);
+  getSalesByCashier.mockResolvedValue([
+    { cashierUserId: 'u1', cashierName: 'Alex', orderCount: 2, gross: 100, net: 97.2 },
+  ]);
+  getSalesByLocation.mockResolvedValue([
+    { locationId: 'l1', locationName: 'Main', registerCount: 1, orderCount: 2, net: 97.2 },
+  ]);
+  getDrawerVarianceByRegister.mockResolvedValue([
+    {
+      registerId: 'r1',
+      displayCode: 'MAIN-01',
+      name: 'Register 1',
+      sessionCount: 1,
+      totalVariance: -5,
+      worstVariance: -5,
+      shortCount: 1,
+    },
+  ]);
+  getNoSaleCounts.mockResolvedValue([
+    { registerId: 'r1', displayCode: 'MAIN-01', name: 'Register 1', noSaleCount: 3 },
+  ]);
+  getRegisterHourly.mockResolvedValue([{ hour: 9, orderCount: 2, net: 20 }]);
 });
 
 describe('access control', () => {
@@ -127,10 +182,13 @@ describe('GET /api/reports/sales-summary', () => {
   it('passes the parsed range to the adapter, with the end of the last day included', async () => {
     await request(app).get('/api/reports/sales-summary?from=2026-08-01&to=2026-08-01').set(auth());
 
-    expect(getSalesTotals).toHaveBeenCalledWith({
-      from: Date.parse('2026-08-01T00:00:00.000Z'),
-      to: Date.parse('2026-08-01T23:59:59.999Z'),
-    });
+    expect(getSalesTotals).toHaveBeenCalledWith(
+      {
+        from: Date.parse('2026-08-01T00:00:00.000Z'),
+        to: Date.parse('2026-08-01T23:59:59.999Z'),
+      },
+      { registerIds: undefined, locationIds: undefined, cashierUserIds: undefined }
+    );
   });
 
   it('rejects a backwards range as a 400, not a 500', async () => {
@@ -153,10 +211,10 @@ describe('GET /api/reports/sales-summary', () => {
 describe('GET /api/reports/top-products', () => {
   it('defaults to ten and clamps a larger request', async () => {
     await request(app).get('/api/reports/top-products').set(auth());
-    expect(getTopProducts).toHaveBeenLastCalledWith(expect.anything(), 10);
+    expect(getTopProducts).toHaveBeenLastCalledWith(expect.anything(), 10, expect.anything());
 
     await request(app).get('/api/reports/top-products?limit=1000').set(auth());
-    expect(getTopProducts).toHaveBeenLastCalledWith(expect.anything(), 100);
+    expect(getTopProducts).toHaveBeenLastCalledWith(expect.anything(), 100, expect.anything());
   });
 
   it('rejects a nonsense limit', async () => {
@@ -188,5 +246,166 @@ describe('the other series', () => {
       refunded: 20,
       byReason: [{ reasonCode: 'defective', returnCount: 1, refunded: 20 }],
     });
+  });
+});
+
+describe('GET /api/reports/sales-by-register', () => {
+  it('bundles the per-register list with the web-vs-drawer split', async () => {
+    const response = await request(app).get('/api/reports/sales-by-register').set(auth());
+
+    expect(response.body.data.registers).toEqual([
+      expect.objectContaining({ registerId: 'r1', orderCount: 2, net: 97.2 }),
+    ]);
+    // The split is composed in the service from the same rows, not a second
+    // adapter call this route test mocks directly — asserting its shape here
+    // is enough to prove the route wires it through.
+    expect(response.body.data.capabilitySplit).toEqual({
+      drawerCapable: { registerCount: 1, orderCount: 2, net: 97.2 },
+      nonDrawerCapable: { registerCount: 0, orderCount: 0, net: 0 },
+    });
+  });
+});
+
+describe('the register/location/cashier filter', () => {
+  it('accepts repeated query parameters', async () => {
+    await request(app)
+      .get('/api/reports/sales-by-register?registerIds=r1&registerIds=r2')
+      .set(auth());
+
+    expect(getSalesByRegister).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ registerIds: ['r1', 'r2'] })
+    );
+  });
+
+  it('accepts a comma-separated value', async () => {
+    await request(app).get('/api/reports/sales-by-cashier?cashierUserIds=u1,u2').set(auth());
+
+    expect(getSalesByCashier).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ cashierUserIds: ['u1', 'u2'] })
+    );
+  });
+
+  it('narrows sales-by-location to locationIds', async () => {
+    await request(app).get('/api/reports/sales-by-location?locationIds=l1').set(auth());
+
+    expect(getSalesByLocation).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ locationIds: ['l1'] })
+    );
+  });
+
+  it('reaches the existing sales-summary endpoint too, not just the new ones', async () => {
+    await request(app).get('/api/reports/sales-summary?registerIds=r1').set(auth());
+
+    expect(getSalesTotals).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ registerIds: ['r1'] })
+    );
+  });
+});
+
+describe('GET /api/reports/sales-by-cashier', () => {
+  it('returns sales attributed to the cashier', async () => {
+    const response = await request(app).get('/api/reports/sales-by-cashier').set(auth());
+
+    expect(response.body.data).toEqual([
+      {
+        cashierUserId: 'u1',
+        cashierName: 'Alex',
+        orderCount: 2,
+        gross: 100,
+        net: 97.2,
+        avgTicket: 48.6,
+      },
+    ]);
+  });
+});
+
+describe('GET /api/reports/sales-by-location', () => {
+  it('returns sales rolled up per site', async () => {
+    const response = await request(app).get('/api/reports/sales-by-location').set(auth());
+
+    expect(response.body.data).toEqual([
+      { locationId: 'l1', locationName: 'Main', registerCount: 1, orderCount: 2, net: 97.2 },
+    ]);
+  });
+});
+
+describe('GET /api/reports/drawer-variance-by-register', () => {
+  it('returns session counts and variance per register', async () => {
+    const response = await request(app)
+      .get('/api/reports/drawer-variance-by-register')
+      .set(auth());
+
+    expect(response.body.data).toEqual([
+      {
+        registerId: 'r1',
+        displayCode: 'MAIN-01',
+        name: 'Register 1',
+        sessionCount: 1,
+        totalVariance: -5,
+        worstVariance: -5,
+        shortCount: 1,
+      },
+    ]);
+  });
+});
+
+describe('GET /api/reports/no-sale-counts', () => {
+  it('returns the no-sale count per register', async () => {
+    const response = await request(app).get('/api/reports/no-sale-counts').set(auth());
+
+    expect(response.body.data).toEqual([
+      { registerId: 'r1', displayCode: 'MAIN-01', name: 'Register 1', noSaleCount: 3 },
+    ]);
+  });
+});
+
+describe('GET /api/reports/register-hourly', () => {
+  it('refuses without a token', async () => {
+    expect((await request(app).get('/api/reports/register-hourly?registerId=r1')).status).toBe(
+      401
+    );
+  });
+
+  it('refuses a role without reports:read', async () => {
+    getUserByEmail.mockResolvedValue(actor({ orders: { read: true, write: true } }));
+
+    expect(
+      (await request(app).get('/api/reports/register-hourly?registerId=r1').set(auth())).status
+    ).toBe(403);
+  });
+
+  it('requires registerId', async () => {
+    const response = await request(app).get('/api/reports/register-hourly').set(auth());
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+
+  it('does not carry the other reports list filters into the service', async () => {
+    // This report is about one till, so it has no use for locationIds. The
+    // schema deliberately omits them, and zod strips what it does not model -
+    // so the guarantee worth asserting is that nothing reaches the service
+    // claiming to narrow a report it cannot narrow.
+    await request(app)
+      .get('/api/reports/register-hourly?registerId=r1&locationIds=l1')
+      .set(auth());
+
+    expect(getRegisterHourly).toHaveBeenCalledWith(expect.anything(), 'r1');
+    const [range] = getRegisterHourly.mock.calls[0];
+    expect(range).not.toHaveProperty('locationIds');
+  });
+
+  it('returns the hourly series for the given register', async () => {
+    const response = await request(app)
+      .get('/api/reports/register-hourly?registerId=r1')
+      .set(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([{ hour: 9, orderCount: 2, net: 20 }]);
+    expect(getRegisterHourly).toHaveBeenCalledWith(expect.anything(), 'r1');
   });
 });

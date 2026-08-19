@@ -79,6 +79,118 @@ export interface ReturnsByReason {
 }
 
 /**
+ * What a report can be narrowed by, on top of its date range.
+ *
+ * Additive: every query already built accepts `undefined` for this and behaves
+ * exactly as it did before this phase. An empty array is treated the same as
+ * `undefined` — a caller building `?registerIds=` from an emptied multi-select
+ * should get the unfiltered report back, not zero rows.
+ */
+export interface RegisterFilter {
+  registerIds?: string[];
+  locationIds?: string[];
+  cashierUserIds?: string[];
+}
+
+/**
+ * Sales attributed to the physical till that rang them.
+ *
+ * Deliberately an inner join on activity: a register with no orders in range
+ * does not appear at all, active or not. A **retired or disabled** register
+ * that traded during the range still does — nothing here filters on
+ * `registers.status`, on purpose. A report that silently dropped a
+ * decommissioned till would understate the period it claims to cover.
+ */
+export interface SalesByRegister {
+  registerId: string;
+  displayCode: string;
+  name: string;
+  locationId: string;
+  locationName: string;
+  /** fixed | mobile | web | kiosk */
+  type: string;
+  hasCashDrawer: boolean;
+  /** pending | active | disabled | retired */
+  status: string;
+  orderCount: number;
+  gross: number;
+  discounts: number;
+  tax: number;
+  net: number;
+}
+
+/**
+ * Sales attributed to whoever was actually standing at the till.
+ *
+ * `cashier_user_id` is written once, at checkout, from that order's open
+ * `register_shifts` row — never re-derived from whichever shift happens to be
+ * open when the report runs. A shift starting on the same register after the
+ * sale must not repaint it.
+ *
+ * `cashierUserId: 'unknown'` buckets orders that predate migration 016 (the
+ * column is NULL for all history before it), so the per-cashier split still
+ * reconciles to the same total as the unfiltered range instead of quietly
+ * losing pre-migration orders.
+ */
+export interface SalesByCashier {
+  cashierUserId: string;
+  cashierName: string;
+  orderCount: number;
+  gross: number;
+  net: number;
+}
+
+/** Sales rolled up to the site level. `registerCount` counts only registers that actually traded in range. */
+export interface SalesByLocation {
+  locationId: string;
+  locationName: string;
+  registerCount: number;
+  orderCount: number;
+  net: number;
+}
+
+/**
+ * How a register's drawer counts reconciled — the report that catches theft
+ * and counting mistakes.
+ *
+ * Scoped to `status = 'closed'` sessions whose `closed_at` falls in range: a
+ * variance is only known once a session is closed, and an open session's
+ * `variance` column is NULL.
+ */
+export interface DrawerVarianceByRegister {
+  registerId: string;
+  displayCode: string;
+  name: string;
+  sessionCount: number;
+  /** Sum of `counted_cash - expected_cash` across the register's closed sessions in range. */
+  totalVariance: number;
+  /** The most negative variance in the set — the worst single shortfall. `0` when every session in range was on or over. */
+  worstVariance: number;
+  /** Sessions that closed under expected (`variance < 0`). */
+  shortCount: number;
+}
+
+/**
+ * `register_overrides` rows with `action = 'no_sale'` — a drawer opened with
+ * nothing rung up. The single best theft signal a POS can report on, so this
+ * counts only that one action rather than every override ever granted.
+ */
+export interface NoSaleCount {
+  registerId: string;
+  displayCode: string;
+  name: string;
+  noSaleCount: number;
+}
+
+/** One register's trading by hour of its **location's local day**, for staffing decisions. Only hours with at least one order are present. */
+export interface RegisterHourly {
+  /** 0–23, local to the register's location. */
+  hour: number;
+  orderCount: number;
+  net: number;
+}
+
+/**
  * What the audit trail can be narrowed by.
  *
  * `from`/`to` are epoch milliseconds and inclusive, matching {@link ReportRange}

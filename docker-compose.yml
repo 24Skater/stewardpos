@@ -51,6 +51,20 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      # Pin the container clock to UTC.
+      #
+      # Postgres `TIMESTAMP WITHOUT TIME ZONE` columns carry no offset, and
+      # node-postgres both serialises a JS Date into one and parses one back
+      # using the *process* timezone. Those two shifts cancel out, so a
+      # round-trip through the app looks correct on any host - right up until a
+      # client-written value is compared against something Postgres computed
+      # itself (NOW(), EXTRACT), at which point they disagree by the offset. A
+      # register's hourly sales landed four hours out exactly this way.
+      #
+      # Pinning UTC removes the ambiguity rather than relying on two wrongs
+      # continuing to cancel. Anything reading this database with another tool
+      # then sees the instants the application meant.
+      TZ: UTC
       # Server
       # Development, because that is what this stack is.
       #

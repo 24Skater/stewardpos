@@ -1,3 +1,25 @@
+/** The register/location/cashier narrowing a report query can carry, on top of its range. */
+interface ReportFilter {
+  registerIds?: string[];
+  locationIds?: string[];
+  cashierUserIds?: string[];
+}
+
+/**
+ * Normalise a filter's id lists into stable, order-independent key parts.
+ *
+ * Sorted and joined rather than spread into the key array as-is: TanStack's key
+ * hash treats `['a', 'b']` and `['b', 'a']` as different queries, and a
+ * multi-select that happens to re-render its selection in a different order
+ * must not look like a new filter to the cache. An empty or unset list becomes
+ * `''`, the same key part an absent filter produces, so "no filter" is one key
+ * regardless of which of the three optional fields the caller omitted.
+ */
+function filterKeyParts(filter?: ReportFilter): readonly [string, string, string] {
+  const norm = (ids?: string[]) => (ids && ids.length > 0 ? [...ids].sort().join(',') : '');
+  return [norm(filter?.registerIds), norm(filter?.locationIds), norm(filter?.cashierUserIds)] as const;
+}
+
 /**
  * Query-key factory.
  *
@@ -25,11 +47,29 @@ export const queryKeys = {
   reports: {
     all: ['reports'] as const,
     /**
-     * Keyed on the range, so switching period re-fetches rather than showing
-     * last period's figures under this period's heading.
+     * Keyed on both the range and the filter, so switching either one
+     * re-fetches rather than showing last period's — or last filter's —
+     * figures under this heading. Every report key below follows the same
+     * shape for the same reason.
      */
-    sales: (range: { from?: string; to?: string }) =>
-      ['reports', 'sales', range.from ?? '', range.to ?? ''] as const,
+    sales: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'sales', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    registers: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'registers', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    cashiers: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'cashiers', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    locations: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'locations', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    drawerVariance: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'drawerVariance', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    noSales: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'noSales', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    /** The two loss-prevention reports fetched together — see `useLossPreventionReport`. */
+    lossPrevention: (range: { from?: string; to?: string } & ReportFilter) =>
+      ['reports', 'lossPrevention', range.from ?? '', range.to ?? '', ...filterKeyParts(range)] as const,
+    /** Keyed on the register too — an hourly breakdown is per-register by definition. */
+    hourly: (registerId: string, range: { from?: string; to?: string }) =>
+      ['reports', 'hourly', registerId, range.from ?? '', range.to ?? ''] as const,
   },
   registers: {
     all: ['registers'] as const,
