@@ -55,7 +55,17 @@ export const returnsApi = {
   listByOrder: (orderId: string) => apiClient.get<Return[]>(`/api/returns/order/${orderId}`),
   listByCustomer: (customerId: string) =>
     apiClient.get<Return[]>(`/api/returns/customer/${customerId}`),
-  create: (body: CreateReturnRequest) => apiClient.post<Return>('/api/returns', body),
+  /**
+   * `overrideToken` carries a manager-override grant as `X-Override-Token`,
+   * required unconditionally when `returnType: 'void'` — see
+   * `OverridePrompt.tsx` and `backend/src/api/routes/returns.ts`.
+   */
+  create: (body: CreateReturnRequest, overrideToken?: string) =>
+    apiClient.post<Return>(
+      '/api/returns',
+      body,
+      overrideToken ? { headers: { 'X-Override-Token': overrideToken } } : undefined
+    ),
   setStatus: (id: string, status: ReturnStatus, internalNotes?: string) =>
     apiClient.put<Return>(`/api/returns/${id}/status`, { status, internalNotes }),
   processRefund: (

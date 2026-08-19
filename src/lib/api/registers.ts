@@ -209,6 +209,70 @@ export interface CurrentShiftResult {
 }
 
 /**
+ * Manager overrides (`backend/src/services/registerOverrides.ts`, migration
+ * 019): a supervisor authorising exactly one privileged action at a till
+ * without touching the cashier's shift. Mirrors the backend's action
+ * vocabulary exactly — see `OverrideAction` there.
+ */
+export type OverrideAction = 'discount_approval' | 'drawer_variance' | 'void' | 'no_sale';
+
+export interface RequestOverrideRequest {
+  action: OverrideAction;
+  /** The supervisor's PIN. Never logged, never rendered — see `OverridePrompt.tsx`. */
+  pin: string;
+  reason?: string;
+}
+
+/**
+ * A freshly minted override grant (`POST /:id/overrides`).
+ *
+ * `token` travels as `X-Override-Token` on the retried request — see
+ * `readOverrideToken` in `backend/src/api/middleware/registerContext.ts`.
+ * Shown/usable exactly once: the backend only ever stores a hash of it, and
+ * it is consumed (or expires in 90 seconds) the moment it is spent.
+ */
+export interface RequestOverrideResult {
+  token: string;
+  /** Epoch ms — ninety seconds from issuance. Short on purpose; see `OverridePrompt.tsx`. */
+  expiresAt: number;
+  action: OverrideAction;
+}
+
+/**
+ * One row of the override log (`GET /api/registers/overrides`) — the safe
+ * projection the backend returns, never the grant hash. Serves as both "what
+ * was authorised" and "what it was used for": `consumedAt`/`entity`/
+ * `entityId`/`beforeValue`/`afterValue` are all null until the grant is
+ * actually spent, and stay null forever on a grant a supervisor declined or
+ * that simply expired unused — that is a signal worth seeing, not a gap in
+ * the data.
+ */
+export interface RegisterOverride {
+  id: string;
+  registerId: string;
+  shiftId: string | null;
+  approverUserId: string;
+  requestedByUserId: string | null;
+  action: OverrideAction;
+  grantPrefix: string;
+  expiresAt: number;
+  consumedAt: number | null;
+  entity: string | null;
+  entityId: string | null;
+  beforeValue: string | null;
+  afterValue: string | null;
+  reason: string | null;
+  createdAt: number;
+}
+
+export interface RegisterOverrideQuery {
+  limit?: number;
+  offset?: number;
+  registerId?: string;
+  approverUserId?: string;
+}
+
+/**
  * Register endpoints (`backend/src/api/routes/registers.ts`).
  *
  * Registers are never deleted, only retired — permanently, since a retired
@@ -263,6 +327,26 @@ export const registersApi = {
   /** Who is on this register right now, or `null`. Used to decide whether to show the lock screen. */
   currentShift: (id: string) =>
     apiClient.get<CurrentShiftResult | null>(`/api/registers/${id}/shifts/current`),
+
+  /**
+   * Request a manager-override grant for one action on this till
+   * (`POST /:id/overrides`). Authenticates as the device
+   * (`X-Register-Token`), same as `startShift` — this runs from the till,
+   * not a manager's own session. A failure carries a stable `code` on the
+   * thrown `ApiClientError`'s `body` — `PIN_INVALID` or `PIN_LOCKED`
+   * (`backend/src/api/middleware/registerErrorCodes.ts`) — branch on that,
+   * never on the message text. See `OverridePrompt.tsx`.
+   */
+  requestOverride: (id: string, body: RequestOverrideRequest) =>
+    apiClient.post<RequestOverrideResult>(`/api/registers/${id}/overrides`, body),
+
+  /**
+   * The override log (`GET /api/registers/overrides`) — every grant ever
+   * issued in the org, spent or not, newest first. Paginated the same way
+   * `adminApi.audit` is. See `AdminOverrides.tsx`.
+   */
+  overrides: (query?: RegisterOverrideQuery) =>
+    apiClient.getList<RegisterOverride[]>(`/api/registers/overrides${qs(query)}`),
 };
 
 /**
