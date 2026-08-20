@@ -110,6 +110,27 @@ describe('getAllProducts', () => {
   });
 });
 
+describe('variant ordering', () => {
+  it('returns a product variants in a stable order, and the same one after an edit', async () => {
+    // json_agg has no inherent order, and an UPDATE moves a row in the heap.
+    // Unordered, a product's variants silently reshuffle between page loads and
+    // again after every stock edit - and three tests in this file quietly
+    // depended on the order, failing about one run in five.
+    const before = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
+    const order = before.map((v) => v.size);
+
+    // Sorted by size, then colour, then sku.
+    expect(order).toEqual([...order].sort());
+
+    const large = before.find((v) => v.size === 'Large')!;
+    await h.adapter.updateVariant(ids[0], String(large.id), { stock: (large.stock as number) + 1 });
+    await h.adapter.updateVariant(ids[0], String(large.id), { stock: large.stock as number });
+
+    const after = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
+    expect(after.map((v) => v.size)).toEqual(order);
+  });
+});
+
 describe('updateVariant', () => {
   it('COALESCEs: a stock correction leaves size, SKU, and barcode alone', async () => {
     const before = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
@@ -123,8 +144,13 @@ describe('updateVariant', () => {
   });
 
   it('sets a per-variant low-stock threshold and keeps it through a stock edit', async () => {
+    // Named, not indexed. `variants[0]` used to pick whichever row Postgres
+    // happened to return first, so this test would sometimes set the stock of
+    // *Large* to 41 - and the two low-stock tests below, which depend on Large
+    // sitting at 7, failed roughly one run in five with no code change.
     const variants = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
-    const id = String(variants[0].id);
+    const small = variants.find((v) => v.size === 'Small')!;
+    const id = String(small.id);
 
     await h.adapter.updateVariant(ids[0], id, { lowStockThreshold: 12 });
     await h.adapter.updateVariant(ids[0], id, { stock: 41 });
@@ -137,7 +163,7 @@ describe('updateVariant', () => {
     // COALESCE alone reads every null as "not mentioned", so an override could
     // be set and then never removed. The CASE distinguishes the two.
     const variants = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
-    const id = String(variants[0].id);
+    const id = String(variants.find((v) => v.size === 'Small')!.id);
 
     await h.adapter.updateVariant(ids[0], id, { lowStockThreshold: 9 });
     await h.adapter.updateVariant(ids[0], id, { lowStockThreshold: null });
@@ -148,8 +174,9 @@ describe('updateVariant', () => {
 
   it('returns null for a variant that belongs to a different product', async () => {
     const variants = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
+    const small = variants.find((v) => v.size === 'Small')!;
 
-    expect(await h.adapter.updateVariant(ids[1], String(variants[0].id), { stock: 1 })).toBeNull();
+    expect(await h.adapter.updateVariant(ids[1], String(small.id), { stock: 1 })).toBeNull();
   });
 });
 
@@ -193,8 +220,12 @@ describe('getLowStockVariants', () => {
   it('excludes disabled variants', async () => {
     // They are not for sale, so they cannot run out, and including them buries
     // the real shortages under discontinued ones.
+    //
+    // Found by size rather than by stock: matching on `stock === 7` meant this
+    // threw an unhelpful TypeError whenever an earlier test had moved that
+    // number onto a different row.
     const variants = (await h.adapter.getProductById(ids[0]))!.variants as Record<string, unknown>[];
-    const large = variants.find((v) => v.stock === 7)!;
+    const large = variants.find((v) => v.size === 'Large')!;
 
     await h.adapter.updateVariant(ids[0], String(large.id), { enabled: false });
     const low = await h.adapter.getLowStockVariants(10);

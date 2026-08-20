@@ -571,6 +571,13 @@ export class PostgresAdapter {
                     'enabled', pv.enabled,
                     'lowStockThreshold', pv.low_stock_threshold
                   )
+                  -- Deterministic, because json_agg has no inherent order and
+                  -- an UPDATE moves a row in the heap: without this a product's
+                  -- variants silently reorder between page loads, and again
+                  -- after any stock edit. Ordered by what a person reads -
+                  -- size, then colour - with sku as the tiebreak so two
+                  -- otherwise-identical variants still sort stably.
+                  ORDER BY pv.size, pv.color, pv.sku
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
          LEFT JOIN product_variants pv ON p.id = pv.product_id
@@ -617,6 +624,13 @@ export class PostgresAdapter {
                     'enabled', pv.enabled,
                     'lowStockThreshold', pv.low_stock_threshold
                   )
+                  -- Deterministic, because json_agg has no inherent order and
+                  -- an UPDATE moves a row in the heap: without this a product's
+                  -- variants silently reorder between page loads, and again
+                  -- after any stock edit. Ordered by what a person reads -
+                  -- size, then colour - with sku as the tiebreak so two
+                  -- otherwise-identical variants still sort stably.
+                  ORDER BY pv.size, pv.color, pv.sku
                 ) FILTER (WHERE pv.id IS NOT NULL) as variants
          FROM products p
          LEFT JOIN product_variants pv ON p.id = pv.product_id
