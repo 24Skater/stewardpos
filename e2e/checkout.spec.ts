@@ -1,4 +1,4 @@
-import { test, expect, request as playwrightRequest } from '@playwright/test';
+import { test, expect, request as playwrightRequest, type Page } from '@playwright/test';
 
 /**
  * The register completing a sale.
@@ -24,6 +24,23 @@ async function apiContext() {
   return { context, headers: { Authorization: `Bearer ${token}` } };
 }
 
+/**
+ * Add the first product that can actually be sold.
+ *
+ * Not simply the first tile: an out-of-stock product still renders, as a tile
+ * with `aria-disabled="true"` that never becomes clickable, so a blind
+ * `.first()` waits the full timeout and then fails with "element not stable"
+ * rather than saying what is wrong. Which product sits first depends on the
+ * catalog and on what previous runs have sold, so this picked a dead tile as
+ * soon as one product ran out.
+ */
+async function addFirstSellableProduct(page: Page): Promise<void> {
+  const sellable = page.locator('.grid').first().locator('> *:not([aria-disabled="true"])');
+
+  await expect(sellable.first()).toBeVisible({ timeout: 15_000 });
+  await sellable.first().click();
+}
+
 test.describe('POS checkout', () => {
   test('completes a cash sale and records it server-side', async ({ page }) => {
     const { context, headers } = await apiContext();
@@ -35,7 +52,7 @@ test.describe('POS checkout', () => {
     // is what makes this kind of spec flaky.
     await page.waitForSelector('.grid > *', { timeout: 15_000 });
 
-    await page.locator('.grid').first().locator('> *').first().click();
+    await addFirstSellableProduct(page);
     await page.getByRole('button', { name: /^Checkout|^Complete Sale/i }).first().click();
 
     const tendered = page.locator('#cashTendered');
@@ -75,7 +92,7 @@ test.describe('POS checkout', () => {
 
     await page.goto('/pos');
     await page.waitForSelector('.grid > *', { timeout: 15_000 });
-    await page.locator('.grid').first().locator('> *').first().click();
+    await addFirstSellableProduct(page);
     await page.getByRole('button', { name: /^Checkout|^Complete Sale/i }).first().click();
 
     const tendered = page.locator('#cashTendered');
