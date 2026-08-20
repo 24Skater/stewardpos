@@ -159,10 +159,31 @@ test.describe('returns', () => {
     //
     // Which state a return lands in depends on the store's approval settings,
     // so the assertion follows the rule rather than assuming an outcome.
-    const stockAfterReturn = await variantStock(api, product.id, variant.id);
-    const restockable = created.status === 'approved' || created.status === 'completed';
-
-    expect(stockAfterReturn).toBe(restockable ? stockAfterSale + 1 : stockAfterSale);
+    //
+    // Polled, not read once. Creating a return, approving it, and restocking it
+    // are three separate requests (`POST /api/returns`, then the approval, then
+    // `POST /api/returns/:id/restock`). Reading the status and the stock as two
+    // independent snapshots let the status settle to `approved` while the
+    // restock it implies had not landed yet — the assertion then demanded a
+    // unit back that was still in flight, and this test failed about one full
+    // run in five while passing every time in isolation.
+    //
+    // What is actually being asserted is that the two agree, so wait for them
+    // to agree rather than catching them mid-step.
+    await expect
+      .poll(
+        async () => {
+          const [current] = await returnsForOrder(api, order.id);
+          const stock = await variantStock(api, product.id, variant.id);
+          const restockable = current.status === 'approved' || current.status === 'completed';
+          const expected = restockable ? stockAfterSale + 1 : stockAfterSale;
+          return `${current.status}: stock ${stock}, expected ${expected}`;
+        },
+        { timeout: 20_000 }
+      )
+      // The backreference is the assertion: whatever the status turned out to
+      // be, the stock has to match what that status implies.
+      .toMatch(/stock (\d+), expected \1$/);
 
     await api.context.dispose();
   });

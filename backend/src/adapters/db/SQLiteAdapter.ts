@@ -500,7 +500,12 @@ export class SQLiteAdapter {
       // Get variants for each product
       const productsWithVariants = products.map((product) => {
         const variants = this.db
-          .prepare('SELECT * FROM product_variants WHERE product_id = ?')
+          .prepare(
+          // Ordered to match the Postgres side: a product's variants must
+          // come back in the same order every time, and the same order on
+          // both adapters, or a list reshuffles itself between reads.
+          'SELECT * FROM product_variants WHERE product_id = ? ORDER BY size, color, sku'
+        )
           .all(product.id) as DbRow[];
 
         return {
@@ -535,7 +540,12 @@ export class SQLiteAdapter {
       }
 
       const variants = this.db
-        .prepare('SELECT * FROM product_variants WHERE product_id = ?')
+        .prepare(
+          // Ordered to match the Postgres side: a product's variants must
+          // come back in the same order every time, and the same order on
+          // both adapters, or a list reshuffles itself between reads.
+          'SELECT * FROM product_variants WHERE product_id = ? ORDER BY size, color, sku'
+        )
         .all(id) as DbRow[];
 
       return {
