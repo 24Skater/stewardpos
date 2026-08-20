@@ -19,6 +19,20 @@ export interface CallerRegister {
   requireSignIn: boolean;
   /** Whether this register may open its drawer with no sale attached — migration 015, unused until now. */
   canOpenDrawerNoSale: boolean;
+  /**
+   * The card reader physically attached to this till, and optionally the
+   * provider it speaks — both from migration 015, unused until now.
+   *
+   * Merchant credentials (the secret key, the access token) stay org-wide,
+   * because they identify the *account*. A device id identifies a *machine*,
+   * and three tills in a shop have three of them. Reading one global device id
+   * for every register is why several registers could never take cards at once.
+   *
+   * Null means "use whatever the store settings say", which is what every
+   * existing single-register install does.
+   */
+  terminalProvider: string | null;
+  terminalDeviceId: string | null;
 }
 
 function toCallerRegister(register: Record<string, unknown>): CallerRegister {
@@ -31,6 +45,8 @@ function toCallerRegister(register: Record<string, unknown>): CallerRegister {
     status: String(register.status),
     requireSignIn: Boolean(register.requireSignIn),
     canOpenDrawerNoSale: Boolean(register.canOpenDrawerNoSale),
+    terminalProvider: (register.terminalProvider as string | null) ?? null,
+    terminalDeviceId: (register.terminalDeviceId as string | null) ?? null,
   };
 }
 

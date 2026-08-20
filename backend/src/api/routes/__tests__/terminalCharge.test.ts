@@ -18,6 +18,8 @@ const createTerminalTransaction = vi.fn();
 const getTerminalTransactionByChargeId = vi.fn();
 const updateTerminalTransactionByChargeId = vi.fn();
 const getSettings = vi.fn();
+const getRegisters = vi.fn();
+const getRegisterById = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -27,6 +29,8 @@ vi.mock('../../../services/database', () => ({
       getTerminalTransactionByChargeId,
       updateTerminalTransactionByChargeId,
       getSettings,
+      getRegisters,
+      getRegisterById,
     }),
   },
 }));
@@ -52,6 +56,21 @@ function actor(permissions: Record<string, unknown>) {
 
 const auth = () => ({ Authorization: `Bearer ${token()}` });
 
+const UNBOUND_REGISTER = {
+  id: 'reg-1',
+  orgId: '00000000-0000-0000-0000-000000000001',
+  displayCode: 'MAIN-01',
+  registerNumber: 1,
+  status: 'active',
+  hasCashDrawer: true,
+  acceptsCash: true,
+  canRefund: true,
+  requireSignIn: false,
+  canOpenDrawerNoSale: false,
+  terminalProvider: null,
+  terminalDeviceId: null,
+};
+
 const charge = (body: Record<string, unknown> = {}) =>
   request(app).post('/api/terminal/charge').set(auth()).send({ amount: 1250, ...body });
 
@@ -66,6 +85,11 @@ beforeEach(() => {
     status: 'approved',
     amount: 1250,
   });
+  // The caller's till, resolved for every terminal call so its own reader can
+  // be used. Unbound by default, which is what a single-register install looks
+  // like.
+  getRegisters.mockResolvedValue([UNBOUND_REGISTER]);
+  getRegisterById.mockResolvedValue(UNBOUND_REGISTER);
 });
 
 describe('POST /api/terminal/charge', () => {
