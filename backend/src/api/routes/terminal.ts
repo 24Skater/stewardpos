@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
+import { resolveCallerRegister, type CallerRegister } from '../middleware/registerContext';
 import {
   ValidationError,
   UnauthorizedError,
@@ -25,16 +26,52 @@ const chargeSchema = z.object({
   description: z.string().optional(),
 });
 
-async function getAdapter(dbAdapter: ReturnType<typeof db.getAdapter>) {
+/**
+ * Which reader field a provider actually reads its device id from.
+ *
+ * A register stores one `terminal_device_id` because it has one reader; each
+ * vendor SDK just calls it something different.
+ */
+const DEVICE_FIELD_BY_PROVIDER: Record<string, keyof TerminalConfig> = {
+  stripe: 'stripeReaderId',
+  square: 'squareDeviceId',
+  clover: 'cloverDeviceId',
+  verifone: 'verifoneTerminalId',
+};
+
+/**
+ * Build the terminal adapter for the till making the request.
+ *
+ * Merchant credentials stay org-wide — a secret key or access token identifies
+ * the *account*, and every register in a shop bills to the same one. What is
+ * per-register is the **device**: three tills have three readers, and until now
+ * a single global device id meant every register tried to drive the same one.
+ * Two lanes could not take a card at the same time.
+ *
+ * A register with no binding falls back to the store settings, which is exactly
+ * what every existing single-register install already does — so this is
+ * additive, not a migration.
+ */
+async function getAdapter(
+  dbAdapter: ReturnType<typeof db.getAdapter>,
+  register?: CallerRegister
+) {
   const settings = await dbAdapter.getSettings();
   const config = (settings?.config as Record<string, unknown>) || {};
   const paymentMethods = config.paymentMethods as Record<string, unknown> | undefined;
   const card = paymentMethods?.card as Record<string, unknown> | undefined;
-  const provider = (card?.provider as string) || 'generic';
+  const provider = register?.terminalProvider || (card?.provider as string) || 'generic';
   const creds = (config.terminalCredentials || {}) as Partial<TerminalConfig>;
 
+  // The register's reader wins over the store-wide one when it has been bound.
+  const deviceField = DEVICE_FIELD_BY_PROVIDER[provider];
+  const binding: Partial<TerminalConfig> =
+    register?.terminalDeviceId && deviceField
+      ? { [deviceField]: register.terminalDeviceId }
+      : {};
+
   try {
-    return { terminal: createTerminalAdapter({ provider, ...creds }), provider };
+    return { terminal: createTerminalAdapter({ provider, ...creds, ...binding }), provider };
   } catch (error) {
     // A store that selected a provider and has not saved its credentials yet is
     // misconfigured, not broken. 503 with the reason, rather than the 500 the
@@ -53,7 +90,8 @@ router.post('/charge', requirePermission('orders', 'write'), async (req: AuthReq
 
     const { amount, currency, readerId, description } = parsed.data;
     const dbAdapter = db.getAdapter();
-    const { terminal, provider } = await getAdapter(dbAdapter);
+    const register = await resolveCallerRegister(req);
+    const { terminal, provider } = await getAdapter(dbAdapter, register);
 
     const startedAt = Date.now();
     const result = await terminal.createCharge(amount, currency, { readerId, description });
@@ -79,7 +117,8 @@ router.get('/status/:chargeId', requirePermission('orders', 'read'), async (req:
   try {
     const { chargeId } = req.params;
     const dbAdapter = db.getAdapter();
-    const { terminal } = await getAdapter(dbAdapter);
+    const register = await resolveCallerRegister(req);
+    const { terminal } = await getAdapter(dbAdapter, register);
 
     const result = await terminal.getChargeStatus(chargeId);
 
@@ -99,7 +138,8 @@ router.post('/cancel/:chargeId', requirePermission('orders', 'write'), async (re
   try {
     const { chargeId } = req.params;
     const dbAdapter = db.getAdapter();
-    const { terminal } = await getAdapter(dbAdapter);
+    const register = await resolveCallerRegister(req);
+    const { terminal } = await getAdapter(dbAdapter, register);
 
     await terminal.cancelCharge(chargeId);
     await dbAdapter.updateTerminalTransactionByChargeId(chargeId, { status: 'cancelled' });
@@ -118,7 +158,8 @@ router.get('/readers', async (req: AuthRequest, res: Response, next: NextFunctio
       throw new UnauthorizedError('Admin access required');
     }
     const dbAdapter = db.getAdapter();
-    const { terminal } = await getAdapter(dbAdapter);
+    const register = await resolveCallerRegister(req);
+    const { terminal } = await getAdapter(dbAdapter, register);
     const readers = await terminal.listReaders();
     res.json({ success: true, data: readers });
   } catch (error) {
@@ -133,7 +174,8 @@ router.post('/test', async (req: AuthRequest, res: Response, next: NextFunction)
       throw new UnauthorizedError('Admin access required');
     }
     const dbAdapter = db.getAdapter();
-    const { terminal } = await getAdapter(dbAdapter);
+    const register = await resolveCallerRegister(req);
+    const { terminal } = await getAdapter(dbAdapter, register);
     const result = await terminal.testConnection();
     res.json({ success: result.success, data: result });
   } catch (error) {

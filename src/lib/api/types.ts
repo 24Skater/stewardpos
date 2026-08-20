@@ -184,6 +184,16 @@ export interface Order {
   customerPhone?: string;
   cardTransactionId?: string;
   cardAuthCode?: string;
+  /**
+   * Which till rang this sale and who was on it, in human-readable form.
+   *
+   * Populated only where the read joins them — a single order fetched for a
+   * receipt — and null on an order predating registers or rung before PIN
+   * sign-in existed. A receipt that cannot say which lane produced it is
+   * exactly the receipt a customer brings back to be argued about.
+   */
+  registerDisplayCode?: string | null;
+  cashierName?: string | null;
   /** Cash handed over, and what was given back. Null on non-cash tenders. */
   amountTendered?: number | null;
   changeGiven?: number | null;

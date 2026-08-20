@@ -16,6 +16,8 @@ import jwt from 'jsonwebtoken';
  */
 const getUserByEmail = vi.fn();
 const getSettings = vi.fn();
+const getRegisters = vi.fn();
+const getRegisterById = vi.fn();
 const createTerminalTransaction = vi.fn();
 const updateTerminalTransactionByChargeId = vi.fn();
 
@@ -24,6 +26,8 @@ vi.mock('../../../services/database', () => ({
     getAdapter: () => ({
       getUserByEmail,
       getSettings,
+      getRegisters,
+      getRegisterById,
       createTerminalTransaction,
       updateTerminalTransactionByChargeId,
     }),
@@ -51,10 +55,29 @@ function person(systemRole: string) {
 
 const auth = () => ({ Authorization: `Bearer ${token()}` });
 
+const TILL = {
+  id: 'reg-1',
+  orgId: '00000000-0000-0000-0000-000000000001',
+  displayCode: 'MAIN-01',
+  registerNumber: 1,
+  status: 'active',
+  hasCashDrawer: true,
+  acceptsCash: true,
+  canRefund: true,
+  requireSignIn: false,
+  canOpenDrawerNoSale: false,
+  terminalProvider: null,
+  terminalDeviceId: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   getUserByEmail.mockResolvedValue(person('admin'));
   getSettings.mockResolvedValue({ config: {} });
+  // Terminal routes now resolve the caller's till so its own card reader can be
+  // used; unbound here, which is what a single-register install looks like.
+  getRegisters.mockResolvedValue([TILL]);
+  getRegisterById.mockResolvedValue(TILL);
   createTerminalTransaction.mockResolvedValue({ id: 't1' });
   updateTerminalTransactionByChargeId.mockResolvedValue(undefined);
 });
