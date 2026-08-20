@@ -93,6 +93,10 @@ export function mapOrderRow(order: DbRow): DbRow {
     changeGiven: order.change_given ?? null,
     registerId: order.register_id ?? null,
     cashierUserId: order.cashier_user_id ?? null,
+    // Present only where the read joined them; a receipt prints these, a list
+    // does not need them.
+    registerDisplayCode: order.register_display_code ?? null,
+    cashierName: order.cashier_name ?? null,
     drawerSessionId: order.drawer_session_id ?? null,
     overrideByUserId: order.override_by_user_id ?? null,
   };
@@ -903,7 +907,18 @@ export class SQLiteAdapter {
   async getOrderById(id: string): Promise<any | null> {
     try {
       const order = this.db
-        .prepare('SELECT * FROM orders WHERE id = ?')
+        // Joined so a receipt can name the till and the cashier rather than
+        // print two UUIDs. LEFT JOINs: an order predating registers, or one
+        // rung before PIN sign-in existed, still has to render.
+        .prepare(
+          `SELECT o.*,
+                  r.display_code AS register_display_code,
+                  u.name AS cashier_name
+           FROM orders o
+           LEFT JOIN registers r ON r.id = o.register_id
+           LEFT JOIN users u ON u.id = o.cashier_user_id
+           WHERE o.id = ?`
+        )
         .get(id) as any;
 
       if (!order) {

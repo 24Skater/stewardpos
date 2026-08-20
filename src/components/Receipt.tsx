@@ -20,6 +20,11 @@ export default function Receipt({ order, orderItems, settings }: ReceiptProps) {
       <div className="mb-4 text-xs">
         <p>Order: {order.id}</p>
         <p>Date: {new Date(order.createdAt).toLocaleString()}</p>
+        {/* Which lane and who served, when the order carries them. An order
+            predating registers, or rung before PIN sign-in existed, simply
+            omits the line rather than printing "Register: null". */}
+        {order.registerDisplayCode ? <p>Register: {order.registerDisplayCode}</p> : null}
+        {order.cashierName ? <p>Served by: {order.cashierName}</p> : null}
         <p>Payment: {order.paymentMethod}</p>
       </div>
 

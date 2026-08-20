@@ -15,6 +15,7 @@ Everything an operator needs, in the order they need it.
 
 | Guide | What it covers |
 |-------|----------------|
+| [register-management.md](./register-management.md) | Running more than one till: locations, pairing, cashier PINs, manager overrides, loss prevention |
 | [api-keys.md](./api-keys.md) | Machine access: scopes, storage, revocation |
 | [component-management.md](./component-management.md) | Managing the UI component set |
 | [demo.md](./demo.md) | The demo profile, and how it differs from a real install |
