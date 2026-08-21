@@ -67,7 +67,29 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  /**
+   * Every header the client is allowed to send cross-origin.
+   *
+   * This list must name every custom header the app actually reads, or the
+   * browser blocks the request at preflight before it reaches a route. It
+   * omitted the register headers, and because `api-client.ts` attaches
+   * `X-Register-Id` to *every* request once a till has been selected, that
+   * broke sign-in itself for any origin not served through the same proxy as
+   * the API — the preflight for `POST /api/auth/login` was refused over a
+   * header the login route never even looks at.
+   *
+   * Keep it in step with what the middleware reads: `X-Register-Id` and
+   * `X-Register-Token` (`registerContext.ts`), `X-Override-Token`
+   * (`registerContext.ts`), and `X-Api-Key` (`auth.ts`).
+   */
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Register-Id',
+    'X-Register-Token',
+    'X-Override-Token',
+    'X-Api-Key',
+  ],
 }));
 
 // Only when configured: see the note on `trustProxy` in config. Rate limiting
