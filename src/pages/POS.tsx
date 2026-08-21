@@ -41,7 +41,7 @@ import {
   receiptLinesFrom as receiptLinesOf,
   toDiscountRequests as discountRequestsOf,
 } from "@/lib/register-math";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet, LogOut, UserRound } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet, LogOut, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import CashDrawerDialog from "@/components/CashDrawerDialog";
@@ -1116,15 +1116,6 @@ export default function POS() {
             >
               <LayoutGrid className="w-4 h-4 mr-1" />
               Inventory
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => navigate('/reports')}
-              className="border-border"
-              size="sm"
-            >
-              <FileBarChart className="w-4 h-4 mr-1" />
-              Reports
             </Button>
             <Button 
               variant="outline" 
