@@ -271,15 +271,15 @@ export async function exportSalesSummaryToPDF(data: SalesSummaryExport, settings
 }
 
 /** The flat rows a single-file CSV carries: the totals sheet. */
-export function exportSalesSummaryToCSV(data: SalesSummaryExport) {
-  exportToCSV(
+export function exportSalesSummaryToCSV(data: SalesSummaryExport): boolean {
+  return exportToCSV(
     generateSalesSummaryReport(data).totals,
     `sales-summary-${isoDay(data.summary.from)}-to-${isoDay(data.summary.to)}.csv`
   );
 }
 
-export async function exportSalesSummaryToExcel(data: SalesSummaryExport) {
-  await exportToExcel(
+export async function exportSalesSummaryToExcel(data: SalesSummaryExport): Promise<boolean> {
+  return exportToExcel(
     salesSummarySheets(data),
     `sales-summary-${isoDay(data.summary.from)}-to-${isoDay(data.summary.to)}.xlsx`
   );
