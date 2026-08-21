@@ -53,3 +53,11 @@ export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';
  * finely than that from the outside.
  */
 export const OVERRIDE_REQUIRED = 'OVERRIDE_REQUIRED';
+
+/**
+ * A till session outlived the shift that opened it — the cashier signed out,
+ * went idle, was superseded, or the register was revoked. Distinguished from an
+ * ordinary 401 so the terminal returns to its PIN pad rather than to the login
+ * screen, which a cashier has no password for.
+ */
+export const SHIFT_ENDED = 'SHIFT_ENDED';
