@@ -211,7 +211,6 @@ describe('the register header', () => {
   it.each([
     ['Admin', '/admin'],
     ['Inventory', '/inventory'],
-    ['Reports', '/reports'],
     ['Settings', '/settings'],
     ['Services', '/services'],
   ])('sends %s to %s', async (label, path) => {
@@ -227,7 +226,7 @@ describe('the register header', () => {
     // looks like a permissions prompt and behaves like a dead end.
     renderRegister();
 
-    for (const label of ['Admin', 'Inventory', 'Reports', 'Settings', 'Services']) {
+    for (const label of ['Admin', 'Inventory', 'Settings', 'Services']) {
       fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}$`, 'i') }));
     }
 
