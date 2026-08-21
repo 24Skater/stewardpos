@@ -6,6 +6,7 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
+import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
 
 const router = Router();
@@ -54,20 +55,14 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     // Update last login
     await adapter.updateUserLastLogin(String(user.id));
 
-    // Generate JWT token
-    // @ts-expect-error - expiresIn type compatibility
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        roleIds: user.roleIds,
-        // Carried so a consumer can read the tenant without a lookup. The
-        // middleware still prefers the stored value; see there for why.
-        orgId: user.orgId ?? DEFAULT_ORG_ID,
+    const { token, expiresIn } = mintSession({
+      user: {
+        id: String(user.id),
+        email: String(user.email),
+        roleIds: (user.roleIds as string[]) ?? [],
+        orgId: user.orgId as string | undefined,
       },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
+    });
 
     logger.info(`User logged in: ${email}`);
 
@@ -80,7 +75,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         // Deployed without JWT_EXPIRES_IN the server signs for 24h, so that
         // assumption left the client sitting on a dead token for six days,
         // never refreshing, 401ing on every call. Say it explicitly instead.
-        expiresIn: config.jwt.expiresIn,
+        expiresIn,
         user: {
           id: user.id,
           email: user.email,
