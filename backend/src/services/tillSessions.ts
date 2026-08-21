@@ -41,16 +41,18 @@ export interface MintSessionInput {
 export function mintSession(input: MintSessionInput): { token: string; expiresIn: string } {
   const expiresIn = input.maxAgeSeconds ? `${input.maxAgeSeconds}s` : config.jwt.expiresIn;
 
-  // jsonwebtoken's SignOptions type narrows `expiresIn` to its own StringValue
-  // union, which a plain `string` doesn't satisfy even though the runtime
-  // accepts one (e.g. "24h", "1800s") — the same mismatch the route this
-  // replaces used to carry as a `@ts-expect-error`. Asserting the type here,
-  // once, keeps that suppression out of application code.
+  // jsonwebtoken's SignOptions type narrows `expiresIn` to `@types/ms`'s
+  // StringValue union, which a plain `string` doesn't satisfy even though the
+  // runtime accepts one (e.g. "24h", "1800s") — the same mismatch the route
+  // this replaces used to carry as a `@ts-expect-error`. Asserting the type
+  // here, once, keeps that suppression out of application code.
   const token = jwt.sign(
     {
       id: input.user.id,
       email: input.user.email,
       roleIds: input.user.roleIds,
+      // Carried so a consumer can read the tenant without a lookup. The
+      // middleware still prefers the stored value; see there for why.
       orgId: input.user.orgId ?? DEFAULT_ORG_ID,
       ...(input.shiftId ? { shiftId: input.shiftId } : {}),
       ...(input.registerId ? { registerId: input.registerId } : {}),
