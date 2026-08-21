@@ -51,8 +51,8 @@ Integration tests under `backend/src/adapters/db/__tests__/integration/` refuse 
 |---|---|
 | `backend/src/services/tillSessions.ts` | Minting till JWTs and resolving their claims. The one place a till session is created. |
 | `backend/src/api/routes/till.ts` | `POST /api/auth/till` and `POST /api/auth/till/assume`. Thin handlers over the service. |
-| `backend/src/api/__tests__/tillAuth.test.ts` | Route tests for both endpoints. |
-| `backend/src/api/__tests__/loginPolicy.test.ts` | Tests for cashiers being refused the password form. |
+| `backend/src/api/routes/__tests__/tillAuth.test.ts` | Route tests for both endpoints. |
+| `backend/src/api/routes/__tests__/loginPolicy.test.ts` | Tests for cashiers being refused the password form. |
 | `backend/migrations/postgres/020_shift_emulation.sql` | `emulated_user_id` on `register_shifts`. |
 | `backend/migrations/sqlite/020_shift_emulation.sql` | Same, for SQLite. |
 
@@ -97,16 +97,16 @@ Integration tests under `backend/src/adapters/db/__tests__/integration/` refuse 
 
 **Files:**
 - Create: `backend/src/services/tillSessions.ts`
-- Create: `backend/src/api/__tests__/tillSessions.test.ts`
+- Create: `backend/src/services/__tests__/tillSessions.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// backend/src/api/__tests__/tillSessions.test.ts
+// backend/src/services/__tests__/tillSessions.test.ts
 import { describe, it, expect } from 'vitest';
 import jwt from 'jsonwebtoken';
 import config from '../../config';
-import { mintSession, TILL_SESSION_MAX_AGE } from '../../services/tillSessions';
+import { mintSession, TILL_SESSION_MAX_AGE } from '../tillSessions';
 
 /**
  * The claim shape is the contract between three endpoints that mint tokens and
@@ -155,7 +155,7 @@ describe('mintSession', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillSessions.test.ts`
+Run: `cd backend && npx vitest run src/services/__tests__/tillSessions.test.ts`
 Expected: FAIL — `Cannot find module '../../services/tillSessions'`
 
 - [ ] **Step 3: Write the implementation**
@@ -225,7 +225,7 @@ export function mintSession(input: MintSessionInput): { token: string; expiresIn
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillSessions.test.ts`
+Run: `cd backend && npx vitest run src/services/__tests__/tillSessions.test.ts`
 Expected: PASS, 4 tests
 
 - [ ] **Step 5: Point login at it**
@@ -259,7 +259,7 @@ Expected: PASS, no type errors
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/src/services/tillSessions.ts backend/src/api/__tests__/tillSessions.test.ts backend/src/api/routes/auth.ts
+git add backend/src/services/tillSessions.ts backend/src/services/__tests__/tillSessions.test.ts backend/src/api/routes/auth.ts
 git commit -m "refactor(auth): mint session tokens in one place
 
 Three endpoints will need to sign a JWT. Extracting it now means the
@@ -275,12 +275,12 @@ A token carrying `shiftId` must stop working the moment that shift closes. Route
 
 **Files:**
 - Modify: `backend/src/api/middleware/auth.ts` (the `TokenClaims` interface at :60, and `authenticate` at :168)
-- Create: `backend/src/api/__tests__/shiftBoundSession.test.ts`
+- Create: `backend/src/api/middleware/__tests__/shiftBoundSession.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// backend/src/api/__tests__/shiftBoundSession.test.ts
+// backend/src/api/middleware/__tests__/shiftBoundSession.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
@@ -409,7 +409,7 @@ describe('a password session', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/shiftBoundSession.test.ts`
+Run: `cd backend && npx vitest run src/api/middleware/__tests__/shiftBoundSession.test.ts`
 Expected: FAIL — the ended-shift and idle cases return 200 instead of 401, because nothing checks the shift yet.
 
 - [ ] **Step 3: Add the adapter method both adapters need**
@@ -514,7 +514,7 @@ import { SHIFT_ENDED } from './registerErrorCodes';
 
 - [ ] **Step 6: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/shiftBoundSession.test.ts`
+Run: `cd backend && npx vitest run src/api/middleware/__tests__/shiftBoundSession.test.ts`
 Expected: PASS, 7 tests
 
 - [ ] **Step 7: Close the refresh hole**
@@ -621,7 +621,7 @@ Expected: the same 25 integration files fail on the database-name guard as befor
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/src/api/middleware/ backend/src/adapters/db/ backend/src/services/database.ts backend/src/api/__tests__/shiftBoundSession.test.ts
+git add backend/src/api/middleware/ backend/src/adapters/db/ backend/src/services/database.ts backend/src/api/middleware/__tests__/shiftBoundSession.test.ts
 git commit -m "feat(auth): end the session when the shift ends
 
 A till session carries the shift that opened it, and authenticate
@@ -638,13 +638,13 @@ Password sessions carry no shiftId and take none of this path."
 
 **Files:**
 - Create: `backend/src/api/routes/till.ts`
-- Create: `backend/src/api/__tests__/tillAuth.test.ts`
+- Create: `backend/src/api/routes/__tests__/tillAuth.test.ts`
 - Modify: `backend/src/api/routes/auth.ts` (mount the router)
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// backend/src/api/__tests__/tillAuth.test.ts
+// backend/src/api/routes/__tests__/tillAuth.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
@@ -809,7 +809,7 @@ describe('POST /api/auth/till device binding', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillAuth.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/tillAuth.test.ts`
 Expected: FAIL — every case 404s; the route does not exist.
 
 - [ ] **Step 3: Write the route**
@@ -966,13 +966,13 @@ router.use('/till', shiftLimiter, tillRouter);
 
 - [ ] **Step 5: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillAuth.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/tillAuth.test.ts`
 Expected: PASS, 10 tests
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/src/api/routes/till.ts backend/src/api/routes/auth.ts backend/src/api/routes/registers.ts backend/src/api/__tests__/tillAuth.test.ts
+git add backend/src/api/routes/till.ts backend/src/api/routes/auth.ts backend/src/api/routes/registers.ts backend/src/api/routes/__tests__/tillAuth.test.ts
 git commit -m "feat(auth): exchange a device token for a till session
 
 A paired terminal posts its register token and, where the register
@@ -989,12 +989,12 @@ and keeps attributing to the unknown cashier bucket that already exists."
 
 **Files:**
 - Modify: `backend/src/api/routes/auth.ts` (after the `status !== 'active'` check)
-- Create: `backend/src/api/__tests__/loginPolicy.test.ts`
+- Create: `backend/src/api/routes/__tests__/loginPolicy.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// backend/src/api/__tests__/loginPolicy.test.ts
+// backend/src/api/routes/__tests__/loginPolicy.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
@@ -1086,7 +1086,7 @@ describe('who the password form accepts', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/loginPolicy.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/loginPolicy.test.ts`
 Expected: FAIL — the cashier cases return 200.
 
 - [ ] **Step 3: Add the code and the check**
@@ -1135,7 +1135,7 @@ If `ForbiddenError` does not take a code as its second argument, check how `Auth
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/loginPolicy.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/loginPolicy.test.ts`
 Expected: PASS, 7 tests
 
 - [ ] **Step 5: Verify the whole backend**
@@ -1146,7 +1146,7 @@ Expected: no new failures. **The seeded admin is `admin`, so existing tests that
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/src/api/routes/auth.ts backend/src/api/middleware/registerErrorCodes.ts backend/src/api/__tests__/loginPolicy.test.ts
+git add backend/src/api/routes/auth.ts backend/src/api/middleware/registerErrorCodes.ts backend/src/api/routes/__tests__/loginPolicy.test.ts
 git commit -m "feat(auth): the password form is the back-office door
 
 A user whose every role is standard is refused with USE_PIN_AT_TILL and
@@ -1160,12 +1160,12 @@ endpoint cannot be used to discover which addresses belong to cashiers."
 
 **Files:**
 - Modify: `backend/src/api/routes/admin.ts` (beside the existing `PUT`/`DELETE /users/:id/pin` at :162 and :208)
-- Create: `backend/src/api/__tests__/pinUnlock.test.ts`
+- Create: `backend/src/api/routes/__tests__/pinUnlock.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// backend/src/api/__tests__/pinUnlock.test.ts
+// backend/src/api/routes/__tests__/pinUnlock.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 
@@ -1260,7 +1260,7 @@ describe('POST /api/admin/users/:id/pin/unlock', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/pinUnlock.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/pinUnlock.test.ts`
 Expected: FAIL — 404 on every case.
 
 - [ ] **Step 3: Write the route**
@@ -1318,13 +1318,13 @@ router.post('/users/:id/pin/unlock', requirePermission('users', 'write'), async 
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/pinUnlock.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/pinUnlock.test.ts`
 Expected: PASS, 5 tests
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/api/routes/admin.ts backend/src/api/__tests__/pinUnlock.test.ts
+git add backend/src/api/routes/admin.ts backend/src/api/routes/__tests__/pinUnlock.test.ts
 git commit -m "feat(admin): clear a PIN lockout without waiting it out
 
 The fifteen-minute lockout blunts PIN guessing. A manager standing next
@@ -1442,11 +1442,11 @@ untouched; this column records intent, never identity."
 
 **Files:**
 - Modify: `backend/src/api/routes/till.ts`
-- Modify: `backend/src/api/__tests__/tillAuth.test.ts`
+- Modify: `backend/src/api/routes/__tests__/tillAuth.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `backend/src/api/__tests__/tillAuth.test.ts`. Add `mintSession` to the imports at the top of that file:
+Append to `backend/src/api/routes/__tests__/tillAuth.test.ts`. Add `mintSession` to the imports at the top of that file:
 
 ```ts
 const { mintSession } = await import('../../services/tillSessions');
@@ -1548,7 +1548,7 @@ describe('POST /api/auth/till/assume', () => {
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillAuth.test.ts -t assume`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/tillAuth.test.ts -t assume`
 Expected: FAIL — 404 on every case.
 
 - [ ] **Step 3: Write the route**
@@ -1662,7 +1662,7 @@ Add `getOpenShift` to the `registerShifts` import at the top of the file.
 
 - [ ] **Step 4: Run it and watch it pass**
 
-Run: `cd backend && npx vitest run src/api/__tests__/tillAuth.test.ts`
+Run: `cd backend && npx vitest run src/api/routes/__tests__/tillAuth.test.ts`
 Expected: PASS, 17 tests
 
 - [ ] **Step 5: Full backend check**
@@ -1673,7 +1673,7 @@ Expected: no new failures
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/src/api/routes/till.ts backend/src/api/__tests__/tillAuth.test.ts
+git add backend/src/api/routes/till.ts backend/src/api/routes/__tests__/tillAuth.test.ts
 git commit -m "feat(auth): let an admin assume a till
 
 The one path to a till session without the device credential, so a
