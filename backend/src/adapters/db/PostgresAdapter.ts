@@ -5898,6 +5898,24 @@ export class PostgresAdapter {
   }
 
   /**
+   * One shift by id, open or closed.
+   *
+   * `getOpenShiftForRegister` answers "who is on this till"; session validation
+   * asks the different question "is this specific shift still open", and must
+   * see a closed row rather than null so it can tell "ended" from "never
+   * existed".
+   */
+  async getRegisterShiftById(shiftId: string): Promise<DbRow | null> {
+    try {
+      const result = await this.pool.query('SELECT * FROM register_shifts WHERE id = $1', [shiftId]);
+      return result.rows[0] ? mapRegisterShift(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error getting register shift by id:', error);
+      throw new DatabaseError('Failed to get register shift');
+    }
+  }
+
+  /**
    * Open a shift. Callers are expected to have already ended any prior open
    * shift on this register (`services/registerShifts.ts` does, marking it
    * `superseded`) — this does not check, and relies on migration 018's

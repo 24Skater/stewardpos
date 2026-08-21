@@ -5,6 +5,8 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import db from '../../services/database';
 import { AuthenticationError } from '../../utils/errors';
+import { getOpenShift } from '../../services/registerShifts';
+import { SHIFT_ENDED } from './registerErrorCodes';
 
 /** A role as it hangs off the authenticated user. */
 export interface AuthRole {
@@ -54,6 +56,14 @@ export interface AuthRequest extends Request {
      */
     roles: AuthRole[];
   };
+  /**
+   * The till session behind this request, when it is one.
+   *
+   * `req.user` says who; this says which shift and till they are on. `/refresh`
+   * needs it to carry the binding forward — a refreshed token that dropped it
+   * would be a till session laundered into one that never ends.
+   */
+  tillSession?: { shiftId?: string; registerId?: string };
 }
 
 /** What `POST /api/auth/login` signs into the token. */
@@ -63,6 +73,17 @@ interface TokenClaims {
   roleIds: string[];
   /** Absent in tokens minted before orgs existed; falls back to the default. */
   orgId?: string;
+  /**
+   * Present on a PIN till session. Binds the token to a shift: the session is
+   * over when the shift is, so signing out or going idle cannot leave a working
+   * token behind on a shared terminal.
+   */
+  shiftId?: string;
+  /**
+   * Present on any till session. On a no-PIN register there is no shift to bind
+   * to, so the register's own status is what the session lives or dies by.
+   */
+  registerId?: string;
 }
 
 /**
@@ -208,6 +229,30 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
       roleIds: (user.roleIds as string[]) || [],
       roles: (user.roles as AuthRole[]) || [],
     };
+
+    // A till session is only as alive as the thing that opened it. Checked
+    // after `req.user` is built so the failure path is identical for every
+    // caller, and skipped entirely for a password session, which carries
+    // neither claim.
+    if (claims.shiftId || claims.registerId) {
+      req.tillSession = { shiftId: claims.shiftId, registerId: claims.registerId };
+    }
+
+    if (claims.shiftId) {
+      const shift = await db.getAdapter().getRegisterShiftById(claims.shiftId);
+      // `getOpenShift` rather than reading `endedAt` here: it is the single
+      // place idle expiry is decided, so a session and its shift can never
+      // disagree about whether the cashier has walked away.
+      const open = shift ? await getOpenShift(db.getAdapter(), String(shift.registerId)) : null;
+      if (!open || String(open.id) !== claims.shiftId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+    } else if (claims.registerId) {
+      const register = await db.getAdapter().getRegisterById(claims.registerId);
+      if (!register || register.status !== 'active') {
+        throw new AuthenticationError('That register is no longer active', SHIFT_ENDED);
+      }
+    }
 
     next();
   } catch (error) {

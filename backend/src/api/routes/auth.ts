@@ -1,8 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import config from '../../config';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
@@ -153,22 +151,23 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response, ne
       throw new AuthenticationError('No active session');
     }
 
-    // Generate new token
-    // @ts-expect-error - expiresIn type compatibility
-    const token = jwt.sign(
-      {
+    // The binding is carried forward, never dropped. `authenticate` has already
+    // confirmed the shift is still open, so re-minting with the same shiftId is
+    // safe; minting WITHOUT it would hand back a token that outlives the shift.
+    const { token, expiresIn } = mintSession({
+      user: {
         id: req.user.id,
         email: req.user.email,
         roleIds: req.user.roleIds,
         orgId: req.orgId ?? DEFAULT_ORG_ID,
       },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
+      shiftId: req.tillSession?.shiftId,
+      registerId: req.tillSession?.registerId,
+    });
 
     res.json({
       success: true,
-      data: { token, expiresIn: config.jwt.expiresIn },
+      data: { token, expiresIn },
     });
   } catch (error) {
     next(error);
