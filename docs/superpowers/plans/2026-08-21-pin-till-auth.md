@@ -517,12 +517,108 @@ import { SHIFT_ENDED } from './registerErrorCodes';
 Run: `cd backend && npx vitest run src/api/__tests__/shiftBoundSession.test.ts`
 Expected: PASS, 7 tests
 
-- [ ] **Step 7: Verify nothing else regressed**
+- [ ] **Step 7: Close the refresh hole**
+
+**This is the most important step in the task.** `POST /api/auth/refresh`
+(`backend/src/api/routes/auth.ts`) is `authenticate`d and re-signs a token from
+`req.user`, which carries only `{ id, email, roleIds, orgId }`. It therefore
+**drops `shiftId`** — so a till session could be exchanged for one with no shift
+binding at all, immune to sign-out and idle timeout and lasting the full
+configured lifetime. `auth-store.ts` auto-refreshes every minute, so this would
+happen by itself, without anyone trying.
+
+First, make the claims reachable. In `backend/src/api/middleware/auth.ts`, add to
+`AuthRequest`:
+
+```ts
+  /**
+   * The till session behind this request, when it is one.
+   *
+   * `req.user` says who; this says which shift and till they are on. `/refresh`
+   * needs it to carry the binding forward — a refreshed token that dropped it
+   * would be a till session laundered into one that never ends.
+   */
+  tillSession?: { shiftId?: string; registerId?: string };
+```
+
+and set it inside `authenticate`, right where the shift check runs:
+
+```ts
+    if (claims.shiftId || claims.registerId) {
+      req.tillSession = { shiftId: claims.shiftId, registerId: claims.registerId };
+    }
+```
+
+Then in the `/refresh` handler, replace the inline `jwt.sign(...)` with:
+
+```ts
+    // The binding is carried forward, never dropped. `authenticate` has already
+    // confirmed the shift is still open, so re-minting with the same shiftId is
+    // safe; minting WITHOUT it would hand back a token that outlives the shift.
+    const { token, expiresIn } = mintSession({
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        roleIds: req.user.roleIds,
+        orgId: req.orgId ?? DEFAULT_ORG_ID,
+      },
+      shiftId: req.tillSession?.shiftId,
+      registerId: req.tillSession?.registerId,
+    });
+```
+
+and return `expiresIn` from it rather than `config.jwt.expiresIn`.
+
+Add these tests to `shiftBoundSession.test.ts`:
+
+```ts
+describe('POST /api/auth/refresh', () => {
+  it('carries the shift binding into the refreshed token', async () => {
+    // Without this, refresh launders a till session into one that never ends —
+    // and auth-store refreshes on a timer, so it would happen unprompted.
+    getRegisterShiftById.mockResolvedValue({
+      id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now(),
+    });
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    const [, payload] = String(response.body.data.token).split('.');
+    const claims = JSON.parse(Buffer.from(payload, 'base64').toString());
+    expect(claims.shiftId).toBe('s1');
+    expect(claims.registerId).toBe('reg1');
+  });
+
+  it('refuses to refresh a session whose shift has ended', async () => {
+    getRegisterShiftById.mockResolvedValue({
+      id: 's1', registerId: 'reg1', userId: 'u1', endedAt: Date.now(), lastActivityAt: Date.now(),
+    });
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('leaves a password session unbound', async () => {
+    const { token } = mintSession({ user: USER });
+
+    const response = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${token}`);
+
+    const [, payload] = String(response.body.data.token).split('.');
+    const claims = JSON.parse(Buffer.from(payload, 'base64').toString());
+    expect(claims.shiftId).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 8: Verify nothing else regressed**
 
 Run: `cd backend && npx vitest run && npx tsc --noEmit`
 Expected: the same 25 integration files fail on the database-name guard as before; every other file passes. Confirm the passing test count went **up**, not down.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add backend/src/api/middleware/ backend/src/adapters/db/ backend/src/services/database.ts backend/src/api/__tests__/shiftBoundSession.test.ts
