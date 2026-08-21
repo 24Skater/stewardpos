@@ -163,6 +163,22 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   return { ...actual, getCurrentSession: vi.fn(async () => ADMIN_SESSION) };
 });
 
+/**
+ * Toasts, captured.
+ *
+ * The Toaster is not mounted here, so a toast leaves no mark on the DOM — and
+ * the message these pages show is the whole of what the operator learns about
+ * whether an export worked.
+ */
+const toasts: { title?: string; description?: string }[] = [];
+
+vi.mock('@/hooks/use-toast', () => {
+  const toast = (message: { title?: string; description?: string }) => {
+    toasts.push(message);
+  };
+  return { useToast: () => ({ toast, dismiss: () => {} }), toast };
+});
+
 vi.mock('@/components/ProtectedRoute', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -189,6 +205,7 @@ const pageErrors: string[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   calls.length = 0;
+  toasts.length = 0;
   pageErrors.length = 0;
   consoleError = vi.spyOn(console, 'error').mockImplementation((...args) => {
     pageErrors.push(args.map(String).join(' '));
@@ -349,6 +366,47 @@ describe('AdminExports', () => {
     fireEvent.click(await screen.findByRole('button', { name: /export sales summary as csv/i }));
 
     await waitFor(() => expect(calls.some((c) => c.startsWith('reportsApi.'))).toBe(true));
+  }, TIMEOUT);
+
+  /**
+   * The exact defect reported from the shop floor: on a store with no rows for
+   * a report, the Excel and CSV buttons downloaded nothing and then said
+   * "Export completed successfully". A silent no-op that claims to have worked
+   * is worse than a visible failure — the operator stops looking for the file.
+   *
+   * Sales by Item is the empty one here: this harness resolves every list
+   * endpoint to `[]`, so there are no orders to aggregate into rows.
+   */
+  it.each([
+    [/export sales item as csv/i],
+    [/export sales item as excel/i],
+  ])('says nothing was exported rather than claiming success (%s)', async (button) => {
+    const { default: Page } = await import('../admin/AdminExports');
+    renderPage(Page);
+
+    fireEvent.click(await screen.findByRole('button', { name: button }));
+
+    await waitFor(() => expect(toasts.length).toBeGreaterThan(0));
+    expect(toasts.at(-1)?.title).toBe('Nothing to export');
+    expect(toasts.map((message) => message.title)).not.toContain('Export completed successfully');
+  }, TIMEOUT);
+
+  it('still reports success for a report that does have rows', async () => {
+    // The guard must not swallow the ordinary case. Sales Summary always
+    // carries a totals row — zeroes are still figures — so it writes a file
+    // even against this empty harness.
+    // jsdom has no object-URL support and will not navigate an anchor, so the
+    // two steps that actually hand the file to the browser are stubbed. What is
+    // under test is which toast follows, not the download itself.
+    Object.defineProperty(URL, 'createObjectURL', { value: () => 'blob:mock', configurable: true });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const { default: Page } = await import('../admin/AdminExports');
+    renderPage(Page);
+
+    fireEvent.click(await screen.findByRole('button', { name: /export sales summary as csv/i }));
+
+    await waitFor(() => expect(toasts.at(-1)?.title).toBe('Export completed successfully'));
   }, TIMEOUT);
 });
 
