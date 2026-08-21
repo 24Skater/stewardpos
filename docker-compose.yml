@@ -143,6 +143,18 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3002}
+        # Prints the seeded demo credentials (admin@demo.local / DemoPass!1)
+        # on the sign-in form.
+        #
+        # It has to be a build arg: Vite inlines VITE_* at build time, so the
+        # `environment:` block below cannot reach an already-built bundle. Without
+        # this line the toggle was unreachable from this file entirely - the flag
+        # existed in the Dockerfile and in Login.tsx, but only docker-compose.demo.yml
+        # ever passed it, so this stack could never display the hint at any setting.
+        #
+        # Defaults off, so a real install still never advertises a known account.
+        # Turn it on with: VITE_DEMO_MODE=true docker compose up -d --build frontend
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-false}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8081}:80"
