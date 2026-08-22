@@ -276,6 +276,9 @@ function mapRegisterShift(row: DbRow): DbRow {
     id: String(row.id),
     registerId: String(row.register_id),
     userId: String(row.user_id),
+    // Cashier an admin was standing in for — see migration 020. NULL on every
+    // ordinary shift; never the attributed identity, see `userId` above.
+    emulatedUserId: row.emulated_user_id == null ? null : String(row.emulated_user_id),
     startedAt: Number(row.started_at),
     lastActivityAt: Number(row.last_activity_at),
     endedAt: row.ended_at == null ? null : Number(row.ended_at),
@@ -5702,16 +5705,21 @@ export class SQLiteAdapter {
    * partial unique index to reject a genuine race rather than silently
    * allowing two open shifts on one register.
    */
-  async createRegisterShift(payload: { registerId: string; userId: string }): Promise<DbRow> {
+  async createRegisterShift(payload: {
+    registerId: string;
+    userId: string;
+    /** See migration 020 and `mapRegisterShift` — recorded, never attributed. */
+    emulatedUserId?: string;
+  }): Promise<DbRow> {
     try {
       const id = crypto.randomUUID();
       const now = Date.now();
       this.db
         .prepare(
-          `INSERT INTO register_shifts (id, register_id, user_id, started_at, last_activity_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO register_shifts (id, register_id, user_id, emulated_user_id, started_at, last_activity_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(id, payload.registerId, payload.userId, now, now, now);
+        .run(id, payload.registerId, payload.userId, payload.emulatedUserId ?? null, now, now, now);
 
       const row = this.db.prepare('SELECT * FROM register_shifts WHERE id = ?').get(id) as DbRow;
       return mapRegisterShift(row);

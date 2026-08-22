@@ -301,6 +301,9 @@ function mapRegisterShift(row: DbRow): DbRow {
     id: String(row.id),
     registerId: String(row.register_id),
     userId: String(row.user_id),
+    // Cashier an admin was standing in for — see migration 020. NULL on every
+    // ordinary shift; never the attributed identity, see `userId` above.
+    emulatedUserId: row.emulated_user_id == null ? null : String(row.emulated_user_id),
     startedAt: new Date(row.started_at as string).getTime(),
     lastActivityAt: new Date(row.last_activity_at as string).getTime(),
     endedAt: row.ended_at == null ? null : new Date(row.ended_at as string).getTime(),
@@ -5922,13 +5925,18 @@ export class PostgresAdapter {
    * partial unique index to reject a genuine race rather than silently
    * allowing two open shifts on one register.
    */
-  async createRegisterShift(payload: { registerId: string; userId: string }): Promise<DbRow> {
+  async createRegisterShift(payload: {
+    registerId: string;
+    userId: string;
+    /** See migration 020 and `mapRegisterShift` — recorded, never attributed. */
+    emulatedUserId?: string;
+  }): Promise<DbRow> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO register_shifts (register_id, user_id)
-         VALUES ($1, $2)
+        `INSERT INTO register_shifts (register_id, user_id, emulated_user_id)
+         VALUES ($1, $2, $3)
          RETURNING *`,
-        [payload.registerId, payload.userId]
+        [payload.registerId, payload.userId, payload.emulatedUserId ?? null]
       );
       return mapRegisterShift(result.rows[0]);
     } catch (error) {
