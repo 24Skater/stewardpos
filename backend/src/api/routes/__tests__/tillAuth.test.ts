@@ -278,6 +278,24 @@ describe('POST /api/auth/till/assume', () => {
     expect(response.status).toBe(404);
   });
 
+  it('emulates a user whose org_id was never set', async () => {
+    // Every row that predates migration 014 has a NULL org_id, and so does
+    // every user the seeder writes — `users` has no default. Comparing that
+    // NULL against the well-known default org makes the entire staff of an
+    // upgraded shop un-emulatable, which is what a live run of this endpoint
+    // found. Same `?? DEFAULT_ORG_ID` reading the admin PIN routes use.
+    getUserById.mockImplementation(async (id: string) =>
+      id === 'u1' ? { ...CASHIER, orgId: null } : ADMIN
+    );
+
+    const response = await assume(adminToken(), { registerId: 'reg1', emulateUserId: 'u1' });
+
+    expect(response.status).toBe(201);
+    expect(createRegisterShift).toHaveBeenCalledWith(
+      expect.objectContaining({ emulatedUserId: 'u1' })
+    );
+  });
+
   it('404s for an emulated user in another org', async () => {
     getUserById.mockImplementation(async (id: string) =>
       id === 'u1' ? { ...CASHIER, orgId: 'another-org' } : ADMIN
