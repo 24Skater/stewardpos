@@ -26,6 +26,13 @@ export interface MintSessionInput {
   registerId?: string;
   /** Overrides `config.jwt.expiresIn`. Used only by `assume`. */
   maxAgeSeconds?: number;
+  /**
+   * Marks this as an admin "assume" session rather than an ordinary PIN
+   * sign-on. `/refresh` reads it back off `req.tillSession` and refuses to
+   * extend it — see the comment there for why a session that bypassed device
+   * pairing must not be extendable past the cap it was minted with.
+   */
+  assumed?: boolean;
 }
 
 /**
@@ -56,6 +63,7 @@ export function mintSession(input: MintSessionInput): { token: string; expiresIn
       orgId: input.user.orgId ?? DEFAULT_ORG_ID,
       ...(input.shiftId ? { shiftId: input.shiftId } : {}),
       ...(input.registerId ? { registerId: input.registerId } : {}),
+      ...(input.assumed ? { assumed: true } : {}),
     },
     config.jwt.secret,
     { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] }

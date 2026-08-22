@@ -6,6 +6,7 @@ const getOpenShiftForRegister = vi.fn();
 const getRegisterById = vi.fn();
 const endRegisterShift = vi.fn();
 const getRegisterShiftById = vi.fn();
+const touchRegisterShiftActivity = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -15,6 +16,7 @@ vi.mock('../../../services/database', () => ({
       getRegisterById,
       endRegisterShift,
       getRegisterShiftById,
+      touchRegisterShiftActivity,
       getAllProducts: vi.fn(async () => ({ products: [], total: 0 })),
     }),
   },
@@ -39,11 +41,7 @@ beforeEach(() => {
   getRegisterById.mockResolvedValue({ id: 'reg1', status: 'active', idleLockSeconds: 300, orgId: USER.orgId });
 });
 
-/**
- * Any authenticated GET will do. Pick one that needs only a permission USER
- * actually has — verify which route that is before relying on it, and adjust
- * both PROBE and USER.roles together if `/api/products` needs something else.
- */
+/** Any authenticated GET will do; this one needs only the `inventory:read` permission USER carries. */
 const PROBE = '/api/products';
 
 describe('a shift-bound session', () => {
@@ -115,6 +113,63 @@ describe('a shift-bound session', () => {
     const response = await request(app).get(PROBE).set('Authorization', `Bearer ${token}`);
 
     expect(response.status).toBe(401);
+  });
+
+  it('is refused when its register is no longer active, even though its shift is still open', async () => {
+    // This is the case that a PIN session's `else if` used to skip entirely:
+    // claims.shiftId is truthy, so the register's own status was never
+    // checked. A revoked/retired/disabled till kept authorizing on the old
+    // shift until it happened to go idle.
+    const open = { id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now() };
+    getRegisterShiftById.mockResolvedValue(open);
+    getOpenShiftForRegister.mockResolvedValue(open);
+    getRegisterById.mockResolvedValue({ id: 'reg1', status: 'retired', idleLockSeconds: 300, orgId: USER.orgId });
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).get(PROBE).set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe('REGISTER_INACTIVE');
+  });
+
+  it('is refused when the token names a different register than its shift actually opened on', async () => {
+    // The shift really is open — just not on the register this token claims.
+    const shift = { id: 's1', registerId: 'reg2', userId: 'u1', endedAt: null, lastActivityAt: Date.now() };
+    getRegisterShiftById.mockResolvedValue(shift);
+    getOpenShiftForRegister.mockResolvedValue(shift);
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).get(PROBE).set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe('SHIFT_ENDED');
+  });
+
+  it('bumps the shift idle clock when its last activity is older than the throttle window', async () => {
+    const stale = { id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now() - 60_000 };
+    getRegisterShiftById.mockResolvedValue(stale);
+    getOpenShiftForRegister.mockResolvedValue(stale);
+    touchRegisterShiftActivity.mockResolvedValue({ ...stale, lastActivityAt: Date.now() });
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).get(PROBE).set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(touchRegisterShiftActivity).toHaveBeenCalledWith('s1');
+  });
+
+  it('does not bump the idle clock when the last activity is within the throttle window', async () => {
+    // A write on every authenticated request is worthless more often than
+    // once every 30s given an idle window measured in minutes.
+    const fresh = { id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now() - 5_000 };
+    getRegisterShiftById.mockResolvedValue(fresh);
+    getOpenShiftForRegister.mockResolvedValue(fresh);
+    const { token } = mintSession({ user: USER, shiftId: 's1', registerId: 'reg1' });
+
+    const response = await request(app).get(PROBE).set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(touchRegisterShiftActivity).not.toHaveBeenCalled();
   });
 });
 
@@ -188,5 +243,21 @@ describe('POST /api/auth/refresh', () => {
     const [, payload] = String(response.body.data.token).split('.');
     const claims = JSON.parse(Buffer.from(payload, 'base64').toString());
     expect('shiftId' in claims).toBe(false);
+  });
+
+  it('refuses to extend an assumed till session', async () => {
+    // An assumed session is capped at TILL_SESSION_MAX_AGE precisely because
+    // it bypassed device pairing. The client refreshes on a 60-second timer,
+    // so letting this through would erase the cap on the very first tick.
+    const open = { id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now() };
+    getRegisterShiftById.mockResolvedValue(open);
+    getOpenShiftForRegister.mockResolvedValue(open);
+    const { token } = mintSession({
+      user: USER, shiftId: 's1', registerId: 'reg1', maxAgeSeconds: 1800, assumed: true,
+    });
+
+    const response = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(401);
   });
 });

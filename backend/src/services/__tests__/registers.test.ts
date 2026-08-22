@@ -124,7 +124,14 @@ describe('nextRegisterNumber', () => {
   });
 });
 
-/** A minimal stand-in for the adapter's register/location surface. */
+/**
+ * A minimal stand-in for the adapter's register/location surface.
+ *
+ * `getOpenShiftForRegister` defaults to no open shift, so every existing test
+ * in this file that doesn't care about shifts stays a no-op on that path —
+ * `getOpenShift` (services/registerShifts.ts) short-circuits without ever
+ * reaching `getRegisterById` or `endRegisterShift` when there is nothing open.
+ */
 function stubAdapter(overrides: Partial<Record<string, any>> = {}): DatabaseAdapter {
   const defaults = {
     getLocationById: vi.fn(),
@@ -132,6 +139,9 @@ function stubAdapter(overrides: Partial<Record<string, any>> = {}): DatabaseAdap
     countRegistersForCap: vi.fn().mockResolvedValue(0),
     getUsedRegisterNumbers: vi.fn().mockResolvedValue([]),
     createRegister: vi.fn(),
+    getOpenShiftForRegister: vi.fn().mockResolvedValue(null),
+    getRegisterById: vi.fn().mockResolvedValue(null),
+    endRegisterShift: vi.fn(),
   };
   return { ...defaults, ...overrides } as unknown as DatabaseAdapter;
 }
@@ -287,6 +297,35 @@ describe('retireRegister', () => {
 
     expect(await retireRegister(adapter, 'missing')).toBeNull();
   });
+
+  it('ends the register\'s open shift with reason "forced" — a retired till must not keep authorizing whoever is mid-shift on it', async () => {
+    const setRegisterStatus = vi.fn().mockResolvedValue({ id: 'r1', status: 'retired' });
+    const endRegisterShift = vi.fn().mockResolvedValue({ id: 's1', endedAt: Date.now(), endReason: 'forced' });
+    const adapter = stubAdapter({
+      setRegisterStatus,
+      getOpenShiftForRegister: vi.fn().mockResolvedValue({
+        id: 's1', registerId: 'r1', lastActivityAt: Date.now(), endedAt: null,
+      }),
+      getRegisterById: vi.fn().mockResolvedValue({ id: 'r1', idleLockSeconds: 300 }),
+      endRegisterShift,
+    });
+
+    await retireRegister(adapter, 'r1');
+
+    expect(endRegisterShift).toHaveBeenCalledWith('s1', 'forced');
+  });
+
+  it('is a no-op on shifts when the register has none open', async () => {
+    const endRegisterShift = vi.fn();
+    const adapter = stubAdapter({
+      setRegisterStatus: vi.fn().mockResolvedValue({ id: 'r1', status: 'retired' }),
+      endRegisterShift,
+    });
+
+    await retireRegister(adapter, 'r1');
+
+    expect(endRegisterShift).not.toHaveBeenCalled();
+  });
 });
 
 describe('disableRegister', () => {
@@ -298,5 +337,22 @@ describe('disableRegister', () => {
 
     expect(setRegisterStatus).toHaveBeenCalledWith('r1', 'disabled');
     expect(result).toEqual({ id: 'r1', status: 'disabled' });
+  });
+
+  it('ends the register\'s open shift with reason "forced", the same as retiring', async () => {
+    const setRegisterStatus = vi.fn().mockResolvedValue({ id: 'r1', status: 'disabled' });
+    const endRegisterShift = vi.fn().mockResolvedValue({ id: 's1', endedAt: Date.now(), endReason: 'forced' });
+    const adapter = stubAdapter({
+      setRegisterStatus,
+      getOpenShiftForRegister: vi.fn().mockResolvedValue({
+        id: 's1', registerId: 'r1', lastActivityAt: Date.now(), endedAt: null,
+      }),
+      getRegisterById: vi.fn().mockResolvedValue({ id: 'r1', idleLockSeconds: 300 }),
+      endRegisterShift,
+    });
+
+    await disableRegister(adapter, 'r1');
+
+    expect(endRegisterShift).toHaveBeenCalledWith('s1', 'forced');
   });
 });
