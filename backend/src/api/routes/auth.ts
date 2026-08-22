@@ -8,13 +8,15 @@ import { SHIFT_ENDED, USE_PIN_AT_TILL } from '../middleware/registerErrorCodes';
 import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
 import tillRouter from './till';
-import { shiftLimiter } from './registers';
 
 const router = Router();
 
-// Brute-force protection in front of a short PIN, the same limiter the
-// existing shift endpoint uses.
-router.use('/till', shiftLimiter, tillRouter);
+// `tillRouter` applies its own PIN rate limiting to `POST /` internally
+// (`shiftLimiter`, shared with the PIN endpoint in `registers.ts`); it is
+// deliberately not applied here to the whole subrouter, because that would
+// also throttle `POST /till/assume` — a route with no PIN to brute-force,
+// fenced instead by `registers:write`, an audit row, and a thirty-minute cap.
+router.use('/till', tillRouter);
 
 // Validation schemas
 const loginSchema = z.object({

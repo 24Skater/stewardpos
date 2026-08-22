@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
+import { mintSession } from '../../../services/tillSessions';
 
 const getRegisterById = vi.fn();
 const getActiveUsersWithPin = vi.fn();
@@ -187,5 +188,131 @@ describe('POST /api/auth/till device binding', () => {
     // `.strict()` means an unexpected key is a 400, not a silent substitution.
     expect(response.status).toBe(400);
     expect(createRegisterShift).not.toHaveBeenCalled();
+  });
+});
+
+const ADMIN = {
+  id: 'admin1', email: 'admin@demo.local', name: 'Admin', status: 'active', orgId: ORG,
+  roleIds: ['ra'],
+  roles: [{ id: 'ra', name: 'Admin', permissions: { registers: { read: true, write: true } } }],
+};
+
+const NO_WRITE = {
+  ...ADMIN,
+  roles: [{ id: 'ra', name: 'Viewer', permissions: { registers: { read: true, write: false } } }],
+};
+
+function adminToken(who = ADMIN) {
+  getUserByEmail.mockResolvedValue(who);
+  return mintSession({ user: who }).token;
+}
+
+const assume = (token: string, body: Record<string, unknown>) =>
+  request(app).post('/api/auth/till/assume').set('Authorization', `Bearer ${token}`).send(body);
+
+describe('POST /api/auth/till/assume', () => {
+  beforeEach(() => {
+    getUserById.mockImplementation(async (id: string) => (id === 'u1' ? CASHIER : ADMIN));
+    createRegisterShift.mockResolvedValue({
+      id: 's9', registerId: 'reg1', userId: 'admin1', emulatedUserId: 'u1',
+      endedAt: null, lastActivityAt: Date.now(),
+    });
+  });
+
+  it('mints a till session with no device token at all', async () => {
+    const response = await assume(adminToken(), { registerId: 'reg1' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.token).toEqual(expect.any(String));
+  });
+
+  it('attributes the shift to the admin, not the emulated cashier', async () => {
+    // The whole point: an admin covering a till must not be able to file sales
+    // under a cashier's name.
+    await assume(adminToken(), { registerId: 'reg1', emulateUserId: 'u1' });
+
+    expect(createRegisterShift).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'admin1', emulatedUserId: 'u1' })
+    );
+  });
+
+  it('caps the session at thirty minutes', async () => {
+    const response = await assume(adminToken(), { registerId: 'reg1' });
+
+    const claims = claimsOf(response.body.data.token) as { exp: number; iat: number };
+    expect(claims.exp - claims.iat).toBe(30 * 60);
+  });
+
+  it('marks the session assumed, so refresh cannot extend it', async () => {
+    // A thirty-minute cap the client's refresh timer can reset is not a cap.
+    const response = await assume(adminToken(), { registerId: 'reg1' });
+
+    expect(claimsOf(response.body.data.token).assumed).toBe(true);
+  });
+
+  it('is audited', async () => {
+    await assume(adminToken(), { registerId: 'reg1', emulateUserId: 'u1' });
+
+    expect(createAuditLog).toHaveBeenCalled();
+  });
+
+  it('needs registers:write', async () => {
+    const response = await assume(adminToken(NO_WRITE), { registerId: 'reg1' });
+
+    expect(response.status).toBe(403);
+    expect(createRegisterShift).not.toHaveBeenCalled();
+  });
+
+  it('is refused without any session at all', async () => {
+    const response = await request(app).post('/api/auth/till/assume').send({ registerId: 'reg1' });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('404s for a register in another org', async () => {
+    getRegisterById.mockResolvedValue(register({ orgId: 'another-org' }));
+
+    const response = await assume(adminToken(), { registerId: 'reg1' });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('404s for an emulated user in another org', async () => {
+    getUserById.mockImplementation(async (id: string) =>
+      id === 'u1' ? { ...CASHIER, orgId: 'another-org' } : ADMIN
+    );
+
+    const response = await assume(adminToken(), { registerId: 'reg1', emulateUserId: 'u1' });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('refuses a register that is not active', async () => {
+    getRegisterById.mockResolvedValue(register({ status: 'retired' }));
+
+    const response = await assume(adminToken(), { registerId: 'reg1' });
+
+    expect(response.status).toBe(422);
+  });
+
+  it('supersedes whoever was already on that till', async () => {
+    // Two people cannot be on one till, exactly as a PIN sign-on supersedes.
+    getOpenShiftForRegister.mockResolvedValue({
+      id: 's1', registerId: 'reg1', userId: 'u1', endedAt: null, lastActivityAt: Date.now(),
+    });
+
+    await assume(adminToken(), { registerId: 'reg1' });
+
+    expect(endRegisterShift).toHaveBeenCalledWith('s1', 'superseded');
+  });
+
+  it('cannot be used to assume from an already-assumed session', async () => {
+    // Otherwise the thirty-minute cap is escapable by chaining.
+    const assumedToken = mintSession({ user: ADMIN, registerId: 'reg1', assumed: true }).token;
+    getUserByEmail.mockResolvedValue(ADMIN);
+
+    const response = await assume(assumedToken, { registerId: 'reg1' });
+
+    expect(response.status).toBe(403);
   });
 });

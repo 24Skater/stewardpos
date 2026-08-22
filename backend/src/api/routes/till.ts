@@ -4,18 +4,22 @@ import {
   requireRegisterToken,
   AuthenticatedRegisterRequest,
 } from '../middleware/registerAuth';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { requirePermission } from '../middleware/authorize';
 import { PIN_INVALID, PIN_LOCKED } from '../middleware/registerErrorCodes';
+import { shiftLimiter } from './registers';
 import {
   ValidationError,
   NotFoundError,
   UnprocessableEntityError,
   AuthenticationError,
+  ForbiddenError,
 } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
-import { mintSession } from '../../services/tillSessions';
-import { startShift } from '../../services/registerShifts';
+import { mintSession, TILL_SESSION_MAX_AGE } from '../../services/tillSessions';
+import { startShift, getOpenShift, endShift } from '../../services/registerShifts';
 
 /**
  * Till sessions.
@@ -60,6 +64,11 @@ const tillAuthSchema = z
  */
 router.post(
   '/',
+  // Brute-force protection in front of a short PIN — see `registers.ts` for
+  // why it is keyed on the register rather than the caller's IP. Applied
+  // here, not on the whole router, so it does not also throttle `/assume`
+  // below, which has no PIN to brute-force.
+  shiftLimiter,
   requireRegisterToken,
   async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
     try {
@@ -156,6 +165,129 @@ router.post(
           register: { id: registerId },
           user: { id: result.user.id, name: result.user.name, email: result.user.email },
           shift: result.shift,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        next(new ValidationError(error.errors[0].message));
+      } else {
+        next(error);
+      }
+    }
+  }
+);
+
+const assumeTillSchema = z
+  .object({
+    registerId: z.string().min(1),
+    // Optional: an admin can also open a register with no cashier in mind at
+    // all, e.g. to check what the till itself is doing right now.
+    emulateUserId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/**
+ * POST /api/auth/till/assume
+ *
+ * The one way to a till session without the terminal's device credential, so an
+ * admin can cover a register or reproduce what a cashier sees from a back-office
+ * browser.
+ *
+ * This is a deliberate hole in the pairing requirement every other till session
+ * goes through, and the fence around it is three-sided: `registers:write`, an
+ * audit row per use, and a thirty-minute cap that closes a forgotten session.
+ *
+ * The shift is attributed to the ADMIN. `emulateUserId` is recorded beside it
+ * and is never the attributed identity — see the 020 migration for why.
+ */
+router.post(
+  '/assume',
+  authenticate,
+  requirePermission('registers', 'write'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { registerId, emulateUserId } = assumeTillSchema.parse(req.body ?? {});
+
+      // Without this, an assumed session could mint a fresh assumed session
+      // of its own before the first one's thirty minutes were up, and the cap
+      // that closes a forgotten session would never actually bind.
+      if (req.tillSession?.assumed) {
+        throw new ForbiddenError('An assumed session cannot assume another till');
+      }
+
+      const admin = req.user!;
+      const orgId = req.orgId!;
+      const adapter = db.getAdapter();
+
+      const register = await adapter.getRegisterById(registerId);
+      if (!register || String(register.orgId) !== orgId) {
+        throw new NotFoundError('Register');
+      }
+      if (register.status !== 'active') {
+        throw new UnprocessableEntityError('This register is not active');
+      }
+
+      let emulatedUser: Record<string, unknown> | null = null;
+      if (emulateUserId) {
+        const candidate = await adapter.getUserById(emulateUserId);
+        if (!candidate || String(candidate.orgId) !== orgId) {
+          throw new NotFoundError('User');
+        }
+        emulatedUser = candidate;
+      }
+
+      // Supersede whoever was already on this till — the same rule a PIN
+      // sign-on follows in `startShift`: two people cannot be on one till.
+      const openShift = await getOpenShift(adapter, registerId);
+      if (openShift) {
+        await endShift(adapter, String(openShift.id), 'superseded');
+      }
+
+      const shift = await adapter.createRegisterShift({
+        registerId,
+        userId: admin.id,
+        emulatedUserId: emulateUserId,
+      });
+
+      // `warn`, not `info`: this is a privileged bypass of device pairing and
+      // should stand out in a log scan, not blend in with routine sign-ons.
+      logger.warn(
+        `Register ${registerId} assumed by admin ${admin.id}` +
+          (emulateUserId ? ` (standing in for ${emulateUserId})` : '')
+      );
+      await audit(req, {
+        action: 'create',
+        entity: 'register_shift',
+        entityId: String(shift.id),
+        after: {
+          registerId,
+          userId: admin.id,
+          emulatedUserId: emulateUserId ?? null,
+          assumed: true,
+        },
+      });
+
+      const { token, expiresIn } = mintSession({
+        user: {
+          id: admin.id,
+          email: admin.email,
+          roleIds: admin.roleIds,
+          orgId,
+        },
+        shiftId: String(shift.id),
+        registerId,
+        maxAgeSeconds: TILL_SESSION_MAX_AGE,
+        assumed: true,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          token,
+          expiresIn,
+          register: { id: String(register.id), name: register.name, displayCode: register.displayCode },
+          actingAs: emulatedUser ? { id: String(emulatedUser.id), name: emulatedUser.name } : null,
+          shift,
         },
       });
     } catch (error) {
