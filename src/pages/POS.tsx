@@ -55,6 +55,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from '@/lib/errors';
 import { authStore, readAssumedSession } from '@/lib/auth-store';
+import { useSession } from '@/hooks/queries/useSession';
+import { hasPermission } from '@/lib/auth';
 
 const CARD_PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
@@ -265,6 +267,19 @@ export default function POS() {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { data: session } = useSession();
+
+  /**
+   * Whether to offer the Admin button at all.
+   *
+   * `/admin` needs `reports:read` — the same permission `App.tsx` gates the
+   * route on. This used to be unconditional, which was harmless while every
+   * till sat behind a back-office login; with a cashier's PIN session behind it
+   * the button leads only to a 403, and a button that only ever fails is worse
+   * than no button. Absent while the session is still unknown, so it does not
+   * flicker in and then vanish under the cursor.
+   */
+  const canReachAdmin = session ? hasPermission(session, 'reports', 'read') : false;
   
   // Discount state
   const [quickDiscounts, setQuickDiscounts] = useState<PosDiscountType[]>([]);
@@ -1172,15 +1187,17 @@ export default function POS() {
               `RequireAuth` sends an unauthenticated visitor to
               `/login?next=/admin` and Login brings them back afterwards.
             */}
-            <Button
-              variant="default"
-              onClick={() => navigate('/admin')}
-              className="bg-primary hover:bg-primary/90"
-              size="sm"
-            >
-              <ShieldCheck className="w-4 h-4 mr-1" />
-              Admin
-            </Button>
+            {canReachAdmin && (
+              <Button
+                variant="default"
+                onClick={() => navigate('/admin')}
+                className="bg-primary hover:bg-primary/90"
+                size="sm"
+              >
+                <ShieldCheck className="w-4 h-4 mr-1" />
+                Admin
+              </Button>
+            )}
           </div>
         </div>
 
