@@ -4,7 +4,7 @@ import {
   requireRegisterToken,
   AuthenticatedRegisterRequest,
 } from '../middleware/registerAuth';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { PIN_INVALID, PIN_LOCKED } from '../middleware/registerErrorCodes';
 import rateLimit from 'express-rate-limit';
@@ -238,11 +238,17 @@ router.post(
       }
 
       const admin = req.user!;
-      const orgId = req.orgId!;
+      const orgId = req.orgId ?? DEFAULT_ORG_ID;
       const adapter = db.getAdapter();
 
       const register = await adapter.getRegisterById(registerId);
-      if (!register || String(register.orgId) !== orgId) {
+      // `?? DEFAULT_ORG_ID` on both sides of every org comparison in this
+      // route: every row that predates migration 014 has a NULL `org_id`, and
+      // `users` has no default, so the seeder writes NULL too. Reading that
+      // NULL as "some other org" made the whole staff of an upgraded shop
+      // un-emulatable — found by running this endpoint, not by a test, because
+      // every fixture set an org explicitly.
+      if (!register || String(register.orgId ?? DEFAULT_ORG_ID) !== orgId) {
         throw new NotFoundError('Register');
       }
       if (register.status !== 'active') {
@@ -252,7 +258,7 @@ router.post(
       let emulatedUser: Record<string, unknown> | null = null;
       if (emulateUserId) {
         const candidate = await adapter.getUserById(emulateUserId);
-        if (!candidate || String(candidate.orgId) !== orgId) {
+        if (!candidate || String(candidate.orgId ?? DEFAULT_ORG_ID) !== orgId) {
           throw new NotFoundError('User');
         }
         emulatedUser = candidate;
