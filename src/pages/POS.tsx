@@ -21,6 +21,7 @@ import { useCreateOrder, useCurrentShift, useEndShift, useProducts, useRegister,
 import { useRegisterHeartbeat } from "@/hooks/useRegisterHeartbeat";
 import { useIdleLock } from "@/hooks/useIdleLock";
 import LockScreen from "@/components/register/LockScreen";
+import ActingAsBanner from "@/components/register/ActingAsBanner";
 import OverridePrompt, { type OverrideGrant } from "@/components/register/OverridePrompt";
 import { getDeviceToken, getSelectedRegisterId, subscribeToSelectedRegisterId } from "@/lib/register-device";
 import { ApiClientError } from "@/lib/api-client";
@@ -53,6 +54,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from '@/lib/errors';
+import { authStore, readAssumedSession } from '@/lib/auth-store';
 
 const CARD_PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
@@ -178,6 +180,28 @@ export default function POS() {
     } catch (error: unknown) {
       toast({ title: 'Could not sign out', description: getErrorMessage(error), variant: 'destructive' });
     }
+  };
+
+  /**
+   * Set only by `POST /api/auth/till/assume`. A cashier's own PIN session
+   * writes nothing here, so the banner never appears at a real till.
+   */
+  const assumed = readAssumedSession();
+
+  /**
+   * Leave an assumed session.
+   *
+   * Ends the shift the way an ordinary sign-out does, then drops the token.
+   * That second half is the part that matters: the backend already refuses the
+   * token once the shift closes, but a client holding on to it walks back past
+   * `RequireTill` and meets a 401 at the first thing it touches, rather than
+   * the lock screen it should be looking at.
+   */
+  const handleEndAssumedSession = async () => {
+    await handleSignOut();
+    // Also clears the assumed record, so the banner cannot outlive it.
+    authStore.clearToken();
+    navigate('/admin/registers');
   };
 
   /** SHIFT_REQUIRED on checkout — see the two catch blocks below that call this. */
@@ -1034,6 +1058,16 @@ export default function POS() {
     <div className="flex flex-col h-screen bg-background">
       {/* ARIA live region for cart announcements */}
       <div id="cart-announcement" className="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+      {/* Above the header, not inside it: an admin driving someone else's till
+          should not have to look for this. */}
+      {assumed && (
+        <ActingAsBanner
+          adminName={assumed.adminName}
+          actingAs={assumed.actingAs}
+          onExit={handleEndAssumedSession}
+        />
+      )}
 
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 shadow-sm">
