@@ -54,6 +54,23 @@ vi.mock('@/hooks/queries', () => ({
   useEndShift: () => ({ mutateAsync: endShiftMutateAsync, isPending: false }),
 }));
 
+/**
+ * Stubbed rather than left real: the live hook fetches `/api/auth/session`,
+ * gets a 401 from no server, and `api-client` responds by clearing the token —
+ * which now clears the assumed-session record too, unmounting the very banner
+ * under test.
+ */
+vi.mock('@/hooks/queries/useSession', () => ({
+  useSession: () => ({
+    data: {
+      user: { id: 'u1', email: 'admin@demo.local', name: 'Admin User', roleIds: [], roles: [] },
+      permissions: { reports: { read: true, write: false, delete: false } },
+    },
+    isPending: false,
+  }),
+  useInvalidateSession: () => vi.fn(),
+}));
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
