@@ -5,8 +5,22 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import db from '../../services/database';
 import { AuthenticationError } from '../../utils/errors';
-import { getOpenShift } from '../../services/registerShifts';
-import { SHIFT_ENDED } from './registerErrorCodes';
+import { getOpenShift, touchShift } from '../../services/registerShifts';
+import { SHIFT_ENDED, REGISTER_INACTIVE } from './registerErrorCodes';
+
+/**
+ * How long a shift's idle clock is left untouched before `authenticate`
+ * bumps it again.
+ *
+ * Migration 018 says every authenticated action on a register bumps its
+ * shift's activity; until now only checkout and returns actually did, so a
+ * cashier scanning a large basket or waiting on a customer past
+ * `idleLockSeconds` (default 300s) got a hard 401 mid-sale. Bumping on every
+ * request would work too, but it is a write on the hottest path in the app —
+ * this throttle makes it worthless more often than once every 30s against an
+ * idle window measured in minutes, not milliseconds.
+ */
+const ACTIVITY_BUMP_THROTTLE_MS = 30_000;
 
 /** A role as it hangs off the authenticated user. */
 export interface AuthRole {
@@ -63,7 +77,7 @@ export interface AuthRequest extends Request {
    * needs it to carry the binding forward — a refreshed token that dropped it
    * would be a till session laundered into one that never ends.
    */
-  tillSession?: { shiftId?: string; registerId?: string };
+  tillSession?: { shiftId?: string; registerId?: string; assumed?: boolean };
 }
 
 /** What `POST /api/auth/login` signs into the token. */
@@ -84,6 +98,14 @@ interface TokenClaims {
    * to, so the register's own status is what the session lives or dies by.
    */
   registerId?: string;
+  /**
+   * Present when this token was minted by an admin "assuming" a till rather
+   * than a cashier PINning onto one — see `services/tillSessions.ts`. Read
+   * back off `req.tillSession` by `/refresh`, which refuses to extend it: a
+   * session that bypassed device pairing is deliberately capped, and a cap
+   * that can be refreshed by the client's own timer is not a cap.
+   */
+  assumed?: boolean;
 }
 
 /**
@@ -233,11 +255,18 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
     // A till session is only as alive as the thing that opened it. Checked
     // after `req.user` is built so the failure path is identical for every
     // caller, and skipped entirely for a password session, which carries
-    // neither claim.
-    if (claims.shiftId || claims.registerId) {
-      req.tillSession = { shiftId: claims.shiftId, registerId: claims.registerId };
+    // none of these claims.
+    if (claims.shiftId || claims.registerId || claims.assumed) {
+      req.tillSession = { shiftId: claims.shiftId, registerId: claims.registerId, assumed: claims.assumed };
     }
 
+    // Both claims are validated, not one. A PIN session carries both, and the
+    // register half is what makes a revoked till stop working: ending the
+    // shift on revoke/retire/disable (services/registers.ts,
+    // registerEnrolment.ts) is the primary defence, but a shift that somehow
+    // outlives its register — a race, a manual DB edit — must not keep
+    // authorizing either. An `else if` here previously let a revoked
+    // register's PIN sessions keep working until the shift merely went idle.
     if (claims.shiftId) {
       const shift = await db.getAdapter().getRegisterShiftById(claims.shiftId);
       // `getOpenShift` rather than reading `endedAt` here: it is the single
@@ -247,10 +276,23 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
       if (!open || String(open.id) !== claims.shiftId) {
         throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
       }
-    } else if (claims.registerId) {
+      // The token's register must be the shift's own. Nothing else asserts
+      // this, and `/refresh` copies `registerId` forward into every future
+      // token, so a mismatch here would otherwise ride along indefinitely.
+      if (claims.registerId && String(open.registerId) !== claims.registerId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+
+      const sinceActivity = Date.now() - Number(open.lastActivityAt);
+      if (sinceActivity > ACTIVITY_BUMP_THROTTLE_MS) {
+        await touchShift(db.getAdapter(), claims.shiftId);
+      }
+    }
+
+    if (claims.registerId) {
       const register = await db.getAdapter().getRegisterById(claims.registerId);
       if (!register || register.status !== 'active') {
-        throw new AuthenticationError('That register is no longer active', SHIFT_ENDED);
+        throw new AuthenticationError('That register is no longer active', REGISTER_INACTIVE);
       }
     }
 

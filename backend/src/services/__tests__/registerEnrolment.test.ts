@@ -23,6 +23,16 @@ interface FakeRegisterRow {
   id: string;
   status: string;
   displayCode: string;
+  idleLockSeconds: number;
+}
+
+interface FakeShiftRow {
+  id: string;
+  registerId: string;
+  userId: string;
+  lastActivityAt: number;
+  endedAt: number | null;
+  endReason: string | null;
 }
 
 interface FakeCredentialRow {
@@ -45,10 +55,31 @@ interface FakeCredentialRow {
 class FakeAdapter {
   registers = new Map<string, FakeRegisterRow>();
   credentials = new Map<string, FakeCredentialRow>();
+  shifts = new Map<string, FakeShiftRow>();
   private nextId = 0;
 
   addRegister(id: string, status: string = 'pending'): void {
-    this.registers.set(id, { id, status, displayCode: id.toUpperCase() });
+    this.registers.set(id, { id, status, displayCode: id.toUpperCase(), idleLockSeconds: 300 });
+  }
+
+  /** Opens a shift directly, bypassing `startShift` — this file tests `revokeCredential`, not sign-on. */
+  addOpenShift(id: string, registerId: string, userId: string = 'u1'): void {
+    this.shifts.set(id, { id, registerId, userId, lastActivityAt: Date.now(), endedAt: null, endReason: null });
+  }
+
+  async getOpenShiftForRegister(registerId: string): Promise<FakeShiftRow | null> {
+    for (const row of this.shifts.values()) {
+      if (row.registerId === registerId && row.endedAt == null) return { ...row };
+    }
+    return null;
+  }
+
+  async endRegisterShift(shiftId: string, reason: string): Promise<FakeShiftRow | null> {
+    const row = this.shifts.get(shiftId);
+    if (!row || row.endedAt != null) return null;
+    row.endedAt = Date.now();
+    row.endReason = reason;
+    return { ...row };
   }
 
   async getRegisterById(id: string): Promise<FakeRegisterRow | null> {
@@ -454,5 +485,28 @@ describe('revokeCredential', () => {
     expect(result.register.status).toBe('pending');
     expect(await verifyDeviceToken(adapter, enrolled.token)).toBe('revoked');
     expect(await redeemPairingCode(adapter, outstandingCode.code)).toBe('unknown');
+  });
+
+  it('ends the register\'s open shift with reason "revoked" — a revoked till must not keep authorizing whoever is mid-shift on it', async () => {
+    const adapter = fakeAdapter();
+    adapter.addRegister('r1', 'active');
+    adapter.addOpenShift('s1', 'r1');
+
+    const result = await revokeCredential(adapter, 'r1', { userId: 'admin', reason: 'lost device' });
+
+    if (result === 'not_found') throw new Error('expected a result');
+    const shift = adapter.shifts.get('s1')!;
+    expect(shift.endedAt).not.toBeNull();
+    expect(shift.endReason).toBe('revoked');
+  });
+
+  it('is a no-op on shifts when the register has none open', async () => {
+    const adapter = fakeAdapter();
+    adapter.addRegister('r1', 'active');
+
+    const result = await revokeCredential(adapter, 'r1', { userId: 'admin' });
+
+    if (result === 'not_found') throw new Error('expected a result');
+    expect(adapter.shifts.size).toBe(0);
   });
 });

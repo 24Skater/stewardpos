@@ -4,6 +4,7 @@ import { z } from 'zod';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError } from '../../utils/errors';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
+import { SHIFT_ENDED } from '../middleware/registerErrorCodes';
 import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
 
@@ -149,6 +150,14 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response, ne
   try {
     if (!req.user) {
       throw new AuthenticationError('No active session');
+    }
+
+    // An assumed session is capped at TILL_SESSION_MAX_AGE precisely because it
+    // bypassed device pairing. Re-minting would let a 30-minute grant be held
+    // open indefinitely by the client's own refresh timer, so it is refused and
+    // the admin assumes the till again.
+    if (req.tillSession?.assumed) {
+      throw new AuthenticationError('An assumed till session cannot be extended', SHIFT_ENDED);
     }
 
     // The binding is carried forward, never dropped. `authenticate` has already
