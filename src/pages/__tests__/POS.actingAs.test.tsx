@@ -13,6 +13,12 @@ import type { Product } from '@/lib/api';
  * who the sales belong to.
  */
 
+const navigateSpy = vi.fn();
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return { ...actual, useNavigate: () => navigateSpy };
+});
+
 vi.mock('@/components/register/OverridePrompt', () => ({ default: () => null }));
 vi.mock('@/components/register/LockScreen', () => ({
   default: ({ displayCode }: { displayCode?: string }) => (
@@ -134,5 +140,25 @@ describe('the acting-as banner', () => {
     // shift closes, but a client that keeps it walks back in past RequireTill
     // and gets a 401 at the first thing it touches instead of a lock screen.
     await waitFor(() => expect(authStore.getToken()).toBeNull());
+  });
+
+  it('leaves the admin at the till, not at a route their dropped token cannot reach', async () => {
+    // Exiting used to navigate back to /admin/registers, which is where the
+    // admin came from - but the token it drops on the way out IS their session:
+    // assuming a till replaces the back-office one. RequireAuth then bounced
+    // the tokenless browser to /login, stranding whoever is standing at the
+    // register at a password prompt. Found by walking it in a browser.
+    //
+    // The till is where they already are, and POS puts its own lock screen up
+    // as soon as the ended shift refetches - the same way an ordinary sign-out
+    // does. So the exit navigates nowhere at all.
+    writeAssumedSession({ adminName: 'Admin User', actingAs: 'Sam Cashier' });
+    authStore.setToken('assumed-jwt', '30m');
+    renderRegister();
+
+    fireEvent.click(await screen.findByRole('button', { name: /end session/i }));
+
+    await waitFor(() => expect(authStore.getToken()).toBeNull());
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 });
