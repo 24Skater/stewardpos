@@ -4,6 +4,16 @@ import Database from 'better-sqlite3';
 import config from '../config';
 import logger from '../utils/logger';
 
+/**
+ * The register PIN the seeded demo administrator signs on to a till with.
+ *
+ * Published in this repository, exactly like the demo password beside it, and
+ * for the same reason: the seeder refuses to run against a production database.
+ * Six digits because that is `MIN_PIN_LENGTH` in `services/pins.ts` — a shorter
+ * one would be a PIN the app's own policy refuses to reissue.
+ */
+export const DEMO_PIN = '112358';
+
 export class Seeder {
   private adapter: 'postgres' | 'sqlite';
   private pgPool?: Pool;
@@ -229,15 +239,26 @@ export class Seeder {
     logger.info('Seeding admin user...');
 
     const passwordHash = await bcrypt.hash('DemoPass!1', 10);
+    // Without a PIN, a paired till is unusable: the register's front door is
+    // `POST /api/auth/till`, which resolves a cashier by PIN and knows nothing
+    // about passwords. A fresh local stack would pair a terminal and then have
+    // no way to sign on to it.
+    //
+    // Six digits because that is `MIN_PIN_LENGTH` in `services/pins.ts`; a
+    // shorter one would be a PIN the app's own policy refuses to reissue. Real
+    // deployments set PINs through Admin → Roles & Users, and this seeder
+    // already refuses to run against a production database.
+    const pinHash = await bcrypt.hash(DEMO_PIN, 10);
 
     if (this.adapter === 'postgres' && this.pgPool) {
       // Update or insert user
       const userResult = await this.pgPool.query(
-        `INSERT INTO users (email, password_hash, name, status) 
-         VALUES ($1, $2, $3, $4) 
-         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, name = EXCLUDED.name, status = EXCLUDED.status
+        `INSERT INTO users (email, password_hash, name, status, pin_hash, pin_set_at) 
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP) 
+         ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, name = EXCLUDED.name, status = EXCLUDED.status,
+           pin_hash = EXCLUDED.pin_hash, pin_set_at = EXCLUDED.pin_set_at, pin_failed_count = 0, pin_locked_until = NULL
          RETURNING id`,
-        ['admin@demo.local', passwordHash, 'Admin User', 'active']
+        ['admin@demo.local', passwordHash, 'Admin User', 'active', pinHash]
       );
 
       // Get user ID (either from insert or existing user)
@@ -274,11 +295,12 @@ export class Seeder {
       // Update or insert user
       const result = this.sqliteDb
         .prepare(
-          `INSERT INTO users (email, password_hash, name, status) 
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, name = excluded.name, status = excluded.status`
+          `INSERT INTO users (email, password_hash, name, status, pin_hash, pin_set_at) 
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, name = excluded.name, status = excluded.status,
+             pin_hash = excluded.pin_hash, pin_set_at = excluded.pin_set_at, pin_failed_count = 0, pin_locked_until = NULL`
         )
-        .run('admin@demo.local', passwordHash, 'Admin User', 'active');
+        .run('admin@demo.local', passwordHash, 'Admin User', 'active', pinHash, Date.now());
 
       if (result.changes > 0) {
         const userId = result.lastInsertRowid;
@@ -300,7 +322,9 @@ export class Seeder {
       }
     }
 
-    logger.info('✓ Admin user seeded (email: admin@demo.local, password: DemoPass!1)');
+    logger.info(
+      `✓ Admin user seeded (email: admin@demo.local, password: DemoPass!1, register PIN: ${DEMO_PIN})`
+    );
   }
 
   private async seedSettings(): Promise<void> {
