@@ -71,3 +71,11 @@ export const SHIFT_ENDED = 'SHIFT_ENDED';
  * as well.
  */
 export const REGISTER_INACTIVE = 'REGISTER_INACTIVE';
+
+/**
+ * A user whose only role is a till role tried the password form. The password
+ * was correct; the door is the wrong one. Distinguished so the login screen can
+ * point them at the PIN pad instead of showing "invalid credentials", which
+ * would be both wrong and unhelpful — they would retype a password that works.
+ */
+export const USE_PIN_AT_TILL = 'USE_PIN_AT_TILL';

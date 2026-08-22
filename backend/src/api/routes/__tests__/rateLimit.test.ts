@@ -21,8 +21,11 @@ async function activeUser() {
     passwordHash: await bcrypt.hash(PASSWORD, 4),
     name: 'Staff',
     status: 'active',
-    roleIds: [],
-    roles: [],
+    // Back-office role: this suite is testing rate limiting, not the
+    // till-vs-back-office door split, and a till-only user would now be
+    // correctly refused with 403 rather than 200.
+    roleIds: ['role-admin'],
+    roles: [{ id: 'role-admin', name: 'admin', systemRole: 'admin' }],
   };
 }
 
