@@ -634,6 +634,137 @@ Password sessions carry no shiftId and take none of this path."
 
 ---
 
+## Task 2b: Close the gaps a security review found in Task 2
+
+Task 2 shipped a mechanism that is right in shape and wrong in four specifics.
+Each of these was asserted to work — in the commit message, in a doc comment, or
+in the spec — and does not.
+
+**Files:**
+- Modify: `backend/src/api/middleware/auth.ts`
+- Modify: `backend/src/services/registerEnrolment.ts`, `backend/src/services/registers.ts`
+- Modify: `backend/src/services/tillSessions.ts`, `backend/src/api/routes/auth.ts`
+- Modify: `backend/src/api/middleware/__tests__/shiftBoundSession.test.ts`
+
+- [ ] **Fix 1 (CRITICAL): revoking a register must end its shift**
+
+The spec claims revoke kills the session. It does not. `revokeCredential`,
+`retireRegister` and `disableRegister` never touch the shift row, and the
+`shiftId` branch of `authenticate` never reads register status — the `else if`
+skips the branch that would, because a PIN session carries **both** claims.
+`EndShiftReason` declares `'revoked'` and `'forced'` and neither string is passed
+to `endShift` anywhere in the repo, which is the tell.
+
+Fix it in both places, because either alone leaves a gap:
+
+*Defence one* — in `authenticate`, check the register for a PIN session too.
+Change the `else if` to validate both claims:
+
+```ts
+    // Both claims are validated, not one. A PIN session carries both, and the
+    // register half is what makes a revoked till stop working: ending the shift
+    // on revoke (below) is the primary defence, but a shift that somehow
+    // outlives its register must not keep authorizing either.
+    if (claims.shiftId) {
+      const shift = await db.getAdapter().getRegisterShiftById(claims.shiftId);
+      const open = shift ? await getOpenShift(db.getAdapter(), String(shift.registerId)) : null;
+      if (!open || String(open.id) !== claims.shiftId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+      // The token's register must be the shift's. Nothing else asserts this,
+      // and `/refresh` copies registerId forward into every future token.
+      if (claims.registerId && String(open.registerId) !== claims.registerId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+    }
+
+    const boundRegisterId = claims.registerId ?? null;
+    if (boundRegisterId) {
+      const register = await db.getAdapter().getRegisterById(boundRegisterId);
+      if (!register || register.status !== 'active') {
+        throw new AuthenticationError('That register is no longer active', REGISTER_INACTIVE);
+      }
+    }
+```
+
+Add `REGISTER_INACTIVE` to `registerErrorCodes.ts` — a client's recovery differs
+("this till was decommissioned" is not "PIN again"), and one code for both was
+flagged as indistinguishable when it should not be.
+
+*Defence two* — end open shifts where status changes. In
+`backend/src/services/registers.ts`, `retireRegister` and `disableRegister` must
+end any open shift with reason `'forced'`; in `registerEnrolment.ts`,
+`revokeCredential` must end it with `'revoked'`. Those two reasons exist in
+`EndShiftReason` and migration 018 precisely for this and have never been used.
+
+- [ ] **Fix 2: bump the idle clock on every till request**
+
+`touchShift` is called from two places only — `orders.ts` checkout and
+`returns.ts`. Migration 018 says twice that "every authenticated action on this
+register bumps it"; that was never true, and became load-bearing the moment
+Task 2 made `authenticate` enforce idle expiry on every request. A cashier
+scanning a large basket for over `idleLockSeconds` (default 300) is thrown out
+mid-sale.
+
+In `authenticate`, after the shift is confirmed open:
+
+```ts
+      // Migration 018 says every authenticated action bumps this; until now
+      // only checkout and returns did, so a cashier scanning a large basket
+      // was thrown out mid-sale. Throttled because this is a write on the
+      // request path: a bump is worthless more often than once every 30s,
+      // and the idle window is measured in minutes.
+      const sinceActivity = Date.now() - Number(open.lastActivityAt);
+      if (sinceActivity > ACTIVITY_BUMP_THROTTLE_MS) {
+        await touchShift(db.getAdapter(), claims.shiftId);
+      }
+```
+
+with `const ACTIVITY_BUMP_THROTTLE_MS = 30_000;` and `touchShift` imported from
+`registerShifts`. Leave the two existing `touchShift` calls alone — they are
+harmless and the throttle absorbs them.
+
+- [ ] **Fix 3: an assumed session cannot be refreshed**
+
+`/refresh` re-mints at `config.jwt.expiresIn`, dropping `maxAgeSeconds`. When
+Task 7's `assume` lands, the first auto-refresh — which fires on a 60-second
+timer — erases its 30-minute cap. A cap that can be refreshed is not a cap.
+
+Add an `assumed` claim in `tillSessions.ts` (`MintSessionInput.assumed?: boolean`,
+emitted with the same omit-when-absent spread as the other optional claims), read
+it in `TokenClaims`, and in `/refresh`:
+
+```ts
+    // An assumed session is capped at TILL_SESSION_MAX_AGE precisely because it
+    // bypassed device pairing. Re-minting it would let a 30-minute grant be held
+    // open indefinitely by the client's own refresh timer, so it is refused and
+    // the admin assumes the till again.
+    if (req.tillSession?.assumed) {
+      throw new AuthenticationError('An assumed till session cannot be extended', SHIFT_ENDED);
+    }
+```
+
+Carry `assumed` on `req.tillSession` alongside `shiftId`/`registerId`.
+
+- [ ] **Fix 4: tests for all of the above**
+
+Add to `shiftBoundSession.test.ts`: a PIN session on a non-`active` register is
+refused with `REGISTER_INACTIVE` (this is the case that would have caught the
+critical bug); a token whose `registerId` disagrees with its shift's register is
+refused; an active shift older than the throttle bumps `touchShift` and one
+newer than it does not; an assumed session is refused at `/refresh` while an
+ordinary PIN session is not.
+
+- [ ] **Deferred to the frontend phase — do NOT do it here**
+
+`SHIFT_ENDED` has no client half. `src/lib/api-client.ts` special-cases only
+`REGISTER_TOKEN_INVALID`; every other 401 clears the token and hard-navigates to
+`/login`, so a shift ending strands a cashier at a password prompt — exactly what
+the code's own comment says it prevents. **Task 10 must handle `SHIFT_ENDED` and
+`REGISTER_INACTIVE`**: the first returns to the PIN pad, the second to `/pair`.
+
+---
+
 ## Task 3: `POST /api/auth/till`
 
 **Files:**
