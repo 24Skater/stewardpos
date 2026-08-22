@@ -55,6 +55,13 @@ export async function getOpenShift(adapter: DatabaseAdapter, registerId: string)
 export interface StartShiftInput {
   registerId: string;
   pin: string;
+  /**
+   * Cashier an admin is standing in for, when this shift was opened by
+   * `POST /api/auth/till/assume` rather than a PIN scan. Recorded on the
+   * shift for the audit trail — see migration 020 — and never the attributed
+   * identity: the shift's `userId` is always who actually opened it.
+   */
+  emulatedUserId?: string;
 }
 
 export type StartShiftResult =
@@ -129,7 +136,11 @@ export async function startShift(
     supersededShiftId = String(openShift.id);
   }
 
-  const shift = await adapter.createRegisterShift({ registerId: input.registerId, userId: String(user.id) });
+  const shift = await adapter.createRegisterShift({
+    registerId: input.registerId,
+    userId: String(user.id),
+    emulatedUserId: input.emulatedUserId,
+  });
 
   return { shift, user, supersededShiftId };
 }
