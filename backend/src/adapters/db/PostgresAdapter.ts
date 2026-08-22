@@ -1562,6 +1562,11 @@ export class PostgresAdapter {
          ORDER BY u.name ASC`
       );
 
+      // Hand-picked, never `...u`: the row carries `pin_hash`, and a spread
+      // here would put every cashier's PIN hash on the wire the moment a route
+      // returned this list. The PIN fields that ARE here say only whether a PIN
+      // exists and whether it is currently locked out, which is what the admin
+      // screen needs to offer an unlock.
       return result.rows.map((u) => ({
         id: u.id,
         email: u.email,
@@ -1569,6 +1574,8 @@ export class PostgresAdapter {
         status: u.status,
         roleIds: u.role_ids || [],
         roles: u.roles || [],
+        pinSetAt: u.pin_set_at ? new Date(u.pin_set_at).getTime() : null,
+        pinLockedUntil: u.pin_locked_until ? new Date(u.pin_locked_until).getTime() : null,
         lastLoginAt: u.last_login_at ? new Date(u.last_login_at).getTime() : null,
         createdAt: new Date(u.created_at).getTime(),
       }));

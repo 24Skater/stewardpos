@@ -1504,6 +1504,9 @@ export class SQLiteAdapter {
           }
         }
 
+        // Hand-picked, never `...u`: `SELECT *` above brings `pin_hash` with
+        // it, and a spread would put every cashier's PIN hash on the wire.
+        // Same projection as PostgresAdapter's `getAllUsers`.
         return {
           id: u.id,
           email: u.email,
@@ -1511,6 +1514,8 @@ export class SQLiteAdapter {
           status: u.status,
           roleIds: roleIds.map((r: Record<string, unknown>) => r.role_id as string),
           roles,
+          pinSetAt: u.pin_set_at == null ? null : Number(u.pin_set_at),
+          pinLockedUntil: u.pin_locked_until == null ? null : Number(u.pin_locked_until),
           lastLoginAt: u.last_login_at,
           createdAt: u.created_at,
         };
