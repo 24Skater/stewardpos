@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useSession } from '@/hooks/queries/useSession';
 import {
@@ -42,6 +43,8 @@ import {
   useRevokeRegister,
   useUpdateRegister,
 } from '@/hooks/queries/useRegisters';
+import { authApi } from '@/lib/api';
+import { authStore, writeAssumedSession } from '@/lib/auth-store';
 import { hasPermission } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/errors';
 import { ApiClientError } from '@/lib/api-client';
@@ -58,6 +61,7 @@ import {
   Copy,
   KeyRound,
   Loader2,
+  LogIn,
   MapPin,
   Pencil,
   Plus,
@@ -204,10 +208,12 @@ function RegisterCapabilities({ register }: { register: Register }) {
 export default function AdminRegisters() {
   const { toast } = useToast();
   const { data: session } = useSession();
+  const navigate = useNavigate();
 
   const canWrite = hasPermission(session ?? null, 'registers', 'write');
   const canDelete = hasPermission(session ?? null, 'registers', 'delete');
 
+  const [assumingId, setAssumingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<RegisterStatus | 'all'>('all');
   const locationsQuery = useLocations();
   const registersQuery = useRegisters(statusFilter === 'all' ? undefined : { status: statusFilter });
@@ -390,6 +396,39 @@ export default function AdminRegisters() {
       toast({ title: 'Failed to retire register', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setRetireTarget(null);
+    }
+  };
+
+  /**
+   * Open a till from the back office, without this browser being paired.
+   *
+   * The one path to a till session that skips the device credential, which is
+   * why the server audits it and caps it at thirty minutes. Sales ring up
+   * against the admin, not against any cashier being covered — the POS banner
+   * says so, which is why the record is written here and not left implicit.
+   *
+   * The token and the record go together or not at all: a token without the
+   * record would put an admin on a till with nothing telling them their name is
+   * on every sale.
+   */
+  const handleAssume = async (register: Register) => {
+    setAssumingId(register.id);
+    try {
+      const assumed = await authApi.assumeTill({ registerId: register.id });
+      authStore.setToken(assumed.token, assumed.expiresIn);
+      writeAssumedSession({
+        adminName: session?.user.name ?? 'An administrator',
+        actingAs: assumed.actingAs?.name ?? null,
+      });
+      navigate('/pos');
+    } catch (error: unknown) {
+      toast({
+        title: 'Could not open that register',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setAssumingId(null);
     }
   };
 
@@ -641,6 +680,18 @@ export default function AdminRegisters() {
                                               <Power className="w-4 h-4" aria-hidden="true" />
                                             </Button>
                                           )}
+                                        {canWrite && register.status === 'active' && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label={`Open ${register.displayCode}`}
+                                            title="Open this register from here"
+                                            onClick={() => handleAssume(register)}
+                                            disabled={assumingId === register.id}
+                                          >
+                                            <LogIn className="w-4 h-4" aria-hidden="true" />
+                                          </Button>
+                                        )}
                                         {canWrite && register.status !== 'retired' && (
                                           <Button
                                             variant="ghost"
