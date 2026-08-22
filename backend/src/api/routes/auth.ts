@@ -7,8 +7,14 @@ import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
 import { SHIFT_ENDED } from '../middleware/registerErrorCodes';
 import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
+import tillRouter from './till';
+import { shiftLimiter } from './registers';
 
 const router = Router();
+
+// Brute-force protection in front of a short PIN, the same limiter the
+// existing shift endpoint uses.
+router.use('/till', shiftLimiter, tillRouter);
 
 // Validation schemas
 const loginSchema = z.object({
