@@ -1819,6 +1819,14 @@ beside it and never becomes the attributed identity."
 
 ## Task 8: Frontend SDK
 
+> **`UserPinStatus` is already wrong and must be fixed here.** It declares
+> `{ id, email, name, status, pinSetAt }`, but `PUT`/`DELETE /users/:id/pin`
+> actually return `{ id, pinSet: boolean }` and the new unlock route returns
+> `{ id, pinSetAt, pinLockedUntil, pinFailedCount }`. Nothing caught this because
+> no caller read the fields that do not exist. Task 12 needs `pinLockedUntil`, so
+> split the type to match what each route really returns rather than widening one
+> type to cover all three.
+
 **Files:**
 - Modify: `src/lib/api/auth.ts`
 - Modify: `src/lib/api/admin.ts`
