@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { ApiClientError } from '@/lib/api-client';
 
 /**
@@ -11,12 +13,28 @@ import { ApiClientError } from '@/lib/api-client';
  * a PIN exists for anyone.
  */
 
-const mutateAsync = vi.fn();
-vi.mock('@/hooks/queries', () => ({
-  useStartShift: () => ({ mutateAsync, isPending: false }),
-}));
+const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }));
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, authApi: { ...(actual.authApi as object), till: mutateAsync } };
+});
+vi.mock('@/lib/auth-store', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    authStore: { ...(actual.authStore as object), setToken: vi.fn(), getToken: () => null },
+  };
+});
 
 const LockScreen = (await import('../LockScreen')).default;
+
+/** The sign-on mutation needs a client; nothing here asserts on the cache. */
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -32,13 +50,13 @@ function enterAndSubmit(pin: string) {
 
 describe('LockScreen', () => {
   it('shows which register this is', () => {
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     expect(screen.getByText('MAIN-01')).toBeInTheDocument();
   });
 
   it('covers the screen as a non-dismissible modal', () => {
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     // Radix's Dialog.Content, rendered as an opaque full-viewport overlay -
     // `fixed inset-0` covers everything behind it.
@@ -51,7 +69,7 @@ describe('LockScreen', () => {
   });
 
   it('is announced to assistive tech via an accessible name and description', () => {
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAccessibleName('Register locked');
@@ -62,7 +80,7 @@ describe('LockScreen', () => {
     mutateAsync.mockRejectedValueOnce(
       new ApiClientError(401, 'That PIN was not recognized', undefined, { code: 'PIN_INVALID' })
     );
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     enterAndSubmit('000000');
 
@@ -77,7 +95,7 @@ describe('LockScreen', () => {
         code: 'PIN_LOCKED',
       })
     );
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     enterAndSubmit('000000');
 
@@ -93,7 +111,7 @@ describe('LockScreen', () => {
     mutateAsync.mockRejectedValueOnce(
       new ApiClientError(401, 'That PIN was not recognized', undefined, { code: 'PIN_INVALID' })
     );
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
 
     enterAndSubmit('000000');
 
@@ -106,42 +124,49 @@ describe('LockScreen', () => {
     mutateAsync.mockRejectedValueOnce(
       new ApiClientError(401, 'msg', undefined, { code: 'PIN_INVALID' })
     );
-    const { unmount } = render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    const { unmount } = render(<LockScreen displayCode="MAIN-01" />);
     enterAndSubmit('000000');
     const invalidAlert = await screen.findByRole('alert');
     const invalidText = invalidAlert.textContent;
     unmount();
 
     mutateAsync.mockRejectedValueOnce(new ApiClientError(401, 'msg', undefined, { code: 'PIN_LOCKED' }));
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" />);
+    render(<LockScreen displayCode="MAIN-01" />);
     enterAndSubmit('000000');
     const lockedAlert = await screen.findByRole('alert');
 
     expect(lockedAlert.textContent).not.toBe(invalidText);
   });
 
-  it('calls onSignedOn with the result on a successful sign-on', async () => {
-    const shift = { id: 's1', registerId: 'reg-1', userId: 'u1', startedAt: 1, lastActivityAt: 1, endedAt: null, endReason: null, createdAt: 1 };
-    mutateAsync.mockResolvedValueOnce({ shift, cashier: { id: 'u1', name: 'Alex' } });
-    const onSignedOn = vi.fn();
-    render(<LockScreen registerId="reg-1" displayCode="MAIN-01" onSignedOn={onSignedOn} />);
+  it('calls onUnlocked with the session on a successful sign-on', async () => {
+    const session = {
+      token: 'jwt',
+      expiresIn: '24h',
+      register: { id: 'reg-1' },
+      user: { id: 'u1', name: 'Alex', email: 'alex@example.com' },
+      shift: { id: 's1' },
+    };
+    mutateAsync.mockResolvedValueOnce(session);
+    const onUnlocked = vi.fn();
+    render(<LockScreen displayCode="MAIN-01" onUnlocked={onUnlocked} />);
 
     enterAndSubmit('123456');
 
-    await waitFor(() => expect(onSignedOn).toHaveBeenCalledWith({ shift, cashier: { id: 'u1', name: 'Alex' } }));
+    await waitFor(() => expect(onUnlocked).toHaveBeenCalledWith(session));
   });
 
-  it('submits the pin to the register the screen names', async () => {
+  it('submits the PIN alone — the device token picks the register', async () => {
     mutateAsync.mockResolvedValueOnce({
+      token: 'jwt',
+      expiresIn: '24h',
+      register: { id: 'reg-42' },
+      user: { id: 'u1', name: 'Alex', email: 'alex@example.com' },
       shift: { id: 's1' },
-      cashier: { id: 'u1', name: 'Alex' },
     });
-    render(<LockScreen registerId="reg-42" displayCode="MAIN-42" />);
+    render(<LockScreen displayCode="MAIN-42" />);
 
     enterAndSubmit('654321');
 
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({ registerId: 'reg-42', pin: '654321' })
-    );
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ pin: '654321' }));
   });
 });
