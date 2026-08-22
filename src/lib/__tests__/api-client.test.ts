@@ -138,6 +138,72 @@ describe('apiClient', () => {
       expect(window.location.assign).toHaveBeenCalledWith('/login');
     });
 
+    it('leaves a rejected PIN on the lock screen', async () => {
+      // A 401 from the sign-on endpoint means "that PIN was wrong", not "your
+      // session expired". Treating it as the latter replaces the lock screen
+      // with the login page mid-keystroke — the back-office door this whole
+      // feature exists to keep cashiers away from. Found in a browser: the
+      // message LockScreen renders for PIN_INVALID could never appear, because
+      // the page navigated away first.
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'That PIN was not recognized', code: 'PIN_INVALID' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it('does not drop a device credential over a rejected PIN', async () => {
+      // The terminal is still enrolled; only the person at it typed wrong.
+      authStore.setToken('a-till-session');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'This PIN is locked', code: 'PIN_LOCKED' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(authStore.getToken()).toBe('a-till-session');
+    });
+
+    it('still sends an unpaired terminal to pair, even from the sign-on endpoint', async () => {
+      // The register-token path is a different failure: this device cannot
+      // authenticate as itself, and no PIN will fix that.
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'X-Register-Token is required', code: 'REGISTER_TOKEN_INVALID' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(window.location.assign).toHaveBeenCalledWith('/pair');
+    });
+
+    it('still redirects when an ordinary call 401s', async () => {
+      authStore.setToken('stale-token');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse({ success: false, error: 'Invalid token' }, { ok: false, status: 401 })
+      );
+
+      await expect(apiClient.post('/api/orders', {})).rejects.toBeInstanceOf(ApiClientError);
+
+      expect(window.location.assign).toHaveBeenCalledWith('/login');
+    });
+
     it('does not redirect when already on the login page', async () => {
       Object.defineProperty(window, 'location', {
         configurable: true,
