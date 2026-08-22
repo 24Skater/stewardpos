@@ -224,6 +224,51 @@ router.delete('/users/:id/pin', requirePermission('users', 'write'), async (req:
 });
 
 /**
+ * POST /api/admin/users/:id/pin/unlock
+ *
+ * Clear a PIN lockout without waiting out the fifteen minutes
+ * (`services/pins.ts`). The lockout exists to blunt PIN guessing; a manager
+ * standing next to the cashier has already answered the question it was asking,
+ * and a shop cannot wait a quarter of an hour with a queue at the till.
+ *
+ * Does NOT change the PIN — the cashier's own PIN still works afterwards. Use
+ * `PUT /users/:id/pin` for that.
+ */
+router.post(
+  '/users/:id/pin/unlock',
+  requirePermission('users', 'write'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const orgId = req.orgId ?? DEFAULT_ORG_ID;
+      const adapter = db.getAdapter();
+
+      const user = await adapter.getUserById(id);
+      // An out-of-org user must be indistinguishable from one that does not
+      // exist at all - same guard `registers.ts` uses for its :id routes.
+      if (!user || String(user.orgId ?? DEFAULT_ORG_ID) !== orgId) {
+        throw new NotFoundError('User not found');
+      }
+
+      const before = { pinLockedUntil: user.pinLockedUntil, pinFailedCount: user.pinFailedCount };
+      await adapter.resetPinFailures(id);
+      const after = { pinLockedUntil: null, pinFailedCount: 0 };
+
+      await audit(req, { action: 'update', entity: 'user', entityId: id, before, after });
+
+      // Same hand-picked shape the sibling PIN routes use: never pass the
+      // adapter's row straight through, since that row carries `pinHash`.
+      res.json({
+        success: true,
+        data: { id, pinSetAt: user.pinSetAt, pinLockedUntil: after.pinLockedUntil, pinFailedCount: after.pinFailedCount },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * DELETE /api/admin/users/:id
  * Delete user
  */
