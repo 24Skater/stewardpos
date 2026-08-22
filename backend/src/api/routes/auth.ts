@@ -2,9 +2,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import logger from '../../utils/logger';
-import { ValidationError, AuthenticationError } from '../../utils/errors';
+import { ValidationError, AuthenticationError, ForbiddenError } from '../../utils/errors';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
-import { SHIFT_ENDED } from '../middleware/registerErrorCodes';
+import { SHIFT_ENDED, USE_PIN_AT_TILL } from '../middleware/registerErrorCodes';
 import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
 import tillRouter from './till';
@@ -55,6 +55,23 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     // Check if user is active
     if (user.status !== 'active') {
       throw new AuthenticationError('Account is inactive');
+    }
+
+    /**
+     * The password form is the back-office door; the till has its own.
+     *
+     * Deliberately after the password comparison: refusing earlier would turn
+     * this endpoint into an oracle for which addresses belong to cashiers.
+     *
+     * "Every role is `standard`" rather than "any role is `standard`" — a
+     * cashier who is also a Reporter has back-office work to do, and a user
+     * with no roles has no business here either way.
+     */
+    const roles = (user.roles as { systemRole?: string }[]) ?? [];
+    const isTillOnly = roles.length === 0 || roles.every((role) => role.systemRole === 'standard');
+    if (isTillOnly) {
+      logger.info(`Refused password login for till-only user ${email}`);
+      throw new ForbiddenError('Use your PIN at the till.', USE_PIN_AT_TILL);
     }
 
     // Update last login
