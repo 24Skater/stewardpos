@@ -39,6 +39,7 @@ export type {
   UserPinState,
   UserPinLockState,
 } from './admin';
+export type { AssumedTillSession, TillSession } from './auth';
 export type {
   ApiAuthentication,
   ApiDocs,

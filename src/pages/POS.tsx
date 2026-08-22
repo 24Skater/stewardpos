@@ -1797,9 +1797,8 @@ export default function POS() {
           clicked or Escaped away. */}
       {showLockScreen && currentRegister && registerId && (
         <LockScreen
-          registerId={registerId}
           displayCode={currentRegister.displayCode}
-          onSignedOn={() => setForceLock(false)}
+          onUnlocked={() => setForceLock(false)}
         />
       )}
 
