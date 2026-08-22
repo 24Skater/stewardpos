@@ -13,7 +13,7 @@
  */
 
 import { Migrator } from '../src/services/migrator';
-import { Seeder } from '../src/services/seeder';
+import { DEMO_PIN, Seeder } from '../src/services/seeder';
 import config from '../src/config';
 import logger from '../src/utils/logger';
 
@@ -53,8 +53,12 @@ async function setupDatabase() {
     logger.info('Default admin credentials:');
     logger.info('  Email: admin@demo.local');
     logger.info('  Password: DemoPass!1');
+    // The password is the back office; the PIN is the till. Neither one gets
+    // you through the other's door, so printing only the password leaves a
+    // paired register with no way in.
+    logger.info(`  Register PIN: ${DEMO_PIN}`);
     logger.info('');
-    logger.info('⚠️  IMPORTANT: Change the admin password after first login!');
+    logger.info('⚠️  IMPORTANT: Change the admin password and PIN after first login!');
     logger.info('');
 
     process.exit(0);
