@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import SetupGuard from "@/components/SetupGuard";
 import StoreBranding from "./components/StoreBranding";
 import RequireAuth from "@/components/RequireAuth";
+import RequireTill from "@/components/RequireTill";
 import { Suspense, lazy } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -25,7 +26,6 @@ import Login from "./pages/Login";
 const Setup = lazy(() => import("./pages/Setup"));
 const PairRegister = lazy(() => import("./pages/PairRegister"));
 const Inventory = lazy(() => import("./pages/Inventory"));
-const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const ServicesPos = lazy(() => import("./pages/ServicesPos"));
 const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
@@ -74,10 +74,9 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               {/* No RequireAuth: the device has no user session when it pairs — see PairRegister.tsx. */}
               <Route path="/pair" element={<PairRegister />} />
-              <Route path="/" element={<RequireAuth><POS /></RequireAuth>} />
-              <Route path="/pos" element={<RequireAuth><POS /></RequireAuth>} />
+              <Route path="/" element={<RequireTill><POS /></RequireTill>} />
+              <Route path="/pos" element={<RequireTill><POS /></RequireTill>} />
               <Route path="/inventory" element={<RequireAuth permission={{ domain: "inventory", action: "read" }}><Inventory /></RequireAuth>} />
-              <Route path="/reports" element={<RequireAuth permission={{ domain: "reports", action: "read" }}><Reports /></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><Settings /></RequireAuth>} />
               <Route path="/services" element={<RequireAuth permission={{ domain: "services", action: "read" }}><ServicesPos /></RequireAuth>} />
               <Route path="/admin" element={<RequireAuth permission={{ domain: "reports", action: "read" }}><Dashboard /></RequireAuth>} />

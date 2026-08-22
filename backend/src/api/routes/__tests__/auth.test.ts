@@ -24,8 +24,13 @@ async function activeUser(overrides: Record<string, unknown> = {}) {
     passwordHash: await bcrypt.hash(KNOWN_PASSWORD, 4),
     name: 'Test User',
     status: 'active',
-    roleIds: [],
-    roles: [],
+    // Back-office role by default: this file exercises the password form
+    // itself, not the till-vs-back-office split (see loginPolicy.test.ts for
+    // that). A till-only or roleless user would now be correctly refused with
+    // 403, which would make every "issues a token" case here fail for the
+    // wrong reason.
+    roleIds: ['role-admin'],
+    roles: [{ id: 'role-admin', name: 'admin', systemRole: 'admin' }],
     ...overrides,
   };
 }

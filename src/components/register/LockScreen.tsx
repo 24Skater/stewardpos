@@ -1,18 +1,29 @@
 import { useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { useMutation } from '@tanstack/react-query';
 import { Lock, ShieldAlert } from 'lucide-react';
 import PinPad from './PinPad';
-import { useStartShift } from '@/hooks/queries';
 import { ApiClientError } from '@/lib/api-client';
+import { authApi } from '@/lib/api';
+import { authStore } from '@/lib/auth-store';
 import { getErrorMessage } from '@/lib/errors';
 import { PIN_INVALID, PIN_LOCKED } from '@/lib/register-error-codes';
-import type { StartShiftResult } from '@/lib/api';
+import type { TillSession } from '@/lib/api';
 
 /**
  * Full-screen sign-on gate for a till that requires a cashier PIN.
  *
- * Shown whenever the register has `require_sign_in` and no open shift — see
- * `POS.tsx`, which reads `useCurrentShift` to decide when to mount this. It
+ * Mounted from two places, and it does the same thing in both: `RequireTill`
+ * shows it as the terminal's front door when no session is open, and `POS.tsx`
+ * lays it over a running screen when a shift ends under a cashier (sign-out or
+ * idle timeout). It does not take a register — `POST /api/auth/till` reads the
+ * terminal's `X-Register-Token`, so the device itself selects which till this
+ * is, and a screen that accepted a register id could be pointed at one the
+ * device is not paired to.
+ *
+ * The PIN buys a *session*, not just a shift: the token it returns is what
+ * every later request authenticates with, which is why an unpaired or
+ * signed-off terminal has nothing behind this screen to leak. It
  * covers the entire POS: unlike an ordinary dialog, there is no overlay click
  * or Escape key that dismisses it (`onPointerDownOutside`/`onEscapeKeyDown`
  * are both suppressed below) and there is no close control, because a
@@ -46,24 +57,38 @@ function classifyFailure(error: unknown): { kind: FailureKind; message: string }
 }
 
 export interface LockScreenProps {
-  registerId: string;
-  /** So a cashier at a bank of tills knows which one this is. */
-  displayCode: string;
+  /**
+   * So a cashier at a bank of tills knows which one this is.
+   *
+   * Optional because the front-door mount has no session yet and therefore no
+   * way to have loaded the register — only a caller already inside the POS can
+   * name it.
+   */
+  displayCode?: string;
   /** The org's configured PIN length — sizes the pad, does not gate submission. */
   pinLength?: number;
-  /** Called once a shift opens successfully. `useCurrentShift` also picks this up on its own — this is for callers that want to react immediately. */
-  onSignedOn?: (result: StartShiftResult) => void;
+  /** Called once the session is stored, so a caller can take the screen down. */
+  onUnlocked?: (session: TillSession) => void;
 }
 
-export default function LockScreen({ registerId, displayCode, pinLength, onSignedOn }: LockScreenProps) {
-  const startShift = useStartShift();
+export default function LockScreen({ displayCode, pinLength, onUnlocked }: LockScreenProps) {
   const [failure, setFailure] = useState<{ kind: FailureKind; message: string } | null>(null);
+
+  const signOn = useMutation({
+    mutationFn: (pin: string) => authApi.till({ pin }),
+    onSuccess: (session) => {
+      // Stored before the callback fires: `RequireTill` reads the token
+      // synchronously to decide whether to keep showing this screen, so the
+      // other order flashes the pad back over a till that just signed on.
+      authStore.setToken(session.token, session.expiresIn);
+      onUnlocked?.(session);
+    },
+  });
 
   const handleSubmit = async (pin: string) => {
     setFailure(null);
     try {
-      const result = await startShift.mutateAsync({ registerId, pin });
-      onSignedOn?.(result);
+      await signOn.mutateAsync(pin);
     } catch (error) {
       setFailure(classifyFailure(error));
     }
@@ -86,12 +111,18 @@ export default function LockScreen({ registerId, displayCode, pinLength, onSigne
               Register locked
             </DialogPrimitive.Title>
             <DialogPrimitive.Description id="lock-screen-description" className="text-sm text-muted-foreground mt-1">
-              Sign on to <span className="font-medium text-foreground">{displayCode}</span> with your PIN to
-              continue.
+              {displayCode ? (
+                <>
+                  Sign on to <span className="font-medium text-foreground">{displayCode}</span> with your
+                  PIN to continue.
+                </>
+              ) : (
+                <>Sign on with your PIN to continue.</>
+              )}
             </DialogPrimitive.Description>
           </div>
 
-          <PinPad expectedLength={pinLength} onSubmit={handleSubmit} submitting={startShift.isPending} />
+          <PinPad expectedLength={pinLength} onSubmit={handleSubmit} submitting={signOn.isPending} />
 
           {failure && (
             <div

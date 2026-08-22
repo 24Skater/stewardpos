@@ -276,6 +276,9 @@ function mapRegisterShift(row: DbRow): DbRow {
     id: String(row.id),
     registerId: String(row.register_id),
     userId: String(row.user_id),
+    // Cashier an admin was standing in for — see migration 020. NULL on every
+    // ordinary shift; never the attributed identity, see `userId` above.
+    emulatedUserId: row.emulated_user_id == null ? null : String(row.emulated_user_id),
     startedAt: Number(row.started_at),
     lastActivityAt: Number(row.last_activity_at),
     endedAt: row.ended_at == null ? null : Number(row.ended_at),
@@ -1501,6 +1504,9 @@ export class SQLiteAdapter {
           }
         }
 
+        // Hand-picked, never `...u`: `SELECT *` above brings `pin_hash` with
+        // it, and a spread would put every cashier's PIN hash on the wire.
+        // Same projection as PostgresAdapter's `getAllUsers`.
         return {
           id: u.id,
           email: u.email,
@@ -1508,6 +1514,8 @@ export class SQLiteAdapter {
           status: u.status,
           roleIds: roleIds.map((r: Record<string, unknown>) => r.role_id as string),
           roles,
+          pinSetAt: u.pin_set_at == null ? null : Number(u.pin_set_at),
+          pinLockedUntil: u.pin_locked_until == null ? null : Number(u.pin_locked_until),
           lastLoginAt: u.last_login_at,
           createdAt: u.created_at,
         };
@@ -5676,22 +5684,47 @@ export class SQLiteAdapter {
   }
 
   /**
+   * One shift by id, open or closed.
+   *
+   * `getOpenShiftForRegister` answers "who is on this till"; session validation
+   * asks the different question "is this specific shift still open", and must
+   * see a closed row rather than null so it can tell "ended" from "never
+   * existed".
+   */
+  async getRegisterShiftById(shiftId: string): Promise<DbRow | null> {
+    try {
+      const row = this.db
+        .prepare('SELECT * FROM register_shifts WHERE id = ?')
+        .get(shiftId) as DbRow | undefined;
+      return row ? mapRegisterShift(row) : null;
+    } catch (error) {
+      logger.error('Error getting register shift by id:', error);
+      throw new DatabaseError('Failed to get register shift');
+    }
+  }
+
+  /**
    * Open a shift. Callers are expected to have already ended any prior open
    * shift on this register (`services/registerShifts.ts` does, marking it
    * `superseded`) — this does not check, and relies on migration 018's
    * partial unique index to reject a genuine race rather than silently
    * allowing two open shifts on one register.
    */
-  async createRegisterShift(payload: { registerId: string; userId: string }): Promise<DbRow> {
+  async createRegisterShift(payload: {
+    registerId: string;
+    userId: string;
+    /** See migration 020 and `mapRegisterShift` — recorded, never attributed. */
+    emulatedUserId?: string;
+  }): Promise<DbRow> {
     try {
       const id = crypto.randomUUID();
       const now = Date.now();
       this.db
         .prepare(
-          `INSERT INTO register_shifts (id, register_id, user_id, started_at, last_activity_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO register_shifts (id, register_id, user_id, emulated_user_id, started_at, last_activity_at, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         )
-        .run(id, payload.registerId, payload.userId, now, now, now);
+        .run(id, payload.registerId, payload.userId, payload.emulatedUserId ?? null, now, now, now);
 
       const row = this.db.prepare('SELECT * FROM register_shifts WHERE id = ?').get(id) as DbRow;
       return mapRegisterShift(row);

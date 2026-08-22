@@ -5,6 +5,22 @@ import config from '../../config';
 import logger from '../../utils/logger';
 import db from '../../services/database';
 import { AuthenticationError } from '../../utils/errors';
+import { getOpenShift, touchShift } from '../../services/registerShifts';
+import { SHIFT_ENDED, REGISTER_INACTIVE } from './registerErrorCodes';
+
+/**
+ * How long a shift's idle clock is left untouched before `authenticate`
+ * bumps it again.
+ *
+ * Migration 018 says every authenticated action on a register bumps its
+ * shift's activity; until now only checkout and returns actually did, so a
+ * cashier scanning a large basket or waiting on a customer past
+ * `idleLockSeconds` (default 300s) got a hard 401 mid-sale. Bumping on every
+ * request would work too, but it is a write on the hottest path in the app —
+ * this throttle makes it worthless more often than once every 30s against an
+ * idle window measured in minutes, not milliseconds.
+ */
+const ACTIVITY_BUMP_THROTTLE_MS = 30_000;
 
 /** A role as it hangs off the authenticated user. */
 export interface AuthRole {
@@ -54,6 +70,14 @@ export interface AuthRequest extends Request {
      */
     roles: AuthRole[];
   };
+  /**
+   * The till session behind this request, when it is one.
+   *
+   * `req.user` says who; this says which shift and till they are on. `/refresh`
+   * needs it to carry the binding forward — a refreshed token that dropped it
+   * would be a till session laundered into one that never ends.
+   */
+  tillSession?: { shiftId?: string; registerId?: string; assumed?: boolean };
 }
 
 /** What `POST /api/auth/login` signs into the token. */
@@ -63,6 +87,32 @@ interface TokenClaims {
   roleIds: string[];
   /** Absent in tokens minted before orgs existed; falls back to the default. */
   orgId?: string;
+  /**
+   * Present on a PIN till session. Binds the token to a shift: the session is
+   * over when the shift is, so signing out or going idle cannot leave a working
+   * token behind on a shared terminal.
+   */
+  shiftId?: string;
+  /**
+   * Present on any till session. On a no-PIN register there is no shift to bind
+   * to, so the register's own status is what the session lives or dies by.
+   */
+  registerId?: string;
+  /**
+   * Present when this token was minted by an admin "assuming" a till rather
+   * than a cashier PINning onto one — see `services/tillSessions.ts`. Read
+   * back off `req.tillSession` by `/refresh`, which refuses to extend it: a
+   * session that bypassed device pairing is deliberately capped, and a cap
+   * that can be refreshed by the client's own timer is not a cap.
+   */
+  assumed?: boolean;
+  /**
+   * Present on a no-PIN till session (`POST /api/auth/till` on a register
+   * with `requireSignIn` off, see `api/routes/till.ts`). Its identity is the
+   * register, not a `users` row, so `authenticate` must not run
+   * `getUserByEmail` against it — see the branch below.
+   */
+  registerPrincipal?: boolean;
 }
 
 /**
@@ -193,21 +243,81 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
       throw error;
     }
 
-    const user = await db.getAdapter().getUserByEmail(claims.email);
-    if (!user || user.status !== 'active') {
-      throw new AuthenticationError('Not authenticated');
+    if (claims.registerPrincipal) {
+      // A no-PIN till session's identity is the register, not a row in
+      // `users` — its email is the synthetic `register:<id>` minted by
+      // `routes/till.ts`, which `getUserByEmail` can never resolve. Build
+      // `req.user` straight from the token instead, the same way
+      // `authenticateApiKey` above builds one for a non-human caller,
+      // rather than weakening the lookup for every other session.
+      req.orgId = claims.orgId ?? DEFAULT_ORG_ID;
+      req.user = {
+        id: claims.id,
+        email: claims.email,
+        roleIds: [],
+        roles: [],
+      };
+    } else {
+      const user = await db.getAdapter().getUserByEmail(claims.email);
+      if (!user || user.status !== 'active') {
+        throw new AuthenticationError('Not authenticated');
+      }
+
+      // The stored value wins over the token's, for the same reason roles are
+      // reloaded here: a token outlives a change, and moving a user between orgs
+      // should not wait for it to expire.
+      req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
+      req.user = {
+        id: String(user.id),
+        email: String(user.email),
+        roleIds: (user.roleIds as string[]) || [],
+        roles: (user.roles as AuthRole[]) || [],
+      };
     }
 
-    // The stored value wins over the token's, for the same reason roles are
-    // reloaded here: a token outlives a change, and moving a user between orgs
-    // should not wait for it to expire.
-    req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
-    req.user = {
-      id: String(user.id),
-      email: String(user.email),
-      roleIds: (user.roleIds as string[]) || [],
-      roles: (user.roles as AuthRole[]) || [],
-    };
+    // A till session is only as alive as the thing that opened it. Checked
+    // after `req.user` is built so the failure path is identical for every
+    // caller, and skipped entirely for a password session, which carries
+    // none of these claims.
+    if (claims.shiftId || claims.registerId || claims.assumed) {
+      req.tillSession = { shiftId: claims.shiftId, registerId: claims.registerId, assumed: claims.assumed };
+    }
+
+    // Both claims are validated, not one. A PIN session carries both, and the
+    // register half is what makes a revoked till stop working: ending the
+    // shift on revoke/retire/disable (services/registers.ts,
+    // registerEnrolment.ts) is the primary defence, but a shift that somehow
+    // outlives its register — a race, a manual DB edit — must not keep
+    // authorizing either. An `else if` here previously let a revoked
+    // register's PIN sessions keep working until the shift merely went idle.
+    if (claims.shiftId) {
+      const shift = await db.getAdapter().getRegisterShiftById(claims.shiftId);
+      // `getOpenShift` rather than reading `endedAt` here: it is the single
+      // place idle expiry is decided, so a session and its shift can never
+      // disagree about whether the cashier has walked away.
+      const open = shift ? await getOpenShift(db.getAdapter(), String(shift.registerId)) : null;
+      if (!open || String(open.id) !== claims.shiftId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+      // The token's register must be the shift's own. Nothing else asserts
+      // this, and `/refresh` copies `registerId` forward into every future
+      // token, so a mismatch here would otherwise ride along indefinitely.
+      if (claims.registerId && String(open.registerId) !== claims.registerId) {
+        throw new AuthenticationError('That shift has ended', SHIFT_ENDED);
+      }
+
+      const sinceActivity = Date.now() - Number(open.lastActivityAt);
+      if (sinceActivity > ACTIVITY_BUMP_THROTTLE_MS) {
+        await touchShift(db.getAdapter(), claims.shiftId);
+      }
+    }
+
+    if (claims.registerId) {
+      const register = await db.getAdapter().getRegisterById(claims.registerId);
+      if (!register || register.status !== 'active') {
+        throw new AuthenticationError('That register is no longer active', REGISTER_INACTIVE);
+      }
+    }
 
     next();
   } catch (error) {

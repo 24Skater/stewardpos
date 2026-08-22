@@ -21,6 +21,7 @@ import { useCreateOrder, useCurrentShift, useEndShift, useProducts, useRegister,
 import { useRegisterHeartbeat } from "@/hooks/useRegisterHeartbeat";
 import { useIdleLock } from "@/hooks/useIdleLock";
 import LockScreen from "@/components/register/LockScreen";
+import ActingAsBanner from "@/components/register/ActingAsBanner";
 import OverridePrompt, { type OverrideGrant } from "@/components/register/OverridePrompt";
 import { getDeviceToken, getSelectedRegisterId, subscribeToSelectedRegisterId } from "@/lib/register-device";
 import { ApiClientError } from "@/lib/api-client";
@@ -41,7 +42,7 @@ import {
   receiptLinesFrom as receiptLinesOf,
   toDiscountRequests as discountRequestsOf,
 } from "@/lib/register-math";
-import { LayoutGrid, Package, Search, Barcode, FileBarChart, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet, LogOut, UserRound } from "lucide-react";
+import { LayoutGrid, Package, Search, Barcode, Settings as SettingsIcon, ShieldCheck, Briefcase, Tag, X, Percent, DollarSign, Gift, CheckCircle2, UserCheck, Shield, GraduationCap, Heart, Cake, AlertTriangle, RotateCcw, Banknote, Smartphone, CreditCard, Loader2, Wallet, LogOut, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import QuickReturnDialog from "@/components/QuickReturnDialog";
 import CashDrawerDialog from "@/components/CashDrawerDialog";
@@ -53,6 +54,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNavigate } from "react-router-dom";
 import { getErrorMessage } from '@/lib/errors';
+import { authStore, readAssumedSession } from '@/lib/auth-store';
+import { useSession } from '@/hooks/queries/useSession';
+import { hasPermission } from '@/lib/auth';
 
 const CARD_PROVIDER_LABELS: Record<string, string> = {
   square: 'Square',
@@ -180,6 +184,35 @@ export default function POS() {
     }
   };
 
+  /**
+   * Set only by `POST /api/auth/till/assume`. A cashier's own PIN session
+   * writes nothing here, so the banner never appears at a real till.
+   */
+  const assumed = readAssumedSession();
+
+  /**
+   * Leave an assumed session.
+   *
+   * Ends the shift the way an ordinary sign-out does, then drops the token.
+   * That second half is the part that matters: the backend already refuses the
+   * token once the shift closes, but a client holding on to it walks back past
+   * `RequireTill` and meets a 401 at the first thing it touches, rather than
+   * the lock screen it should be looking at.
+   *
+   * It goes nowhere afterwards, and that is deliberate. Sending the admin back
+   * to `/admin/registers` — where they came from — stranded them at `/login`
+   * instead: the token dropped above *is* their session, because assuming a
+   * till replaces the back-office one, so `RequireAuth` had nothing left to
+   * admit them with. The till is where they are standing, and ending the shift
+   * puts POS's own lock screen up as soon as it refetches, exactly as an
+   * ordinary sign-out does. An admin who wants the back office signs in there.
+   */
+  const handleEndAssumedSession = async () => {
+    await handleSignOut();
+    // Also clears the assumed record, so the banner cannot outlive it.
+    authStore.clearToken();
+  };
+
   /** SHIFT_REQUIRED on checkout — see the two catch blocks below that call this. */
   const isShiftRequiredError = (error: unknown): boolean =>
     error instanceof ApiClientError && (error.body as { code?: string } | undefined)?.code === SHIFT_REQUIRED;
@@ -241,6 +274,19 @@ export default function POS() {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { data: session } = useSession();
+
+  /**
+   * Whether to offer the Admin button at all.
+   *
+   * `/admin` needs `reports:read` — the same permission `App.tsx` gates the
+   * route on. This used to be unconditional, which was harmless while every
+   * till sat behind a back-office login; with a cashier's PIN session behind it
+   * the button leads only to a 403, and a button that only ever fails is worse
+   * than no button. Absent while the session is still unknown, so it does not
+   * flicker in and then vanish under the cursor.
+   */
+  const canReachAdmin = session ? hasPermission(session, 'reports', 'read') : false;
   
   // Discount state
   const [quickDiscounts, setQuickDiscounts] = useState<PosDiscountType[]>([]);
@@ -1035,6 +1081,16 @@ export default function POS() {
       {/* ARIA live region for cart announcements */}
       <div id="cart-announcement" className="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
+      {/* Above the header, not inside it: an admin driving someone else's till
+          should not have to look for this. */}
+      {assumed && (
+        <ActingAsBanner
+          adminName={assumed.adminName}
+          actingAs={assumed.actingAs}
+          onExit={handleEndAssumedSession}
+        />
+      )}
+
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center justify-between">
@@ -1119,15 +1175,6 @@ export default function POS() {
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => navigate('/reports')}
-              className="border-border"
-              size="sm"
-            >
-              <FileBarChart className="w-4 h-4 mr-1" />
-              Reports
-            </Button>
-            <Button 
-              variant="outline" 
               onClick={() => navigate('/settings')}
               className="border-border"
               size="sm"
@@ -1147,15 +1194,17 @@ export default function POS() {
               `RequireAuth` sends an unauthenticated visitor to
               `/login?next=/admin` and Login brings them back afterwards.
             */}
-            <Button
-              variant="default"
-              onClick={() => navigate('/admin')}
-              className="bg-primary hover:bg-primary/90"
-              size="sm"
-            >
-              <ShieldCheck className="w-4 h-4 mr-1" />
-              Admin
-            </Button>
+            {canReachAdmin && (
+              <Button
+                variant="default"
+                onClick={() => navigate('/admin')}
+                className="bg-primary hover:bg-primary/90"
+                size="sm"
+              >
+                <ShieldCheck className="w-4 h-4 mr-1" />
+                Admin
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1806,9 +1855,8 @@ export default function POS() {
           clicked or Escaped away. */}
       {showLockScreen && currentRegister && registerId && (
         <LockScreen
-          registerId={registerId}
           displayCode={currentRegister.displayCode}
-          onSignedOn={() => setForceLock(false)}
+          onUnlocked={() => setForceLock(false)}
         />
       )}
 

@@ -17,6 +17,13 @@ export const PIN_INVALID = 'PIN_INVALID';
 /** `POST /:id/shifts` — the entered PIN matches an account currently locked out after repeated failures. */
 export const PIN_LOCKED = 'PIN_LOCKED';
 
+/**
+ * `POST /api/auth/login` — the account has a till PIN and no back-office
+ * business on the password form. Their password was correct; saying "invalid
+ * credentials" would send them round the retype loop forever.
+ */
+export const USE_PIN_AT_TILL = 'USE_PIN_AT_TILL';
+
 /** Checkout refused because the register requires a cashier sign-in and none is open. */
 export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';
 

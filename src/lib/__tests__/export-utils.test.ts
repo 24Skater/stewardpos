@@ -84,6 +84,28 @@ describe('exportToCSV', () => {
   });
 });
 
+/**
+ * Whether a file was actually written.
+ *
+ * Both writers decline to write when there is nothing to write — a CSV takes
+ * its header row from the first record, and Excel rejects a workbook with no
+ * sheets — and they used to do so silently. The Excel half of this is asserted
+ * in `export-pdf.test.ts`, alongside the rest of the real-workbook coverage. `AdminExports` then reported
+ * "Export completed successfully" over a download that never happened, which
+ * is the one outcome worse than an error: the operator believes they have the
+ * figures. The boolean is what lets the caller tell the difference.
+ */
+describe('exportToCSV reports whether it wrote', () => {
+  it('exportToCSV returns true when it writes a file', () => {
+    expect(exportToCSV([{ Name: 'Tea' }], 'out.csv')).toBe(true);
+  });
+
+  it('exportToCSV returns false on no rows, and writes nothing', () => {
+    expect(exportToCSV([], 'out.csv')).toBe(false);
+    expect(written).toBe('');
+  });
+});
+
 describe('generateSalesByCustomerReport', () => {
   const orders = [
     { id: 'o1', customerEmail: 'ada@example.com', total: 100 },

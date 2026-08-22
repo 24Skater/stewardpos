@@ -105,13 +105,13 @@ export interface ResponseMeta {
  * error status, or `success: false` all raise ApiClientError, so a returned value
  * always means the call succeeded and no caller has to re-check `success`.
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(response: Response, path: string): Promise<T> {
   const body: ApiEnvelope<T> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(body);
+      handleUnauthorized(body, path);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -124,14 +124,15 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * Most callers want {@link handleResponse}.
  */
 async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
-  response: Response
+  response: Response,
+  path: string
 ): Promise<{ data: T; meta?: M }> {
   const body: ApiEnvelope<T, M> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(body);
+      handleUnauthorized(body, path);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -161,6 +162,31 @@ async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
  * contract, not a message.
  */
 const REGISTER_TOKEN_INVALID = 'REGISTER_TOKEN_INVALID';
+
+/**
+ * Stamped on a 401 where the *shift* behind a till session is over — the
+ * cashier signed out, went idle, was superseded, or an admin revoked the
+ * register. Must match `SHIFT_ENDED` in
+ * `backend/src/api/middleware/registerErrorCodes.ts`.
+ */
+const SHIFT_ENDED = 'SHIFT_ENDED';
+
+/**
+ * Stamped on a 401 where the shift is gone *and so is the register* — retired,
+ * disabled, or never activated. Must match `REGISTER_INACTIVE` in
+ * `backend/src/api/middleware/registerErrorCodes.ts`. Distinct from
+ * {@link SHIFT_ENDED} precisely because the recoveries differ: no PIN reopens
+ * a till that no longer exists.
+ */
+const REGISTER_INACTIVE = 'REGISTER_INACTIVE';
+
+/**
+ * The till's own front door. `/` and `/pos` both render `RequireTill`, which
+ * picks between the PIN pad and `/pair` on its own once the dead token is
+ * gone — so a 401 raised from either one needs no navigation at all, and a
+ * hard one would throw the running app away to rebuild the page it is on.
+ */
+const TILL_ENTRY_PATHS = new Set(['/', '/pos']);
 
 /**
  * Whether a 401 means "this terminal was revoked" rather than "sign in again".
@@ -209,13 +235,79 @@ function onRegisterTokenRevoked(): void {
   }
 }
 
-/** Route a 401 to the right recovery path - see {@link isRegisterTokenFailure}. */
-function handleUnauthorized(envelope: { code?: string } | undefined): void {
-  if (isRegisterTokenFailure(envelope)) {
-    onRegisterTokenRevoked();
-  } else {
-    onUnauthorized();
+/**
+ * Drop the dead till session and return the terminal to its own front door.
+ *
+ * A shift ends for ordinary reasons all day long — the cashier signs out, goes
+ * idle, or another one takes the register — and the person standing there is a
+ * cashier, who has no back-office password. Routing this through
+ * {@link onUnauthorized} put them at `/login` with nothing to type, which is
+ * the exact door PIN auth exists to keep them away from. `RequireTill` decides
+ * between the PIN pad and `/pair` once the token is gone, so this only has to
+ * get them back to a route that renders it.
+ */
+function onShiftEnded(): void {
+  authStore.clearToken();
+
+  if (typeof window !== 'undefined' && !TILL_ENTRY_PATHS.has(window.location.pathname)) {
+    window.location.assign('/pos');
   }
+}
+
+/**
+ * Drop both credentials and send a decommissioned terminal back to pair.
+ *
+ * `REGISTER_INACTIVE` says the register itself is no longer active, so unlike
+ * {@link onShiftEnded} there is no pad to return to: the device credential
+ * names a till that cannot open a shift again until someone re-pairs this
+ * browser against a live one. The session token goes too — it was bound to
+ * that same dead register.
+ */
+function onRegisterDecommissioned(): void {
+  authStore.clearToken();
+  onRegisterTokenRevoked();
+}
+
+/**
+ * Endpoints where a 401 means "that credential was wrong", not "your session
+ * expired".
+ *
+ * These are the two doors themselves. A rejected PIN or password has no session
+ * to drop and nowhere to send anyone — the caller renders the failure and lets
+ * them try again. Treating it as an expired session replaced the till's lock
+ * screen with the back-office login page mid-keystroke, which is the exact door
+ * this app's till auth exists to keep cashiers away from.
+ *
+ * `/api/auth/till/assume` is deliberately NOT here: it is called with an
+ * existing back-office session, so a 401 there really does mean that session is
+ * gone.
+ */
+const SIGN_ON_PATHS = new Set(['/api/auth/login', '/api/auth/till']);
+
+/** Route a 401 to the right recovery path - see {@link isRegisterTokenFailure}. */
+function handleUnauthorized(envelope: { code?: string } | undefined, path: string): void {
+  if (isRegisterTokenFailure(envelope)) {
+    // Ahead of the sign-on check: a terminal whose device credential is dead
+    // cannot be rescued by a better PIN, whichever endpoint said so.
+    onRegisterTokenRevoked();
+    return;
+  }
+
+  if (envelope?.code === REGISTER_INACTIVE) {
+    // Also ahead of the sign-on check, and ahead of SHIFT_ENDED: a PIN typed
+    // at a retired till is answered by re-pairing, not by trying again.
+    onRegisterDecommissioned();
+    return;
+  }
+
+  if (envelope?.code === SHIFT_ENDED) {
+    onShiftEnded();
+    return;
+  }
+
+  if (SIGN_ON_PATHS.has(path)) return;
+
+  onUnauthorized();
 }
 
 export const apiClient = {
@@ -225,7 +317,7 @@ export const apiClient = {
       method: 'GET',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -242,7 +334,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json', ...options?.headers }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   async put<T>(path: string, data?: unknown): Promise<T> {
@@ -252,7 +344,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -267,7 +359,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   async delete<T>(path: string): Promise<T> {
@@ -276,7 +368,7 @@ export const apiClient = {
       method: 'DELETE',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -293,7 +385,7 @@ export const apiClient = {
       headers: requestHeaders(token),
       body: form,
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -310,7 +402,7 @@ export const apiClient = {
       method: 'GET',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponseWithMeta<T, M>(response);
+    return handleResponseWithMeta<T, M>(response, path);
   },
 };
 

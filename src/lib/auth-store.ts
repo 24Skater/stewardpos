@@ -6,6 +6,8 @@ interface AuthToken {
 }
 
 const TOKEN_KEY = 'auth_token';
+/** Details of an assumed till session — see {@link readAssumedSession}. */
+const ASSUMED_KEY = 'assumed_session';
 const TOKEN_EXPIRY_KEY = 'auth_token_expiry';
 const REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes before expiry
 
@@ -34,6 +36,9 @@ export const authStore = {
   clearToken(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    // The banner describes *this* session. Left behind, it would tell the next
+    // cashier at this till that their sales belong to an admin.
+    writeAssumedSession(null);
   },
 
   isTokenExpired(): boolean {
@@ -63,6 +68,42 @@ export const authStore = {
     return false;
   },
 };
+
+/** What the acting-as banner needs to describe an assumed session. */
+export interface AssumedSession {
+  adminName: string;
+  /** The cashier being covered, when one was named. */
+  actingAs: string | null;
+}
+
+/**
+ * The assumed-session record, or null at an ordinary till.
+ *
+ * Written only by `POST /api/auth/till/assume` (see `AdminRegisters`); a
+ * cashier's own PIN session writes nothing here, which is why the banner never
+ * appears at a real till.
+ *
+ * Unparseable content reads as absent rather than throwing: anything could have
+ * written this key, and a crash here would take the POS down on mount.
+ */
+export function readAssumedSession(): AssumedSession | null {
+  const raw = localStorage.getItem(ASSUMED_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as AssumedSession;
+  } catch {
+    return null;
+  }
+}
+
+export function writeAssumedSession(value: AssumedSession | null): void {
+  if (value) {
+    localStorage.setItem(ASSUMED_KEY, JSON.stringify(value));
+  } else {
+    localStorage.removeItem(ASSUMED_KEY);
+  }
+}
 
 // Auto-refresh token before expiry (check every minute)
 if (typeof window !== 'undefined') {

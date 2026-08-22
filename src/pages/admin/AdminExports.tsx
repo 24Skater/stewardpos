@@ -276,6 +276,22 @@ export default function AdminExports() {
     setLoading(reportType);
     
     try {
+      /**
+       * How many files actually reached the disk.
+       *
+       * `exportToCSV` and `exportToExcel` decline to write when a report has no
+       * rows — a CSV takes its header from the first record and a workbook must
+       * carry at least one sheet — and this handler used to report "Export
+       * completed successfully" over that silence. On a store with no customers
+       * or no services, six buttons on this screen did nothing at all and said
+       * they had worked, which is worse than an error: the operator walks away
+       * believing they hold figures they were never given.
+       */
+      let filesWritten = 0;
+      const wrote = async (written: boolean | Promise<boolean>) => {
+        if (await written) filesWritten += 1;
+      };
+
       const filteredOrders = filterByDateRange(orders);
       const filteredQuotes = filterByDateRange(quotes);
       
@@ -315,9 +331,9 @@ export default function AdminExports() {
               storePhone: settings?.storePhone,
             });
           } else if (format === 'excel') {
-            await exportSalesSummaryToExcel(payload);
+            await wrote(exportSalesSummaryToExcel(payload));
           } else {
-            exportSalesSummaryToCSV(payload);
+            await wrote(exportSalesSummaryToCSV(payload));
           }
           break;
         }
@@ -329,9 +345,9 @@ export default function AdminExports() {
           const range = { from: startDate || undefined, to: endDate || undefined };
           const { registers } = await reportsApi.salesByRegister(range);
           if (format === 'excel') {
-            await exportRegisterReportToExcel(registers, range);
+            await wrote(exportRegisterReportToExcel(registers, range));
           } else {
-            exportRegisterReportToCSV(registers, range);
+            await wrote(exportRegisterReportToCSV(registers, range));
           }
           break;
         }
@@ -340,9 +356,9 @@ export default function AdminExports() {
           const range = { from: startDate || undefined, to: endDate || undefined };
           const cashiers = await reportsApi.salesByCashier(range);
           if (format === 'excel') {
-            await exportCashierReportToExcel(cashiers, range);
+            await wrote(exportCashierReportToExcel(cashiers, range));
           } else {
-            exportCashierReportToCSV(cashiers, range);
+            await wrote(exportCashierReportToCSV(cashiers, range));
           }
           break;
         }
@@ -351,9 +367,9 @@ export default function AdminExports() {
           const range = { from: startDate || undefined, to: endDate || undefined };
           const variance = await reportsApi.drawerVarianceByRegister(range);
           if (format === 'excel') {
-            await exportDrawerVarianceReportToExcel(variance, range);
+            await wrote(exportDrawerVarianceReportToExcel(variance, range));
           } else {
-            exportDrawerVarianceReportToCSV(variance, range);
+            await wrote(exportDrawerVarianceReportToCSV(variance, range));
           }
           break;
         }
@@ -362,9 +378,9 @@ export default function AdminExports() {
           const range = { from: startDate || undefined, to: endDate || undefined };
           const noSales = await reportsApi.noSaleCounts(range);
           if (format === 'excel') {
-            await exportNoSaleReportToExcel(noSales, range);
+            await wrote(exportNoSaleReportToExcel(noSales, range));
           } else {
-            exportNoSaleReportToCSV(noSales, range);
+            await wrote(exportNoSaleReportToCSV(noSales, range));
           }
           break;
         }
@@ -374,9 +390,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportSalesMoMToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Month over Month', data }], 'sales-mom.xlsx');
+            await wrote(exportToExcel([{ name: 'Month over Month', data }], 'sales-mom.xlsx'));
           } else {
-            exportToCSV(data, 'sales-mom.csv');
+            await wrote(exportToCSV(data, 'sales-mom.csv'));
           }
           break;
         }
@@ -386,9 +402,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportSalesWoWToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Week over Week', data }], 'sales-wow.xlsx');
+            await wrote(exportToExcel([{ name: 'Week over Week', data }], 'sales-wow.xlsx'));
           } else {
-            exportToCSV(data, 'sales-wow.csv');
+            await wrote(exportToCSV(data, 'sales-wow.csv'));
           }
           break;
         }
@@ -398,9 +414,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportSalesByCustomerToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Sales by Customer', data }], 'sales-by-customer.xlsx');
+            await wrote(exportToExcel([{ name: 'Sales by Customer', data }], 'sales-by-customer.xlsx'));
           } else {
-            exportToCSV(data, 'sales-by-customer.csv');
+            await wrote(exportToCSV(data, 'sales-by-customer.csv'));
           }
           break;
         }
@@ -410,9 +426,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportSalesByItemToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Sales by Item', data }], 'sales-by-item.xlsx');
+            await wrote(exportToExcel([{ name: 'Sales by Item', data }], 'sales-by-item.xlsx'));
           } else {
-            exportToCSV(data, 'sales-by-item.csv');
+            await wrote(exportToCSV(data, 'sales-by-item.csv'));
           }
           break;
         }
@@ -422,13 +438,13 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportTrendingToPDF(productTrends, serviceTrends);
           } else if (format === 'excel') {
-            exportToExcel([
+            await wrote(exportToExcel([
               { name: 'Product Trends', data: productTrends },
               { name: 'Service Trends', data: serviceTrends },
-            ], 'trending-report.xlsx');
+            ], 'trending-report.xlsx'));
           } else {
-            exportToCSV(productTrends, 'product-trends.csv');
-            exportToCSV(serviceTrends, 'service-trends.csv');
+            await wrote(exportToCSV(productTrends, 'product-trends.csv'));
+            await wrote(exportToCSV(serviceTrends, 'service-trends.csv'));
           }
           break;
         }
@@ -438,9 +454,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportCustomerListToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Customers', data }], 'customers.xlsx');
+            await wrote(exportToExcel([{ name: 'Customers', data }], 'customers.xlsx'));
           } else {
-            exportToCSV(data, 'customers.csv');
+            await wrote(exportToCSV(data, 'customers.csv'));
           }
           break;
         }
@@ -463,12 +479,12 @@ export default function AdminExports() {
           );
           
           if (format === 'excel') {
-            exportToExcel([
+            await wrote(exportToExcel([
               { name: 'Customer Info', data: [customerInfo] },
               { name: 'Transactions', data: transactions },
-            ], `customer-${customer.name.replace(/\s+/g, '-')}.xlsx`);
+            ], `customer-${customer.name.replace(/\s+/g, '-')}.xlsx`));
           } else {
-            exportToCSV(transactions, `customer-history-${customer.name.replace(/\s+/g, '-')}.csv`);
+            await wrote(exportToCSV(transactions, `customer-history-${customer.name.replace(/\s+/g, '-')}.csv`));
           }
           break;
         }
@@ -483,9 +499,9 @@ export default function AdminExports() {
           });
           
           if (format === 'excel') {
-            exportToExcel([{ name: 'All Customer History', data: allHistories }], 'all-customer-history.xlsx');
+            await wrote(exportToExcel([{ name: 'All Customer History', data: allHistories }], 'all-customer-history.xlsx'));
           } else {
-            exportToCSV(allHistories, 'all-customer-history.csv');
+            await wrote(exportToCSV(allHistories, 'all-customer-history.csv'));
           }
           break;
         }
@@ -495,9 +511,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportServicesToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Services', data }], 'services.xlsx');
+            await wrote(exportToExcel([{ name: 'Services', data }], 'services.xlsx'));
           } else {
-            exportToCSV(data, 'services.csv');
+            await wrote(exportToCSV(data, 'services.csv'));
           }
           break;
         }
@@ -505,9 +521,9 @@ export default function AdminExports() {
         case 'services-category': {
           const data = generateServicesByCategoryReport(services, quotes);
           if (format === 'excel') {
-            exportToExcel([{ name: 'Services by Category', data }], 'services-by-category.xlsx');
+            await wrote(exportToExcel([{ name: 'Services by Category', data }], 'services-by-category.xlsx'));
           } else {
-            exportToCSV(data, 'services-by-category.csv');
+            await wrote(exportToCSV(data, 'services-by-category.csv'));
           }
           break;
         }
@@ -527,9 +543,9 @@ export default function AdminExports() {
                 'Active': v.enabled ? 'Yes' : 'No',
               }))
             );
-            exportToExcel([{ name: 'Inventory', data }], 'inventory.xlsx');
+            await wrote(exportToExcel([{ name: 'Inventory', data }], 'inventory.xlsx'));
           } else {
-            exportInventoryToCSV(products);
+            await wrote(exportInventoryToCSV(products));
           }
           break;
         }
@@ -540,9 +556,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportReturnsToPDF(filteredReturns);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Returns', data }], 'returns.xlsx');
+            await wrote(exportToExcel([{ name: 'Returns', data }], 'returns.xlsx'));
           } else {
-            exportToCSV(data, 'returns.csv');
+            await wrote(exportToCSV(data, 'returns.csv'));
           }
           break;
         }
@@ -553,9 +569,9 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportReturnsByReasonToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Returns by Customer', data }], 'returns-by-customer.xlsx');
+            await wrote(exportToExcel([{ name: 'Returns by Customer', data }], 'returns-by-customer.xlsx'));
           } else {
-            exportToCSV(data, 'returns-by-customer.csv');
+            await wrote(exportToCSV(data, 'returns-by-customer.csv'));
           }
           break;
         }
@@ -564,9 +580,9 @@ export default function AdminExports() {
           const filteredReturns = filterByDateRange(returns);
           const data = generateReturnsMonthlyReport(filteredReturns);
           if (format === 'excel') {
-            exportToExcel([{ name: 'Monthly Returns', data }], 'returns-monthly.xlsx');
+            await wrote(exportToExcel([{ name: 'Monthly Returns', data }], 'returns-monthly.xlsx'));
           } else {
-            exportToCSV(data, 'returns-monthly.csv');
+            await wrote(exportToCSV(data, 'returns-monthly.csv'));
           }
           break;
         }
@@ -577,15 +593,25 @@ export default function AdminExports() {
           if (format === 'pdf') {
             exportReturnsByReasonToPDF(data);
           } else if (format === 'excel') {
-            exportToExcel([{ name: 'Returns by Reason', data }], 'returns-by-reason.xlsx');
+            await wrote(exportToExcel([{ name: 'Returns by Reason', data }], 'returns-by-reason.xlsx'));
           } else {
-            exportToCSV(data, 'returns-by-reason.csv');
+            await wrote(exportToCSV(data, 'returns-by-reason.csv'));
           }
           break;
         }
       }
       
-      toast({ title: 'Export completed successfully' });
+      // A PDF always renders, even with no rows — an empty report is still a
+      // document stating the period was empty. The other two formats cannot
+      // say that, so for them "no file" is the only honest thing to report.
+      if (format !== 'pdf' && filesWritten === 0) {
+        toast({
+          title: 'Nothing to export',
+          description: 'This report has no data for the selected range.',
+        });
+      } else {
+        toast({ title: 'Export completed successfully' });
+      }
     } catch (error: unknown) {
       toast({
         title: 'Export failed',

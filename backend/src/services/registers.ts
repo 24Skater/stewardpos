@@ -1,6 +1,7 @@
 import { ValidationError } from '../utils/errors';
 import type { DbRow } from '../adapters/db/types';
 import type { DatabaseAdapter } from './database';
+import { getOpenShift, endShift } from './registerShifts';
 
 /**
  * Register and location business rules.
@@ -187,13 +188,33 @@ export async function createRegister(
 }
 
 /**
+ * End whatever shift is currently open on a register, if any, with reason
+ * `'forced'` — shared by {@link retireRegister} and {@link disableRegister}
+ * so a till taken out of service, either way, stops authorizing whoever was
+ * mid-shift on it rather than merely stopping new sign-ons.
+ *
+ * Goes through `getOpenShift`, not a raw fetch, so a shift that is merely
+ * idle-expired is ended as `idle_timeout` (its true cause) rather than
+ * mislabelled `forced` — the same reasoning `startShift`'s supersede step
+ * uses.
+ */
+async function endOpenShift(adapter: DatabaseAdapter, registerId: string): Promise<void> {
+  const open = await getOpenShift(adapter, registerId);
+  if (open) {
+    await endShift(adapter, String(open.id), 'forced');
+  }
+}
+
+/**
  * Retire a register. Permanent: its number and display code are never
  * reused (see migration 015), because an old receipt must always resolve to
  * the till that printed it. Distinct from {@link disableRegister} — see
  * that function for why the two must not be merged.
  */
 export async function retireRegister(adapter: DatabaseAdapter, id: string): Promise<DbRow | null> {
-  return adapter.setRegisterStatus(id, 'retired');
+  const updated = await adapter.setRegisterStatus(id, 'retired');
+  if (updated) await endOpenShift(adapter, id);
+  return updated;
 }
 
 /**
@@ -203,7 +224,9 @@ export async function retireRegister(adapter: DatabaseAdapter, id: string): Prom
  * because the physical device is expected back, not decommissioned.
  */
 export async function disableRegister(adapter: DatabaseAdapter, id: string): Promise<DbRow | null> {
-  return adapter.setRegisterStatus(id, 'disabled');
+  const updated = await adapter.setRegisterStatus(id, 'disabled');
+  if (updated) await endOpenShift(adapter, id);
+  return updated;
 }
 
 /** How recently a register must have heartbeat-ed to count as each state. */

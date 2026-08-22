@@ -65,8 +65,8 @@ export class AuthorizationError extends AppError {
 
 // Alias for AuthorizationError
 export class ForbiddenError extends AppError {
-  constructor(message: string = 'Forbidden') {
-    super(message, 403);
+  constructor(message: string = 'Forbidden', code?: string) {
+    super(message, 403, true, code);
   }
 }
 
