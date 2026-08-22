@@ -7,7 +7,8 @@ import {
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { PIN_INVALID, PIN_LOCKED } from '../middleware/registerErrorCodes';
-import { shiftLimiter } from './registers';
+import rateLimit from 'express-rate-limit';
+import config from '../../config';
 import {
   ValidationError,
   NotFoundError,
@@ -62,14 +63,35 @@ const tillAuthSchema = z
  * cannot honour: accepting a parameter and doing nothing with it invites the
  * caller to believe it took effect.
  */
+/**
+ * Brute-force protection in front of a short PIN, keyed per register.
+ *
+ * `registers.ts` exports a `shiftLimiter` for the same job, but it keys on
+ * `req.params.id` — and this route has no `:id`, so reusing it silently keyed
+ * every terminal in every organization to the same `register:unknown` bucket.
+ * Ten fumbled PINs at one till would have locked the PIN pad on every till in
+ * the shop.
+ *
+ * The register is known only after `requireRegisterToken` has verified the
+ * device credential, which is why this sits *after* it rather than in front:
+ * a caller with no valid credential never reaches the PIN comparison at all,
+ * so there is nothing here for it to throttle.
+ */
+const tillPinLimiter = rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxShiftAttempts,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) =>
+    `till:${(req as AuthenticatedRegisterRequest).tokenRegister?.id ?? 'unknown'}`,
+  message: 'Too many PIN attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 router.post(
   '/',
-  // Brute-force protection in front of a short PIN — see `registers.ts` for
-  // why it is keyed on the register rather than the caller's IP. Applied
-  // here, not on the whole router, so it does not also throttle `/assume`
-  // below, which has no PIN to brute-force.
-  shiftLimiter,
   requireRegisterToken,
+  tillPinLimiter,
   async (req: AuthenticatedRegisterRequest, res: Response, next: NextFunction) => {
     try {
       const { pin } = tillAuthSchema.parse(req.body ?? {});
