@@ -198,12 +198,19 @@ export default function POS() {
    * token once the shift closes, but a client holding on to it walks back past
    * `RequireTill` and meets a 401 at the first thing it touches, rather than
    * the lock screen it should be looking at.
+   *
+   * It goes nowhere afterwards, and that is deliberate. Sending the admin back
+   * to `/admin/registers` — where they came from — stranded them at `/login`
+   * instead: the token dropped above *is* their session, because assuming a
+   * till replaces the back-office one, so `RequireAuth` had nothing left to
+   * admit them with. The till is where they are standing, and ending the shift
+   * puts POS's own lock screen up as soon as it refetches, exactly as an
+   * ordinary sign-out does. An admin who wants the back office signs in there.
    */
   const handleEndAssumedSession = async () => {
     await handleSignOut();
     // Also clears the assumed record, so the banner cannot outlive it.
     authStore.clearToken();
-    navigate('/admin/registers');
   };
 
   /** SHIFT_REQUIRED on checkout — see the two catch blocks below that call this. */
