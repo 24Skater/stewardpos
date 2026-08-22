@@ -33,6 +33,17 @@ export interface MintSessionInput {
    * pairing must not be extendable past the cap it was minted with.
    */
   assumed?: boolean;
+  /**
+   * Marks this session's identity as the register itself, not a signed-on
+   * user — the no-PIN session `POST /api/auth/till` mints when a register's
+   * `requireSignIn` is off (see `api/routes/till.ts`). Its `user.email` is a
+   * synthetic `register:<id>` value that no `getUserByEmail` lookup will ever
+   * resolve, so `authenticate` reads this claim back and builds `req.user`
+   * straight from the token instead — the same move `authenticateApiKey`
+   * makes for a non-human caller, rather than a lookup that would 401 this
+   * session on its very next request.
+   */
+  registerPrincipal?: boolean;
 }
 
 /**
@@ -64,6 +75,7 @@ export function mintSession(input: MintSessionInput): { token: string; expiresIn
       ...(input.shiftId ? { shiftId: input.shiftId } : {}),
       ...(input.registerId ? { registerId: input.registerId } : {}),
       ...(input.assumed ? { assumed: true } : {}),
+      ...(input.registerPrincipal ? { registerPrincipal: true } : {}),
     },
     config.jwt.secret,
     { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] }

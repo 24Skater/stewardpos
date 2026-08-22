@@ -106,6 +106,13 @@ interface TokenClaims {
    * that can be refreshed by the client's own timer is not a cap.
    */
   assumed?: boolean;
+  /**
+   * Present on a no-PIN till session (`POST /api/auth/till` on a register
+   * with `requireSignIn` off, see `api/routes/till.ts`). Its identity is the
+   * register, not a `users` row, so `authenticate` must not run
+   * `getUserByEmail` against it — see the branch below.
+   */
+  registerPrincipal?: boolean;
 }
 
 /**
@@ -236,21 +243,37 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
       throw error;
     }
 
-    const user = await db.getAdapter().getUserByEmail(claims.email);
-    if (!user || user.status !== 'active') {
-      throw new AuthenticationError('Not authenticated');
-    }
+    if (claims.registerPrincipal) {
+      // A no-PIN till session's identity is the register, not a row in
+      // `users` — its email is the synthetic `register:<id>` minted by
+      // `routes/till.ts`, which `getUserByEmail` can never resolve. Build
+      // `req.user` straight from the token instead, the same way
+      // `authenticateApiKey` above builds one for a non-human caller,
+      // rather than weakening the lookup for every other session.
+      req.orgId = claims.orgId ?? DEFAULT_ORG_ID;
+      req.user = {
+        id: claims.id,
+        email: claims.email,
+        roleIds: [],
+        roles: [],
+      };
+    } else {
+      const user = await db.getAdapter().getUserByEmail(claims.email);
+      if (!user || user.status !== 'active') {
+        throw new AuthenticationError('Not authenticated');
+      }
 
-    // The stored value wins over the token's, for the same reason roles are
-    // reloaded here: a token outlives a change, and moving a user between orgs
-    // should not wait for it to expire.
-    req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
-    req.user = {
-      id: String(user.id),
-      email: String(user.email),
-      roleIds: (user.roleIds as string[]) || [],
-      roles: (user.roles as AuthRole[]) || [],
-    };
+      // The stored value wins over the token's, for the same reason roles are
+      // reloaded here: a token outlives a change, and moving a user between orgs
+      // should not wait for it to expire.
+      req.orgId = (user.orgId as string) ?? claims.orgId ?? DEFAULT_ORG_ID;
+      req.user = {
+        id: String(user.id),
+        email: String(user.email),
+        roleIds: (user.roleIds as string[]) || [],
+        roles: (user.roles as AuthRole[]) || [],
+      };
+    }
 
     // A till session is only as alive as the thing that opened it. Checked
     // after `req.user` is built so the failure path is identical for every
