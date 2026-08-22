@@ -19,31 +19,39 @@ export interface CreateUserRequest {
 
 export type UpdateUserRequest = Partial<CreateUserRequest>;
 
-/**
- * `PUT /api/admin/users/:id/pin` and `DELETE /api/admin/users/:id/pin`.
- *
- * **Backend gap, flagged rather than silently worked around**: as of this
- * phase's backend commits, `services/pins.ts#setPin` and the `users.pin_hash`
- * column exist and are fully exercised by `POST /:id/shifts`
- * (`registerShifts.startShift` scans every active PIN holder), but no admin
- * HTTP route calls `setPin`, and there is no service function at all to clear
- * a PIN (revoke register access) — `PostgresAdapter`/`SQLiteAdapter` only
- * expose `setUserPin`, not a clearing counterpart. This SDK method calls a
- * route that does not exist yet; the paths chosen here follow this file's
- * existing `PUT/DELETE /api/admin/users/:id` convention so wiring the backend
- * up later is a small, obvious change. Until it lands, calling these 404s.
- */
+/** Body of `PUT /api/admin/users/:id/pin`. */
 export interface SetPinRequest {
   pin: string;
 }
 
-/** The safe projection `setUserPin` already returns server-side — no `pinHash`, ever. */
-export interface UserPinStatus {
+/**
+ * What `PUT`/`DELETE /api/admin/users/:id/pin` return.
+ *
+ * Deliberately narrow: those routes answer only whether a PIN is now set, and
+ * the PIN itself is never echoed back. An earlier version of this type claimed
+ * `email`, `name`, `status` and `pinSetAt`, none of which those routes send —
+ * nothing caught it because no caller read them.
+ */
+export interface UserPinState {
   id: string;
-  email: string;
-  name: string;
-  status: 'active' | 'inactive';
+  pinSet: boolean;
+}
+
+/**
+ * What `POST /api/admin/users/:id/pin/unlock` returns.
+ *
+ * A different shape from {@link UserPinState} because it answers a different
+ * question — the lockout counters, not whether a PIN exists. `pinLockedUntil`
+ * and `pinFailedCount` are always cleared values on a successful unlock; they
+ * are returned so a caller can render the new state without a refetch.
+ */
+export interface UserPinLockState {
+  id: string;
+  /** Epoch ms, or null if the employee has no PIN. */
   pinSetAt: number | null;
+  /** Epoch ms, or null once unlocked. */
+  pinLockedUntil: number | null;
+  pinFailedCount: number;
 }
 
 export interface RoleInput {
@@ -77,11 +85,19 @@ export const adminApi = {
     update: (id: string, body: UpdateUserRequest) =>
       apiClient.put<User>(`/api/admin/users/${id}`, body),
     remove: (id: string) => apiClient.delete<void>(`/api/admin/users/${id}`),
-    /** Set (or replace) an employee's register PIN. See `SetPinRequest`'s doc comment — not yet wired up server-side. */
+    /** Set (or replace) an employee's register PIN (`backend/src/api/routes/admin.ts:162`). */
     setPin: (id: string, body: SetPinRequest) =>
-      apiClient.put<UserPinStatus>(`/api/admin/users/${id}/pin`, body),
-    /** Clear an employee's PIN, revoking their register sign-on access. Same caveat as `setPin`. */
-    clearPin: (id: string) => apiClient.delete<UserPinStatus>(`/api/admin/users/${id}/pin`),
+      apiClient.put<UserPinState>(`/api/admin/users/${id}/pin`, body),
+    /** Clear an employee's PIN, revoking their register sign-on access. Leaves any open shift running. */
+    clearPin: (id: string) => apiClient.delete<UserPinState>(`/api/admin/users/${id}/pin`),
+    /**
+     * Clear a PIN lockout without waiting out the fifteen minutes.
+     *
+     * Does not change the PIN — the cashier's existing one works again the
+     * moment this returns.
+     */
+    unlockPin: (id: string) =>
+      apiClient.post<UserPinLockState>(`/api/admin/users/${id}/pin/unlock`, {}),
   },
 
   roles: {

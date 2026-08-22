@@ -35,10 +35,10 @@ vi.mock('@/components/register/OverridePrompt', () => ({
 }));
 
 vi.mock('@/components/register/LockScreen', () => ({
-  default: ({ displayCode, onSignedOn }: { displayCode: string; onSignedOn?: () => void }) => (
+  default: ({ displayCode, onUnlocked }: { displayCode?: string; onUnlocked?: () => void }) => (
     <div data-testid="lock-screen">
       Locked: {displayCode}
-      <button onClick={() => onSignedOn?.()}>Fake sign on</button>
+      <button onClick={() => onUnlocked?.()}>Fake sign on</button>
     </div>
   ),
 }));

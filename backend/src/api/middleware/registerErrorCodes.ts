@@ -53,3 +53,29 @@ export const SHIFT_REQUIRED = 'SHIFT_REQUIRED';
  * finely than that from the outside.
  */
 export const OVERRIDE_REQUIRED = 'OVERRIDE_REQUIRED';
+
+/**
+ * A till session outlived the shift that opened it — the cashier signed out,
+ * went idle, was superseded, or the register was revoked. Distinguished from an
+ * ordinary 401 so the terminal returns to its PIN pad rather than to the login
+ * screen, which a cashier has no password for.
+ */
+export const SHIFT_ENDED = 'SHIFT_ENDED';
+
+/**
+ * A till session's register itself is no longer `active` — retired,
+ * disabled, or never activated. Distinguished from {@link SHIFT_ENDED}: that
+ * one means "sign in again, the till is still there"; this one means "this
+ * till was decommissioned or taken offline, go re-pair it or use a different
+ * one." The two recoveries differ, so the code the client branches on has to
+ * as well.
+ */
+export const REGISTER_INACTIVE = 'REGISTER_INACTIVE';
+
+/**
+ * A user whose only role is a till role tried the password form. The password
+ * was correct; the door is the wrong one. Distinguished so the login screen can
+ * point them at the PIN pad instead of showing "invalid credentials", which
+ * would be both wrong and unhelpful — they would retype a password that works.
+ */
+export const USE_PIN_AT_TILL = 'USE_PIN_AT_TILL';

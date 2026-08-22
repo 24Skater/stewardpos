@@ -36,8 +36,10 @@ export type {
   RoleInput,
   AuditQuery,
   SetPinRequest,
-  UserPinStatus,
+  UserPinState,
+  UserPinLockState,
 } from './admin';
+export type { AssumedTillSession, TillSession } from './auth';
 export type {
   ApiAuthentication,
   ApiDocs,

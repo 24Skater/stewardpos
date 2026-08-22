@@ -70,29 +70,29 @@ function periodSuffix(range?: { from?: string; to?: string }): string {
   return range.from === range.to ? range.from : `${range.from}-to-${range.to}`;
 }
 
-export function exportRegisterReportToCSV(rows: RegisterSales[], range?: { from?: string; to?: string }) {
-  exportToCSV(generateRegisterReport(rows), `sales-by-register-${periodSuffix(range)}.csv`);
+export function exportRegisterReportToCSV(rows: RegisterSales[], range?: { from?: string; to?: string }): boolean {
+  return exportToCSV(generateRegisterReport(rows), `sales-by-register-${periodSuffix(range)}.csv`);
 }
 
 export async function exportRegisterReportToExcel(
   rows: RegisterSales[],
   range?: { from?: string; to?: string }
-) {
-  await exportToExcel(
+): Promise<boolean> {
+  return exportToExcel(
     [{ name: 'Sales by Register', data: generateRegisterReport(rows) }],
     `sales-by-register-${periodSuffix(range)}.xlsx`
   );
 }
 
-export function exportCashierReportToCSV(rows: CashierSales[], range?: { from?: string; to?: string }) {
-  exportToCSV(generateCashierReport(rows), `sales-by-cashier-${periodSuffix(range)}.csv`);
+export function exportCashierReportToCSV(rows: CashierSales[], range?: { from?: string; to?: string }): boolean {
+  return exportToCSV(generateCashierReport(rows), `sales-by-cashier-${periodSuffix(range)}.csv`);
 }
 
 export async function exportCashierReportToExcel(
   rows: CashierSales[],
   range?: { from?: string; to?: string }
-) {
-  await exportToExcel(
+): Promise<boolean> {
+  return exportToExcel(
     [{ name: 'Sales by Cashier', data: generateCashierReport(rows) }],
     `sales-by-cashier-${periodSuffix(range)}.xlsx`
   );
@@ -101,29 +101,29 @@ export async function exportCashierReportToExcel(
 export function exportDrawerVarianceReportToCSV(
   rows: DrawerVarianceByRegister[],
   range?: { from?: string; to?: string }
-) {
-  exportToCSV(generateDrawerVarianceReport(rows), `drawer-variance-${periodSuffix(range)}.csv`);
+): boolean {
+  return exportToCSV(generateDrawerVarianceReport(rows), `drawer-variance-${periodSuffix(range)}.csv`);
 }
 
 export async function exportDrawerVarianceReportToExcel(
   rows: DrawerVarianceByRegister[],
   range?: { from?: string; to?: string }
-) {
-  await exportToExcel(
+): Promise<boolean> {
+  return exportToExcel(
     [{ name: 'Drawer Variance', data: generateDrawerVarianceReport(rows) }],
     `drawer-variance-${periodSuffix(range)}.xlsx`
   );
 }
 
-export function exportNoSaleReportToCSV(rows: NoSaleCount[], range?: { from?: string; to?: string }) {
-  exportToCSV(generateNoSaleReport(rows), `no-sale-counts-${periodSuffix(range)}.csv`);
+export function exportNoSaleReportToCSV(rows: NoSaleCount[], range?: { from?: string; to?: string }): boolean {
+  return exportToCSV(generateNoSaleReport(rows), `no-sale-counts-${periodSuffix(range)}.csv`);
 }
 
 export async function exportNoSaleReportToExcel(
   rows: NoSaleCount[],
   range?: { from?: string; to?: string }
-) {
-  await exportToExcel(
+): Promise<boolean> {
+  return exportToExcel(
     [{ name: 'No-Sale Counts', data: generateNoSaleReport(rows) }],
     `no-sale-counts-${periodSuffix(range)}.xlsx`
   );

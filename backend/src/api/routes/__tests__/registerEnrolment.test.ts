@@ -169,6 +169,20 @@ async function getOpenDrawerSession(registerId: string): Promise<Record<string, 
   return row ? { ...row } : null;
 }
 
+/**
+ * `revokeCredential` now ends any open shift on the register it revokes (see
+ * services/registerEnrolment.ts) — so `getOpenShift` needs this adapter
+ * surface too. No test here opens a PIN shift, so there is never one open;
+ * this exists only so that lookup doesn't throw.
+ */
+async function getOpenShiftForRegister(): Promise<null> {
+  return null;
+}
+
+async function endRegisterShift(): Promise<null> {
+  return null;
+}
+
 vi.mock('../../../services/database', () => ({
   default: {
     getAdapter: () => ({
@@ -191,6 +205,8 @@ vi.mock('../../../services/database', () => ({
       touchRegisterCredentialLastUsed,
       revokeRegisterCredentialById,
       getOpenDrawerSession,
+      getOpenShiftForRegister,
+      endRegisterShift,
     }),
   },
 }));

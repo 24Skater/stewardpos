@@ -259,12 +259,24 @@ describe('exportToExcel', () => {
     expect(await isXlsx(workbookBlobs[0])).toBe(true);
   });
 
-  it('writes nothing at all when every sheet is empty', async () => {
+  it('writes nothing at all when every sheet is empty, and says so', async () => {
     // Excel rejects a workbook with no sheets, so the alternative to writing
     // nothing is handing someone a file that will not open.
-    await exportToExcel([{ name: 'Empty', data: [] }], 'empty.xlsx');
+    //
+    // The returned `false` is the other half: declining silently is what let
+    // AdminExports report "Export completed successfully" over a download that
+    // never happened, on a store with no customers and no services.
+    const wrote = await exportToExcel([{ name: 'Empty', data: [] }], 'empty.xlsx');
 
+    expect(wrote).toBe(false);
     expect(workbookBlobs).toHaveLength(0);
+  });
+
+  it('reports true when it did write a workbook', async () => {
+    const wrote = await exportToExcel([{ name: 'Sales', data: [{ Month: 'January' }] }], 'sales.xlsx');
+
+    expect(wrote).toBe(true);
+    expect(workbookBlobs).toHaveLength(1);
   });
 
   it('drops an empty sheet but still writes the populated ones', async () => {

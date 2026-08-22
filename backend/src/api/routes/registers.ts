@@ -93,7 +93,7 @@ const router = Router();
  * on because `requireRegisterToken` has already verified the device credential
  * that names it — it is authenticated input, not a claim from the request body.
  */
-const shiftLimiter = rateLimit({
+export const shiftLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.maxShiftAttempts,
   skipSuccessfulRequests: true,

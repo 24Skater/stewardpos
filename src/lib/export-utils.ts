@@ -786,7 +786,7 @@ export async function exportReturnsByReasonToPDF(data: ExportRow[], settings?: S
 
 // ========== LEGACY EXPORTS ==========
 
-export function exportInventoryToCSV(products: Product[]) {
+export function exportInventoryToCSV(products: Product[]): boolean {
   const data = products.flatMap(product =>
     product.variants.map(variant => ({
       'Product ID': product.id,
@@ -805,5 +805,5 @@ export function exportInventoryToCSV(products: Product[]) {
     }))
   );
 
-  exportToCSV(data, `inventory-${new Date().toISOString().split('T')[0]}.csv`);
+  return exportToCSV(data, `inventory-${new Date().toISOString().split('T')[0]}.csv`);
 }

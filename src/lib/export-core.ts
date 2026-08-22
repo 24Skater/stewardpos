@@ -68,8 +68,17 @@ export interface Settings {
 
 // ========== UTILITY FUNCTIONS ==========
 
-export function exportToCSV(data: ExportRow[], filename: string) {
-  if (data.length === 0) return;
+/**
+ * Write rows to a CSV file, and say whether a file was actually written.
+ *
+ * The header row is taken from the first record's keys, so there is nothing
+ * to write when there are no records — not even a header. Returning that
+ * fact rather than swallowing it is what lets a caller tell an empty report
+ * from a completed one; reporting success over a download that never happened
+ * leaves the operator believing they have figures they do not have.
+ */
+export function exportToCSV(data: ExportRow[], filename: string): boolean {
+  if (data.length === 0) return false;
 
   const headers = Object.keys(data[0]);
   const csvContent = [
@@ -91,6 +100,8 @@ export function exportToCSV(data: ExportRow[], filename: string) {
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
+
+  return true;
 }
 
 /** Excel refuses a sheet name longer than this. */
@@ -143,7 +154,10 @@ function cellFor(raw: ExportRow[string], type: ReturnType<typeof columnType>) {
  * a spreadsheet, which is where both advisories live, but a dependency that
  * cannot be patched from npm is not worth keeping for five lines of use.
  */
-export async function exportToExcel(sheets: { name: string; data: ExportRow[] }[], filename: string) {
+export async function exportToExcel(
+  sheets: { name: string; data: ExportRow[] }[],
+  filename: string
+): Promise<boolean> {
   // The browser entry point specifically: it hands the workbook to the browser
   // as a download. `write-excel-file` publishes no bare export, only subpaths,
   // and the node one writes to a filesystem this code does not have.
@@ -152,8 +166,10 @@ export async function exportToExcel(sheets: { name: string; data: ExportRow[] }[
   // A sheet with no rows has no columns to describe either. Excel rejects a
   // workbook with no sheets at all, so an export with nothing in it writes
   // nothing rather than handing someone a corrupt file.
+  // Reported as `false` rather than swallowed, for the same reason
+  // `exportToCSV` reports it — see the note there.
   const populated = sheets.filter((sheet) => sheet.data.length > 0);
-  if (populated.length === 0) return;
+  if (populated.length === 0) return false;
 
   // Rows are built directly rather than through the objects-plus-schema form,
   // because that form covers a single sheet only — a multi-sheet workbook takes
@@ -174,6 +190,8 @@ export async function exportToExcel(sheets: { name: string; data: ExportRow[] }[
   // v4's browser entry returns `{ toBlob, toFile }` rather than taking a
   // `fileName` option the way earlier majors did.
   await writeXlsxFile(workbook).toFile(filename);
+
+  return true;
 }
 
 export function createPDFHeader(doc: jsPDF, title: string, subtitle?: string, settings?: Settings) {

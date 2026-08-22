@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { apiClient, ApiClientError } from '../api-client';
 import { authStore } from '../auth-store';
+import { getDeviceToken, setDeviceToken } from '../register-device';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -136,6 +137,140 @@ describe('apiClient', () => {
 
       expect(authStore.getToken()).toBeNull();
       expect(window.location.assign).toHaveBeenCalledWith('/login');
+    });
+
+    it('leaves a rejected PIN on the lock screen', async () => {
+      // A 401 from the sign-on endpoint means "that PIN was wrong", not "your
+      // session expired". Treating it as the latter replaces the lock screen
+      // with the login page mid-keystroke — the back-office door this whole
+      // feature exists to keep cashiers away from. Found in a browser: the
+      // message LockScreen renders for PIN_INVALID could never appear, because
+      // the page navigated away first.
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'That PIN was not recognized', code: 'PIN_INVALID' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it('does not drop a device credential over a rejected PIN', async () => {
+      // The terminal is still enrolled; only the person at it typed wrong.
+      authStore.setToken('a-till-session');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'This PIN is locked', code: 'PIN_LOCKED' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(authStore.getToken()).toBe('a-till-session');
+    });
+
+    it('still sends an unpaired terminal to pair, even from the sign-on endpoint', async () => {
+      // The register-token path is a different failure: this device cannot
+      // authenticate as itself, and no PIN will fix that.
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'X-Register-Token is required', code: 'REGISTER_TOKEN_INVALID' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.post('/api/auth/till', { pin: '000000' })).rejects.toBeInstanceOf(
+        ApiClientError
+      );
+
+      expect(window.location.assign).toHaveBeenCalledWith('/pair');
+    });
+
+    it('still redirects when an ordinary call 401s', async () => {
+      authStore.setToken('stale-token');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse({ success: false, error: 'Invalid token' }, { ok: false, status: 401 })
+      );
+
+      await expect(apiClient.post('/api/orders', {})).rejects.toBeInstanceOf(ApiClientError);
+
+      expect(window.location.assign).toHaveBeenCalledWith('/login');
+    });
+
+    it('sends an ended till session back to the till, not to the back office', async () => {
+      // A cashier whose shift ends mid-sale used to land on /login: the token
+      // they still held was refused with SHIFT_ENDED, and every 401 meant
+      // "sign in again". A cashier has no password for that door. The recovery
+      // for a dead till session is the till's own front door — RequireTill
+      // decides between the PIN pad and /pair from there. Here they are on
+      // /services, a till surface that is not itself that front door.
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...original, pathname: '/services', assign: vi.fn() },
+      });
+      authStore.setToken('a-dead-till-session');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'That shift has ended', code: 'SHIFT_ENDED' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);
+
+      expect(authStore.getToken()).toBeNull();
+      expect(window.location.assign).toHaveBeenCalledWith('/pos');
+    });
+
+    it('does not bounce a till that is already at its own front door', async () => {
+      // The pad is already one render away; a hard navigation to the page we
+      // are on would only throw the app away and rebuild it.
+      authStore.setToken('a-dead-till-session');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          { success: false, error: 'That shift has ended', code: 'SHIFT_ENDED' },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);
+
+      // The token still goes, so RequireTill puts the pad up on the next render.
+      expect(authStore.getToken()).toBeNull();
+      expect(window.location.assign).not.toHaveBeenCalled();
+    });
+
+    it('sends a decommissioned register back to pair, not to the PIN pad', async () => {
+      // REGISTER_INACTIVE is the other half of SHIFT_ENDED: the shift is gone
+      // *and* so is the register behind it — retired, disabled, or never
+      // activated. No PIN reopens a till that no longer exists, so this one
+      // goes to the pairing screen and the device credential goes with it.
+      authStore.setToken('a-dead-till-session');
+      setDeviceToken('a-credential-for-a-retired-till');
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse(
+          {
+            success: false,
+            error: 'That register is no longer active',
+            code: 'REGISTER_INACTIVE',
+          },
+          { ok: false, status: 401 }
+        )
+      );
+
+      await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);
+
+      expect(authStore.getToken()).toBeNull();
+      expect(getDeviceToken()).toBeNull();
+      expect(window.location.assign).toHaveBeenCalledWith('/pair');
     });
 
     it('does not redirect when already on the login page', async () => {

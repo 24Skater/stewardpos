@@ -100,6 +100,36 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
+/**
+ * Who is at the till.
+ *
+ * `useSession` hands back an `AuthSession` — the roles' permissions already
+ * merged into one top-level map — not the raw `/api/auth/session` envelope.
+ * The header's Admin button is gated on `reports:read`, so this suite's default
+ * is someone who has it: the button's destination is what these tests are
+ * about, and a session without the permission removes the button rather than
+ * testing where it goes.
+ */
+function session(reportsRead: boolean, systemRole = 'standard') {
+  return {
+    user: {
+      id: 'u1',
+      email: 'someone@demo.local',
+      name: 'Someone',
+      roleIds: ['r1'],
+      roles: [{ id: 'r1', name: 'A role', systemRole, permissions: {} }],
+    },
+    permissions: { reports: { read: reportsRead, write: false, delete: false } },
+  };
+}
+
+const sessionQuery: { data: unknown } = { data: session(true) };
+
+vi.mock('@/hooks/queries/useSession', () => ({
+  useSession: () => sessionQuery,
+  useInvalidateSession: () => vi.fn(),
+}));
+
 const POS = (await import('../POS')).default;
 
 function renderRegister() {
@@ -121,6 +151,7 @@ function renderRegister() {
 beforeEach(() => {
   vi.clearAllMocks();
   settingsQuery.data = { ...DEFAULT_SETTINGS };
+  sessionQuery.data = session(true);
 });
 
 describe('POS first paint', () => {
@@ -211,7 +242,6 @@ describe('the register header', () => {
   it.each([
     ['Admin', '/admin'],
     ['Inventory', '/inventory'],
-    ['Reports', '/reports'],
     ['Settings', '/settings'],
     ['Services', '/services'],
   ])('sends %s to %s', async (label, path) => {
@@ -227,10 +257,41 @@ describe('the register header', () => {
     // looks like a permissions prompt and behaves like a dead end.
     renderRegister();
 
-    for (const label of ['Admin', 'Inventory', 'Reports', 'Settings', 'Services']) {
+    for (const label of ['Admin', 'Inventory', 'Settings', 'Services']) {
       fireEvent.click(await screen.findByRole('button', { name: new RegExp(`^${label}$`, 'i') }));
     }
 
     expect(navigate).not.toHaveBeenCalledWith('/login');
+  });
+
+  it('hides Admin from a cashier who cannot use it', async () => {
+    // The button used to be unconditional. With a cashier's PIN session behind
+    // it rather than a back-office login, it leads only to a 403 — and
+    // `App.tsx` gates /admin on exactly this permission.
+    sessionQuery.data = session(false);
+
+    renderRegister();
+
+    await screen.findByRole('button', { name: /^Settings$/i });
+    expect(screen.queryByRole('button', { name: /^Admin$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Admin to someone who can read reports', async () => {
+    sessionQuery.data = session(true, 'supervisor');
+
+    renderRegister();
+
+    expect(await screen.findByRole('button', { name: /^Admin$/i })).toBeInTheDocument();
+  });
+
+  it('hides Admin while the session is still unknown', async () => {
+    // Rendering it optimistically and removing it a frame later is a button
+    // that flickers into existence and then vanishes under the cursor.
+    sessionQuery.data = undefined;
+
+    renderRegister();
+
+    await screen.findByRole('button', { name: /^Settings$/i });
+    expect(screen.queryByRole('button', { name: /^Admin$/i })).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import type { DbRow } from '../adapters/db/types';
 import type { DatabaseAdapter } from './database';
+import { getOpenShift, endShift } from './registerShifts';
 
 /**
  * Device enrolment: turning a register from a name any browser can claim
@@ -310,6 +311,19 @@ export async function revokeCredential(
       reason: opts.reason ?? null,
     });
     if (revoked) credentials.push(revoked);
+  }
+
+  // A revoked credential must not leave a live PIN session running on the
+  // till it just stopped trusting — `authenticate` also asserts this
+  // independently (auth.ts checks the register's own status even on a shift
+  // session), but ending it here is the primary defence: it takes effect on
+  // the very next request rather than waiting for that request to bother
+  // re-checking. `getOpenShift`, not a raw fetch, so a shift that is merely
+  // idle-expired is ended as `idle_timeout` (its true cause) rather than
+  // mislabelled `revoked`.
+  const openShift = await getOpenShift(adapter, registerId);
+  if (openShift) {
+    await endShift(adapter, String(openShift.id), 'revoked');
   }
 
   const updated = await adapter.setRegisterStatus(registerId, 'pending');

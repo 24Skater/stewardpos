@@ -13,6 +13,11 @@ const createRegister = vi.fn();
 const updateRegister = vi.fn();
 const setRegisterStatus = vi.fn();
 const createAuditLog = vi.fn();
+// retireRegister/disableRegister now end any open shift on the register —
+// see services/registers.ts's endOpenShift — so this mock needs the same
+// shift surface registerShifts.getOpenShift reads.
+const getOpenShiftForRegister = vi.fn();
+const endRegisterShift = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -28,6 +33,8 @@ vi.mock('../../../services/database', () => ({
       updateRegister,
       setRegisterStatus,
       createAuditLog,
+      getOpenShiftForRegister,
+      endRegisterShift,
     }),
   },
 }));
@@ -83,6 +90,7 @@ beforeEach(() => {
   updateRegister.mockResolvedValue(REGISTER);
   setRegisterStatus.mockResolvedValue(REGISTER);
   createAuditLog.mockResolvedValue({});
+  getOpenShiftForRegister.mockResolvedValue(null);
 });
 
 describe('GET /api/registers', () => {
