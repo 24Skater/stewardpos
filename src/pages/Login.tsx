@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthLayout, Button, Input, Label } from '@steward-apps/ui';
 import { authApi } from '@/lib/api';
+import { ApiClientError } from '@/lib/api-client';
 import { authStore } from '@/lib/auth-store';
+import { getErrorMessage } from '@/lib/errors';
+import { USE_PIN_AT_TILL } from '@/lib/register-error-codes';
 import { useInvalidateSession } from '@/hooks/queries/useSession';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn } from 'lucide-react';
+import { LogIn, ShieldAlert } from 'lucide-react';
 import Logo from '@/components/Logo';
 
 /**
@@ -28,10 +31,33 @@ function safeRedirect(next: string | null): string {
  */
 const SHOW_DEMO_CREDENTIALS = import.meta.env.VITE_DEMO_MODE === 'true';
 
+/**
+ * What to tell someone the form just turned away.
+ *
+ * A cashier's password is not wrong — this screen is simply not their door, and
+ * the generic message would have them retyping a password that works. Branches
+ * on the envelope's `code`, never on the message text.
+ */
+function describeLoginFailure(error: unknown): string {
+  const code = error instanceof ApiClientError ? (error.body as { code?: string } | undefined)?.code : undefined;
+
+  if (code === USE_PIN_AT_TILL) {
+    return 'Use your PIN at the till. This screen is for back-office accounts.';
+  }
+
+  return getErrorMessage(error, 'Could not sign you in');
+}
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  /**
+   * Shown on the form rather than in a toast: a rejection here is an
+   * instruction the reader has to act on, and a toast that fades takes it away
+   * mid-sentence.
+   */
+  const [failure, setFailure] = useState<string | null>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const invalidateSession = useInvalidateSession();
@@ -40,6 +66,7 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setFailure(null);
 
     try {
       const response = await authApi.login({ email, password });
@@ -55,18 +82,10 @@ export default function Login() {
         });
         navigate(safeRedirect(searchParams.get('next')), { replace: true });
       } else {
-        toast({
-          title: 'Login failed',
-          description: 'Invalid email or password',
-          variant: 'destructive'
-        });
+        setFailure('Invalid email or password');
       }
     } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Login failed',
-        variant: 'destructive'
-      });
+      setFailure(describeLoginFailure(error));
     } finally {
       setLoading(false);
     }
@@ -104,6 +123,16 @@ export default function Login() {
             required
           />
         </div>
+
+        {failure && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2"
+          >
+            <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+            <span>{failure}</span>
+          </div>
+        )}
 
         <Button type="submit" className="w-full" disabled={loading}>
           <LogIn className="w-4 h-4 mr-2" />
