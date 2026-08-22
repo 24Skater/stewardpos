@@ -105,13 +105,13 @@ export interface ResponseMeta {
  * error status, or `success: false` all raise ApiClientError, so a returned value
  * always means the call succeeded and no caller has to re-check `success`.
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(response: Response, path: string): Promise<T> {
   const body: ApiEnvelope<T> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(body);
+      handleUnauthorized(body, path);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -124,14 +124,15 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * Most callers want {@link handleResponse}.
  */
 async function handleResponseWithMeta<T, M extends ResponseMeta = ResponseMeta>(
-  response: Response
+  response: Response,
+  path: string
 ): Promise<{ data: T; meta?: M }> {
   const body: ApiEnvelope<T, M> = await response.json().catch(() => ({ success: false }));
 
   if (!response.ok || body.success === false) {
     const message = body.error || body.message || 'An error occurred';
     if (response.status === 401) {
-      handleUnauthorized(body);
+      handleUnauthorized(body, path);
     }
     throw new ApiClientError(response.status, message, body.errors, body as unknown as Record<string, unknown>);
   }
@@ -209,13 +210,34 @@ function onRegisterTokenRevoked(): void {
   }
 }
 
+/**
+ * Endpoints where a 401 means "that credential was wrong", not "your session
+ * expired".
+ *
+ * These are the two doors themselves. A rejected PIN or password has no session
+ * to drop and nowhere to send anyone — the caller renders the failure and lets
+ * them try again. Treating it as an expired session replaced the till's lock
+ * screen with the back-office login page mid-keystroke, which is the exact door
+ * this app's till auth exists to keep cashiers away from.
+ *
+ * `/api/auth/till/assume` is deliberately NOT here: it is called with an
+ * existing back-office session, so a 401 there really does mean that session is
+ * gone.
+ */
+const SIGN_ON_PATHS = new Set(['/api/auth/login', '/api/auth/till']);
+
 /** Route a 401 to the right recovery path - see {@link isRegisterTokenFailure}. */
-function handleUnauthorized(envelope: { code?: string } | undefined): void {
+function handleUnauthorized(envelope: { code?: string } | undefined, path: string): void {
   if (isRegisterTokenFailure(envelope)) {
+    // Ahead of the sign-on check: a terminal whose device credential is dead
+    // cannot be rescued by a better PIN, whichever endpoint said so.
     onRegisterTokenRevoked();
-  } else {
-    onUnauthorized();
+    return;
   }
+
+  if (SIGN_ON_PATHS.has(path)) return;
+
+  onUnauthorized();
 }
 
 export const apiClient = {
@@ -225,7 +247,7 @@ export const apiClient = {
       method: 'GET',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -242,7 +264,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json', ...options?.headers }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   async put<T>(path: string, data?: unknown): Promise<T> {
@@ -252,7 +274,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -267,7 +289,7 @@ export const apiClient = {
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   async delete<T>(path: string): Promise<T> {
@@ -276,7 +298,7 @@ export const apiClient = {
       method: 'DELETE',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -293,7 +315,7 @@ export const apiClient = {
       headers: requestHeaders(token),
       body: form,
     });
-    return handleResponse<T>(response);
+    return handleResponse<T>(response, path);
   },
 
   /**
@@ -310,7 +332,7 @@ export const apiClient = {
       method: 'GET',
       headers: requestHeaders(token, { 'Content-Type': 'application/json' }),
     });
-    return handleResponseWithMeta<T, M>(response);
+    return handleResponseWithMeta<T, M>(response, path);
   },
 };
 
