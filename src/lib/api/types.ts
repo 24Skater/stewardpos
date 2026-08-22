@@ -421,6 +421,15 @@ export interface User {
   name: string;
   roleIds: string[];
   status: 'active' | 'inactive';
+  /**
+   * Epoch ms the current till PIN was set, or null if there is none.
+   *
+   * The PIN itself is never here and never can be — the backend stores only a
+   * bcrypt hash. This says a PIN exists, nothing more.
+   */
+  pinSetAt?: number | null;
+  /** Epoch ms the PIN lockout lapses, or null. A past value means it already has. */
+  pinLockedUntil?: number | null;
   lastLoginAt?: number;
   createdAt: number;
 }

@@ -158,6 +158,34 @@ describe('PIN columns', () => {
     expect(JSON.stringify(byEmail)).not.toContain('super-secret-hash');
     expect(JSON.stringify(byEmail).toLowerCase()).not.toContain('pinhash');
   });
+
+  it('getAllUsers reports whether a PIN is set and whether it is locked out', async () => {
+    // What the admin PIN screen reads to decide whether to offer an unlock. It
+    // is the one list that carries any PIN state at all, which is why the test
+    // above pins down exactly which state that is.
+    const email = `${mark}-lock@example.com`;
+    const userId = await makeUser(email);
+    const setAt = Date.now();
+    const lockedUntil = setAt + 600_000;
+
+    await h.adapter.setUserPin(userId, { pinHash: 'another-secret-hash', pinSetAt: setAt });
+    await h.adapter.recordPinFailure(userId, { failedCount: 5, lockedUntil });
+
+    const row = (await h.adapter.getAllUsers()).find((u) => String(u.id) === userId);
+
+    expect(row).toBeDefined();
+    expect(row!.pinSetAt).toBeCloseTo(setAt, -3);
+    expect(row!.pinLockedUntil).toBeCloseTo(lockedUntil, -3);
+  });
+
+  it('getAllUsers reports a null lockout for a cashier who is not locked out', async () => {
+    const userId = await makeUser(`${mark}-nolock@example.com`);
+    await h.adapter.setUserPin(userId, { pinHash: 'third-secret-hash', pinSetAt: Date.now() });
+
+    const row = (await h.adapter.getAllUsers()).find((u) => String(u.id) === userId);
+
+    expect(row!.pinLockedUntil).toBeNull();
+  });
 });
 
 describe('register_shifts', () => {

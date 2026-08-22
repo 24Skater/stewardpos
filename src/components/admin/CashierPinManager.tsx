@@ -9,7 +9,7 @@ import type { User } from '@/lib/api';
 import { ApiClientError } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/errors';
 import { useToast } from '@/hooks/use-toast';
-import { KeyRound, Trash2 } from 'lucide-react';
+import { KeyRound, LockOpen, Trash2 } from 'lucide-react';
 
 /**
  * Set or clear a cashier's register sign-on PIN.
@@ -18,11 +18,9 @@ import { KeyRound, Trash2 } from 'lucide-react';
  * ever stores a bcrypt hash, see `services/pins.ts`), so this screen only
  * ever offers to replace or clear it, never to reveal it.
  *
- * **Backend note**: `adminApi.users.setPin`/`clearPin` call
- * `PUT`/`DELETE /api/admin/users/:id/pin`, which do not exist on this branch's
- * backend yet — see the doc comment on `SetPinRequest` in `lib/api/admin.ts`
- * for the gap. This component is complete and ready for when that route is
- * wired up; today, both actions surface as a normal failed-request toast.
+ * It also clears a lockout. Unlocking is not the same act as reissuing: the
+ * cashier's own PIN still works afterwards, which is why the row offers both
+ * and why the unlock never touches the PIN itself.
  */
 
 /**
@@ -47,6 +45,7 @@ export default function CashierPinManager() {
   const [loading, setLoading] = useState(true);
   const [dialogState, setDialogState] = useState<PinDialogState | null>(null);
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,6 +61,37 @@ export default function CashierPinManager() {
       toast({ title: 'Error', description: getErrorMessage(error, 'Failed to load staff'), variant: 'destructive' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Whether this cashier is locked out *right now*.
+   *
+   * A past timestamp is not a lockout: the backend clears these lazily, so a
+   * lapsed one is the ordinary resting state of someone who simply waited the
+   * fifteen minutes out, and offering to unlock it would be offering to do
+   * nothing.
+   */
+  const isLockedOut = (user: User): boolean =>
+    user.pinLockedUntil != null && Number(user.pinLockedUntil) > Date.now();
+
+  const handleUnlockPin = async (user: User) => {
+    setUnlockingId(user.id);
+    try {
+      await adminApi.users.unlockPin(user.id);
+      toast({ title: `PIN unlocked for ${user.name}`, description: 'Their existing PIN still works.' });
+      // Re-read rather than patch the row locally: the lockout is server state,
+      // and a local edit would quietly disagree with it the moment anything
+      // else changed it.
+      await loadUsers();
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: getErrorMessage(error, 'Could not clear the lockout'),
+        variant: 'destructive',
+      });
+    } finally {
+      setUnlockingId(null);
     }
   };
 
@@ -159,7 +189,24 @@ export default function CashierPinManager() {
                 <TableCell className="font-medium">{user.name}</TableCell>
                 <TableCell className="text-muted-foreground">{user.email}</TableCell>
                 <TableCell>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isLockedOut(user) && (
+                      <>
+                        <span className="text-sm text-destructive">
+                          PIN locked after too many failed attempts
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleUnlockPin(user)}
+                          disabled={unlockingId === user.id}
+                          aria-label={`Unlock PIN for ${user.name}`}
+                        >
+                          <LockOpen className="w-4 h-4 mr-1" aria-hidden="true" />
+                          Unlock
+                        </Button>
+                      </>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => openSetPin(user)}>
                       <KeyRound className="w-4 h-4 mr-1" aria-hidden="true" />
                       Set PIN
