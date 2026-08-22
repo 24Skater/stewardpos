@@ -40,6 +40,7 @@ vi.mock('../../../services/registerEnrolment', async (importOriginal) => {
 });
 
 const { default: app } = await import('../../../app');
+const { default: config } = await import('../../../config');
 
 const ORG = '00000000-0000-0000-0000-000000000001';
 const PIN = '4821';
@@ -314,5 +315,30 @@ describe('POST /api/auth/till/assume', () => {
     const response = await assume(assumedToken, { registerId: 'reg1' });
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe('PIN attempts are throttled per register, not shop-wide', () => {
+  /**
+   * The bug this guards: `registers.ts`'s `shiftLimiter` keys on
+   * `req.params.id`, and this route has no `:id`, so reusing it put every
+   * terminal in every organization into one `register:unknown` bucket. Ten
+   * fumbled PINs at one till would have locked the PIN pad on every till in
+   * the shop — an outage caused by one cashier mistyping.
+   */
+  it('does not let one till exhaust the attempts of another', async () => {
+    const budget = config.rateLimit.maxShiftAttempts;
+    verifyDeviceToken.mockResolvedValue({ register: register({ id: 'regA' }), credentialId: 'credA' });
+
+    for (let attempt = 0; attempt < budget + 2; attempt += 1) {
+      await till().send({ pin: '0000' });
+    }
+
+    // A different till, with its own device credential, is unaffected.
+    verifyDeviceToken.mockResolvedValue({ register: register({ id: 'regB' }), credentialId: 'credB' });
+    const other = await till().send({ pin: '0000' });
+
+    expect(other.status).toBe(401);
+    expect(other.body.code).toBe('PIN_INVALID');
   });
 });
