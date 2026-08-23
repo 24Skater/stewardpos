@@ -163,9 +163,16 @@ export default function LockScreen({ displayCode, pinLength, onUnlocked }: LockS
             better answer than an invisible door only some people know about.
             Kept visually quiet, well under the pad, so the PIN stays the
             obvious thing to do.
+
+            Points at /admin rather than /login because /login sends everyone to
+            /pos afterwards, which for a till that requires sign-on is this very
+            screen again - a manager in a circle. `RequireAuth` turns /admin into
+            /login?next=/admin when they are signed out, so the password step
+            still happens exactly when it is needed, and someone already signed
+            in skips it.
           */}
           <a
-            href="/login"
+            href="/admin"
             className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
           >
             Manager? Sign in with a password
