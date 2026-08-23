@@ -149,6 +149,27 @@ export default function LockScreen({ displayCode, pinLength, onUnlocked }: LockS
               <span>{failure.message}</span>
             </div>
           )}
+
+          {/*
+            The way off this screen for a manager, and the only one.
+            Deliberately a plain link rather than a control that dismisses the
+            pad: it leaves the till surface entirely instead of lifting an
+            opaque screen off the cart behind it, so the guarantee in this
+            component's doc comment still holds.
+
+            Shown to everyone because it cannot be misused. A till-only user
+            who follows it and types their password is refused with
+            USE_PIN_AT_TILL, and the login screen points them back here — a
+            better answer than an invisible door only some people know about.
+            Kept visually quiet, well under the pad, so the PIN stays the
+            obvious thing to do.
+          */}
+          <a
+            href="/login"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+          >
+            Manager? Sign in with a password
+          </a>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
