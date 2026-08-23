@@ -1,4 +1,5 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
+import { pairedRegisterId } from './helpers';
 
 /**
  * A return, driven through the register.
@@ -29,7 +30,13 @@ async function apiContext(): Promise<Api> {
   const context = await playwrightRequest.newContext({ baseURL: 'http://localhost:3002' });
   const response = await context.post('/api/auth/login', { data: ADMIN });
   const token = (await response.json()).data.token;
-  return { context, headers: { Authorization: `Bearer ${token}` } };
+  // Named explicitly: with no register header the backend rings the sale
+  // against the org's first active register - the shop's own till, which this
+  // suite deliberately no longer pairs or opens a shift on.
+  return {
+    context,
+    headers: { Authorization: `Bearer ${token}`, 'X-Register-Id': pairedRegisterId() },
+  };
 }
 
 /** A sellable product with stock, and the variant to sell. */

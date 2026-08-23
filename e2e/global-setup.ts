@@ -32,6 +32,27 @@ const TILL_USER = {
 };
 
 /**
+ * A register this suite owns, for the same reason it owns {@link TILL_USER}.
+ *
+ * A register holds exactly ONE enrolled device: `redeemPairingCode` revokes
+ * whatever was enrolled before as `superseded_by_new_enrolment`. Pairing the
+ * shop's own till here therefore *unpaired the human using it* — their next
+ * request 401'd `REGISTER_TOKEN_INVALID`, which clears the device token and
+ * routes to `/pair`, and re-pairing there stole the credential straight back
+ * off this suite. Two parties, one slot, a loop that survives a hard refresh
+ * because the revocation is real and server-side.
+ *
+ * Owning a separate register means a test run and a person at the counter are
+ * never competing for the same credential.
+ */
+const TILL_REGISTER = {
+  displayCode: 'E2E-01',
+  name: 'E2E Till',
+  // The specs sign a cashier on, so this has to be the mode that asks for one.
+  requireSignIn: true,
+};
+
+/**
  * How many PINs to try before giving up.
  *
  * PINs are unique per organization (`services/pins.ts`), so a fixed constant
@@ -44,6 +65,61 @@ const TILL_USER = {
 const PIN_ATTEMPTS = 8;
 
 const randomPin = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+
+/**
+ * Make sure {@link TILL_REGISTER} exists and is active, and return it.
+ *
+ * Created on demand rather than seeded, so a stack that predates this still
+ * gets one, and matched on `displayCode` because that is what the create call
+ * sets and what a human reads off the screen.
+ */
+async function ensureTillRegister(
+  page: import('@playwright/test').Page,
+  authed: Record<string, string>
+): Promise<{ id: string }> {
+  const locations = await page.request.get(`${API}/api/locations`, { headers: authed });
+  const location = (await locations.json()).data?.find(
+    (candidate: { status?: string }) => candidate.status === 'active'
+  );
+  if (!location) throw new Error('No active location to put the e2e register in.');
+
+  const find = async () => {
+    const response = await page.request.get(`${API}/api/registers`, { headers: authed });
+    return (await response.json()).data?.find(
+      (register: { displayCode?: string }) => register.displayCode === TILL_REGISTER.displayCode
+    );
+  };
+
+  let register = await find();
+  if (!register) {
+    const created = await page.request.post(`${API}/api/registers`, {
+      headers: authed,
+      data: {
+        locationId: location.id,
+        name: TILL_REGISTER.name,
+        displayCode: TILL_REGISTER.displayCode,
+        requireSignIn: TILL_REGISTER.requireSignIn,
+      },
+    });
+    if (!created.ok()) {
+      throw new Error(`Could not create the e2e register: ${await created.text()}`);
+    }
+    register = (await created.json()).data;
+  }
+
+  // A new register starts `pending`; only an active one can open a shift.
+  if (register.status !== 'active') {
+    const activated = await page.request.post(
+      `${API}/api/registers/${register.id}/activate`,
+      { headers: authed }
+    );
+    if (!activated.ok()) {
+      throw new Error(`Could not activate the e2e register: ${await activated.text()}`);
+    }
+  }
+
+  return register;
+}
 
 /**
  * Make sure {@link TILL_USER} exists with a PIN this suite knows, and return it.
@@ -131,11 +207,7 @@ export default async function globalSetup() {
 
   const authed = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
-  const registers = await page.request.get(`${API}/api/registers`, { headers: authed });
-  const active = (await registers.json()).data?.find(
-    (register: { status: string }) => register.status === 'active'
-  );
-  if (!active) throw new Error('No active register to pair against; is the database seeded?');
+  const active = await ensureTillRegister(page, authed);
 
   const codeResponse = await page.request.post(
     `${API}/api/registers/${active.id}/pairing-code`,
