@@ -38,6 +38,22 @@ beforeEach(() => {
 });
 
 describe('PairRegister', () => {
+  it('offers a way to the admin console the code has to come from', async () => {
+    // This screen is the first thing a new terminal shows, and it asks for a
+    // code that only the admin console can produce - while linking to nothing
+    // at all. Whoever is setting the till up had to know to type /admin into
+    // the address bar, and an admin who signed in first was bounced straight
+    // back here by RequireTill, signed in and still stranded.
+    //
+    // Pointed at /admin rather than /login: RequireAuth sends a signed-out
+    // visitor to /login?next=/admin and back again afterwards, so one link
+    // serves both, and someone already signed in skips the form entirely.
+    await renderPairRegister();
+
+    const link = screen.getByRole('link', { name: /admin|pairing code|sign in/i });
+    expect(link).toHaveAttribute('href', '/admin');
+  });
+
   it('has a real label associated with the pairing code input', async () => {
     await renderPairRegister();
 

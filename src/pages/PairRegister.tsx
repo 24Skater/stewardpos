@@ -168,6 +168,30 @@ export default function PairRegister() {
           )}
           {submitting ? 'Pairing…' : 'Pair register'}
         </Button>
+
+        {/*
+          Where the code actually comes from.
+
+          This screen is the first thing a new terminal shows, and it asks for
+          something only the admin console can produce — while, until now,
+          linking to nothing at all. Whoever was setting the till up had to
+          already know to type /admin into the address bar, and an admin who
+          signed in first was bounced straight back here by `RequireTill`:
+          signed in, and still stranded on a screen with no way onward.
+
+          /admin rather than /login, so one link serves both cases —
+          `RequireAuth` sends a signed-out visitor to /login?next=/admin and
+          returns them here-ward afterwards, while someone already signed in
+          skips the form entirely.
+        */}
+        <p className="text-center text-sm text-muted-foreground">
+          <a
+            href="/admin"
+            className="underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+          >
+            Need a pairing code? Open the admin console
+          </a>
+        </p>
       </form>
     </AuthLayout>
   );
