@@ -16,12 +16,93 @@ const REGISTER_ID_KEY = 'steward-terminal-register-id';
 const REGISTER_TOKEN_KEY = 'steward-terminal-register-token';
 
 /**
- * The PIN the seeded demo administrator signs on to a till with — `DEMO_PIN` in
- * `backend/src/services/seeder.ts`. Duplicated for the same reason the storage
- * keys above are: this file runs in Node, outside the backend's package. Set
- * `E2E_REGISTER_PIN` when the local stack's admin PIN has been changed by hand.
+ * A cashier this suite owns outright, created on demand and never shared with a
+ * human.
+ *
+ * It used to sign on as the seeded demo admin with the seeded PIN, and that
+ * broke the moment somebody changed that PIN through Admin → Roles & Users —
+ * an ordinary thing to do on a stack you are also using by hand. Owning the
+ * account means the suite cannot be locked out of the till by a change nobody
+ * connected to it, and it leaves real accounts' PINs alone.
  */
-const DEMO_PIN = process.env.E2E_REGISTER_PIN ?? '112358';
+const TILL_USER = {
+  email: 'e2e.till@demo.local',
+  name: 'E2E Till',
+  password: 'DemoPass!1',
+};
+
+/**
+ * How many PINs to try before giving up.
+ *
+ * PINs are unique per organization (`services/pins.ts`), so a fixed constant
+ * here is only ever one coincidence away from being unusable — a human picking
+ * the same six digits in the admin UI would lock this suite out of the till
+ * with a 409 and no obvious connection to what they did. Rather than hardcode,
+ * pick digits and move on when they are taken. Six of them because
+ * `MIN_PIN_LENGTH` is 6.
+ */
+const PIN_ATTEMPTS = 8;
+
+const randomPin = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+
+/**
+ * Make sure {@link TILL_USER} exists with a PIN this suite knows, and return it.
+ *
+ * Idempotent, and written to survive a database that already has the account
+ * from a previous run: creating it again is expected to fail, and the PIN is
+ * then simply re-set. The PIN is rewritten every run rather than trusted,
+ * because a lockout or a hand-edit would otherwise leave the suite unable to
+ * open a shift with no clue as to why.
+ */
+async function ensureTillUser(
+  page: import('@playwright/test').Page,
+  authed: Record<string, string>
+): Promise<string> {
+  const roles = await page.request.get(`${API}/api/admin/roles`, { headers: authed });
+  const standard = (await roles.json()).data?.find(
+    (role: { systemRole?: string }) => role.systemRole === 'standard'
+  );
+  if (!standard) throw new Error('No standard role to give the e2e till user.');
+
+  // Expected to fail when the account already exists — the PIN write below is
+  // what actually matters, so the response is deliberately not checked here.
+  await page.request.post(`${API}/api/admin/users`, {
+    headers: authed,
+    data: {
+      email: TILL_USER.email,
+      name: TILL_USER.name,
+      password: TILL_USER.password,
+      roleIds: [standard.id],
+    },
+  });
+
+  const users = await page.request.get(`${API}/api/admin/users`, { headers: authed });
+  const user = (await users.json()).data?.find(
+    (candidate: { email: string }) => candidate.email === TILL_USER.email
+  );
+  if (!user) throw new Error(`Could not create or find ${TILL_USER.email}.`);
+
+  // An explicit PIN is an instruction, not a suggestion: if it is taken, say so
+  // rather than quietly signing on as somebody the caller did not name.
+  const override = process.env.E2E_REGISTER_PIN;
+  const candidates = override ? [override] : Array.from({ length: PIN_ATTEMPTS }, randomPin);
+
+  let lastFailure = '';
+  for (const pin of candidates) {
+    const response = await page.request.put(`${API}/api/admin/users/${user.id}/pin`, {
+      headers: authed,
+      data: { pin },
+    });
+    if (response.ok()) return pin;
+
+    lastFailure = await response.text();
+    // 409 is "those digits belong to somebody else" — the only failure worth
+    // another go. Anything else is a real problem and retrying would hide it.
+    if (response.status() !== 409) break;
+  }
+
+  throw new Error(`Could not give ${TILL_USER.email} a PIN: ${lastFailure}`);
+}
 
 export default async function globalSetup() {
   const browser = await chromium.launch();
@@ -108,14 +189,15 @@ export default async function globalSetup() {
   const openShift = (await current.json()).data;
 
   if (!openShift) {
+    const pin = await ensureTillUser(page, authed);
+
     const signedOn = await page.request.post(`${API}/api/registers/${active.id}/shifts`, {
       headers: asDevice,
-      data: { pin: DEMO_PIN },
+      data: { pin },
     });
     if (!signedOn.ok()) {
       throw new Error(
-        `Could not open a shift on ${active.id}: ${await signedOn.text()} - the demo ` +
-          `admin's PIN is not the seeded one. Re-seed, or set E2E_REGISTER_PIN.`
+        `Could not open a shift on ${active.id}: ${await signedOn.text()}`
       );
     }
   }
