@@ -181,12 +181,20 @@ const SHIFT_ENDED = 'SHIFT_ENDED';
 const REGISTER_INACTIVE = 'REGISTER_INACTIVE';
 
 /**
- * The till's own front door. `/` and `/pos` both render `RequireTill`, which
- * picks between the PIN pad and `/pair` on its own once the dead token is
- * gone — so a 401 raised from either one needs no navigation at all, and a
- * hard one would throw the running app away to rebuild the page it is on.
+ * Pages a dead till session should be left sitting on.
+ *
+ * `/` and `/pos` render `RequireTill`, which picks between the PIN pad and
+ * `/pair` on its own once the dead token is gone — a hard navigation there
+ * would only throw the running app away to rebuild the page it is already on.
+ *
+ * `/login` and `/pair` are here for a different reason: they are doors someone
+ * *chose*. The lock screen offers a manager a link to `/login`, and the token
+ * from the shift they just ended is still in storage, so the first request
+ * that page makes 401s `SHIFT_ENDED`. Bouncing that to the till threw them
+ * straight back out of the door they had just opened, before they could type
+ * a password. Whatever sent them here knows better than this handler does.
  */
-const TILL_ENTRY_PATHS = new Set(['/', '/pos']);
+const NO_BOUNCE_PATHS = new Set(['/', '/pos', '/login', '/pair']);
 
 /**
  * Whether a 401 means "this terminal was revoked" rather than "sign in again".
@@ -249,7 +257,7 @@ function onRegisterTokenRevoked(): void {
 function onShiftEnded(): void {
   authStore.clearToken();
 
-  if (typeof window !== 'undefined' && !TILL_ENTRY_PATHS.has(window.location.pathname)) {
+  if (typeof window !== 'undefined' && !NO_BOUNCE_PATHS.has(window.location.pathname)) {
     window.location.assign('/pos');
   }
 }
