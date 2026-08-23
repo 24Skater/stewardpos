@@ -29,15 +29,18 @@ vi.mock('@/lib/auth-store', async (importOriginal) => {
 
 const { default: LockScreen } = await import('../LockScreen');
 
-function renderLock(props: Record<string, unknown> = {}) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+function renderLock(props: Record<string, unknown> = {}, client?: QueryClient) {
+  const queryClient =
+    client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
   render(
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={queryClient}>
       <LockScreen {...props} />
     </QueryClientProvider>
   );
+  return queryClient;
 }
 
 function enterAndSubmit(pin: string) {
@@ -118,6 +121,34 @@ describe('LockScreen sign-on', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/locked/i);
     expect(setToken).not.toHaveBeenCalled();
+  });
+
+  it('tells the shift query the till is signed on, so the pad can come down', async () => {
+    // The bug this guards: POS decides whether to cover itself with this
+    // screen from `useCurrentShift`, and that query is 15 seconds stale and
+    // holding the `null` that put the pad up in the first place. Signing on
+    // mints a session and opens a shift server-side, but nothing told the
+    // cache — so at the mount POS owns (a cashier signs out, the next one
+    // signs on) the correct PIN was accepted and the screen simply stayed,
+    // which reads as the pad doing nothing at all.
+    //
+    // `RequireTill`'s mount hid this: it swaps in a freshly mounted POS whose
+    // query starts empty and fetches for real.
+    till.mockResolvedValueOnce(session);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    renderLock({}, client);
+
+    enterAndSubmit('112358');
+
+    await waitFor(() => expect(setToken).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['registers', 'reg-1', 'currentShift'] })
+      )
+    );
   });
 
   it('names no register when it has not been told one', () => {

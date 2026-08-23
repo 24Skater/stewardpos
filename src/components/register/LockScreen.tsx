@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, ShieldAlert } from 'lucide-react';
 import PinPad from './PinPad';
 import { ApiClientError } from '@/lib/api-client';
@@ -8,6 +8,7 @@ import { authApi } from '@/lib/api';
 import { authStore } from '@/lib/auth-store';
 import { getErrorMessage } from '@/lib/errors';
 import { PIN_INVALID, PIN_LOCKED } from '@/lib/register-error-codes';
+import { queryKeys } from '@/hooks/queries/keys';
 import type { TillSession } from '@/lib/api';
 
 /**
@@ -73,6 +74,7 @@ export interface LockScreenProps {
 
 export default function LockScreen({ displayCode, pinLength, onUnlocked }: LockScreenProps) {
   const [failure, setFailure] = useState<{ kind: FailureKind; message: string } | null>(null);
+  const queryClient = useQueryClient();
 
   const signOn = useMutation({
     mutationFn: (pin: string) => authApi.till({ pin }),
@@ -81,6 +83,20 @@ export default function LockScreen({ displayCode, pinLength, onUnlocked }: LockS
       // synchronously to decide whether to keep showing this screen, so the
       // other order flashes the pad back over a till that just signed on.
       authStore.setToken(session.token, session.expiresIn);
+
+      // Signing on opened a shift server-side, and `POS` decides whether to
+      // keep this screen up from `useCurrentShift` — a query that is stale for
+      // 15 seconds and still holding the `null` that raised the pad. Without
+      // this, the mount POS owns (one cashier signs out, the next signs on)
+      // accepted the right PIN and then simply stayed put, which reads as the
+      // pad doing nothing at all. `RequireTill`'s mount hid the bug by
+      // swapping in a freshly mounted POS whose query starts empty.
+      if (session.register?.id) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.registers.currentShift(String(session.register.id)),
+        });
+      }
+
       onUnlocked?.(session);
     },
   });
