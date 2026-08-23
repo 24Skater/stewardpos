@@ -273,6 +273,35 @@ describe('apiClient', () => {
       expect(window.location.assign).toHaveBeenCalledWith('/pair');
     });
 
+    it('leaves a dead till session alone at a sign-in door it was sent to', async () => {
+      // The manager's escape hatch from the lock screen is a link to /login.
+      // The browser still holds the ended shift's token, so the first request
+      // the login page makes 401s SHIFT_ENDED - and sending that back to the
+      // till bounced them straight out of the door they had just opened.
+      // Found in a browser: /login loaded and was replaced by /pos before the
+      // password field could be typed into.
+      for (const door of ['/login', '/pair']) {
+        vi.mocked(fetch).mockReset();
+        Object.defineProperty(window, 'location', {
+          configurable: true,
+          value: { ...original, pathname: door, assign: vi.fn() },
+        });
+        authStore.setToken('a-dead-till-session');
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse(
+            { success: false, error: 'That shift has ended', code: 'SHIFT_ENDED' },
+            { ok: false, status: 401 }
+          )
+        );
+
+        await expect(apiClient.get('/api/orders')).rejects.toBeInstanceOf(ApiClientError);
+
+        // The token still goes - it is dead either way.
+        expect(authStore.getToken(), door).toBeNull();
+        expect(window.location.assign, door).not.toHaveBeenCalled();
+      }
+    });
+
     it('does not redirect when already on the login page', async () => {
       Object.defineProperty(window, 'location', {
         configurable: true,

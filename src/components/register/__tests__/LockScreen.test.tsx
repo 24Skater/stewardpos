@@ -169,4 +169,22 @@ describe('LockScreen', () => {
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ pin: '654321' }));
   });
+
+  it('offers a way to reach the back office, without dismissing the pad', () => {
+    // A manager standing at a till has to be able to get to the admin area,
+    // and the pad has no Escape and no close control by design. A plain link
+    // is the whole mechanism: it leaves the till surface rather than lifting
+    // the screen off the cart behind it.
+    //
+    // Safe to show to anyone: a till-only user who taps it and tries their
+    // password is answered with USE_PIN_AT_TILL, and the login screen sends
+    // them back here (see Login's policy test). Nothing about the cart or the
+    // register is exposed by the link itself.
+    render(<LockScreen displayCode="MAIN-01" />);
+
+    const link = screen.getByRole('link', { name: /password/i });
+    expect(link).toHaveAttribute('href', '/login');
+    // Still modal, still no way to reveal what is behind it.
+    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
+  });
 });
