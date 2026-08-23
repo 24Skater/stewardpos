@@ -183,7 +183,11 @@ describe('LockScreen', () => {
     render(<LockScreen displayCode="MAIN-01" />);
 
     const link = screen.getByRole('link', { name: /password/i });
-    expect(link).toHaveAttribute('href', '/login');
+    // /admin, not /login: signing in from here used to land on /pos, which for
+    // a till that requires sign-on is this very screen again - a manager sent
+    // in a circle. RequireAuth turns /admin into /login?next=/admin when they
+    // are signed out, so the password step still happens when it is needed.
+    expect(link).toHaveAttribute('href', '/admin');
     // Still modal, still no way to reveal what is behind it.
     expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
   });
