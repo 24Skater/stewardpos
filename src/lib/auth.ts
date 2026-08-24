@@ -22,6 +22,23 @@ export interface AuthSession {
 
 let currentSession: AuthSession | null = null;
 
+/**
+ * Drop the in-module session cache.
+ *
+ * There was no way to do this, and it mattered. `useInvalidateSession()` clears
+ * the TanStack cache and lets the query re-run — but the query calls
+ * `getCurrentSession()`, which returned this variable from its early-return
+ * branch without asking the server. So the "refreshed" session was the same
+ * object as before, and a permission or role change mid-session kept gating the
+ * UI on whatever was loaded at sign-in until a full page reload.
+ *
+ * Login was unaffected because that path writes a fresh session directly, which
+ * is why this survived: the case it breaks is the one nobody tests by hand.
+ */
+export function clearSessionCache(): void {
+  currentSession = null;
+}
+
 export async function getCurrentSession(): Promise<AuthSession | null> {
   // Check if token exists and is not expired
   if (!authStore.getToken() || authStore.isTokenExpired()) {

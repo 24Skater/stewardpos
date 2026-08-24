@@ -20,9 +20,6 @@ vi.mock('@/hooks/queries', () => ({
 vi.mock('@/components/AdminLayout', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
-vi.mock('@/components/ProtectedRoute', () => ({
-  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
 
 const AdminOverrides = (await import('../admin/AdminOverrides')).default;
 

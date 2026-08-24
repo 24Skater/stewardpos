@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import Database from 'better-sqlite3';
 import config from '../config';
 import logger from '../utils/logger';
+import { BCRYPT_ROUNDS } from './hashing';
 
 /**
  * The register PIN the seeded demo administrator signs on to a till with.
@@ -238,7 +239,7 @@ export class Seeder {
   private async seedAdminUser(): Promise<void> {
     logger.info('Seeding admin user...');
 
-    const passwordHash = await bcrypt.hash('DemoPass!1', 10);
+    const passwordHash = await bcrypt.hash('DemoPass!1', BCRYPT_ROUNDS);
     // Without a PIN, a paired till is unusable: the register's front door is
     // `POST /api/auth/till`, which resolves a cashier by PIN and knows nothing
     // about passwords. A fresh local stack would pair a terminal and then have
@@ -248,7 +249,7 @@ export class Seeder {
     // shorter one would be a PIN the app's own policy refuses to reissue. Real
     // deployments set PINs through Admin → Roles & Users, and this seeder
     // already refuses to run against a production database.
-    const pinHash = await bcrypt.hash(DEMO_PIN, 10);
+    const pinHash = await bcrypt.hash(DEMO_PIN, BCRYPT_ROUNDS);
 
     if (this.adapter === 'postgres' && this.pgPool) {
       // Update or insert user

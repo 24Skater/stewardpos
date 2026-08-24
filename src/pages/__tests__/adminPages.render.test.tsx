@@ -158,12 +158,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return stubbed;
 });
 
-// The auth gate and the chrome are not what these tests are about, and both
-// navigate on mount, which would replace the page under test with a redirect.
-vi.mock('@/components/ProtectedRoute', () => ({
-  default: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
+// The chrome is not what these tests are about, and it navigates on mount,
+// which would replace the page under test with a redirect.
 vi.mock('@/components/AdminLayout', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

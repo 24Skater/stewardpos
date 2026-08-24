@@ -22,7 +22,6 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import {
   customersApi,
   ordersApi,
@@ -633,432 +632,430 @@ export default function AdminExports() {
    * stays short because sighted users have the card heading directly above it.
    */
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Reports & Exports</h1>
-            <p className="text-muted-foreground">Generate and download comprehensive reports</p>
-          </div>
+    <AdminLayout>
+      <div className="p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground">Reports & Exports</h1>
+          <p className="text-muted-foreground">Generate and download comprehensive reports</p>
+        </div>
 
-          {/* Date Range Filter */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="w-5 h-5" />
-                Date Range Filter
-              </CardTitle>
-              <CardDescription>Filter reports by date range (applies to all sales reports)</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <Label htmlFor="startDate">Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="endDate">End Date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-                <div className="col-span-2 flex items-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => {
-                    const today = new Date();
-                    setStartDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]);
-                    setEndDate(today.toISOString().split('T')[0]);
-                  }}>This Month</Button>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    const today = new Date();
-                    setStartDate(new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0]);
-                    setEndDate(today.toISOString().split('T')[0]);
-                  }}>This Year</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>Clear</Button>
-                </div>
+        {/* Date Range Filter */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              Date Range Filter
+            </CardTitle>
+            <CardDescription>Filter reports by date range (applies to all sales reports)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
               </div>
-            </CardContent>
-          </Card>
-
-          <Tabs defaultValue="sales" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="sales" className="flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4" />
-                Sales
-              </TabsTrigger>
-              <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4" />
-                Loss Prevention
-              </TabsTrigger>
-              <TabsTrigger value="returns" className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4" />
-                Returns
-              </TabsTrigger>
-              <TabsTrigger value="customers" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Customers
-              </TabsTrigger>
-              <TabsTrigger value="services" className="flex items-center gap-2">
-                <Briefcase className="w-4 h-4" />
-                Services
-              </TabsTrigger>
-              <TabsTrigger value="inventory" className="flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                Inventory
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Sales Reports Tab */}
-            <TabsContent value="sales" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="md:col-span-2 border-primary/40">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-primary" />
-                      Sales Summary
-                    </CardTitle>
-                    <CardDescription>
-                      Gross, discounts, tax, net, refunds, daily takings, top products and tender
-                      split — the same figures the Reports screen shows, taken from the same
-                      server-computed source so the paper and the screen cannot disagree.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-summary" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-blue-500" />
-                      Sales Month-over-Month
-                    </CardTitle>
-                    <CardDescription>Revenue and order trends by month</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-mom" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-green-500" />
-                      Sales Week-over-Week
-                    </CardTitle>
-                    <CardDescription>Revenue and order trends by week</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-wow" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-purple-500" />
-                      Sales by Customer
-                    </CardTitle>
-                    <CardDescription>Revenue breakdown by customer</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingCart className="w-5 h-5 text-orange-500" />
-                      Sales by Item
-                    </CardTitle>
-                    <CardDescription>Top selling products with revenue</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-item" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Store className="w-5 h-5 text-indigo-500" />
-                      Sales by Register
-                    </CardTitle>
-                    <CardDescription>
-                      Per-till transactions, net and average ticket, including the web-vs-drawer split
-                      and any retired or disabled register that still traded in range.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-register" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-teal-500" />
-                      Sales by Cashier
-                    </CardTitle>
-                    <CardDescription>Per-cashier transactions, net and average ticket</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="sales-cashier" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-emerald-500" />
-                      Trending Report
-                      <Badge variant="secondary">Products & Services</Badge>
-                    </CardTitle>
-                    <CardDescription>
-                      What's hot: Compare recent 30 days vs previous period. Shows growth/decline trends.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
+              <div>
+                <Label htmlFor="endDate">End Date</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
               </div>
-            </TabsContent>
-
-            {/* Loss Prevention Tab — drawer variance and no-sale counts, the
-                reports that catch problems. */}
-            <TabsContent value="loss-prevention" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShieldAlert className="w-5 h-5 text-red-500" />
-                      Drawer Variance by Register
-                    </CardTitle>
-                    <CardDescription>
-                      Closed drawer sessions whose counted cash did not match what was expected —
-                      sessions, total variance, worst session, and short count per till.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="drawer-variance" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShieldAlert className="w-5 h-5 text-amber-500" />
-                      No-Sale Counts
-                    </CardTitle>
-                    <CardDescription>
-                      Drawers opened with nothing rung up, per register — the single best theft signal
-                      a POS can report on.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="no-sale-counts" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
+              <div className="col-span-2 flex items-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => {
+                  const today = new Date();
+                  setStartDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]);
+                  setEndDate(today.toISOString().split('T')[0]);
+                }}>This Month</Button>
+                <Button variant="outline" size="sm" onClick={() => {
+                  const today = new Date();
+                  setStartDate(new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0]);
+                  setEndDate(today.toISOString().split('T')[0]);
+                }}>This Year</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>Clear</Button>
               </div>
-            </TabsContent>
+            </div>
+          </CardContent>
+        </Card>
 
-            {/* Returns Tab */}
-            <TabsContent value="returns" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <RotateCcw className="w-5 h-5 text-red-500" />
-                      All Returns
-                    </CardTitle>
-                    <CardDescription>Complete list of all returns and refunds</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge variant="outline">{returns.length} returns</Badge>
-                      <Badge variant="outline" className="bg-green-50 text-green-700">
-                        {returns.filter(r => r.status === 'completed').length} completed
-                      </Badge>
-                    </div>
-                    <ExportButtons reportType="returns-all" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
+        <Tabs defaultValue="sales" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-6">
+            <TabsTrigger value="sales" className="flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              Sales
+            </TabsTrigger>
+            <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4" />
+              Loss Prevention
+            </TabsTrigger>
+            <TabsTrigger value="returns" className="flex items-center gap-2">
+              <RotateCcw className="w-4 h-4" />
+              Returns
+            </TabsTrigger>
+            <TabsTrigger value="customers" className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Customers
+            </TabsTrigger>
+            <TabsTrigger value="services" className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4" />
+              Services
+            </TabsTrigger>
+            <TabsTrigger value="inventory" className="flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Inventory
+            </TabsTrigger>
+          </TabsList>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-purple-500" />
-                      Returns by Customer
-                    </CardTitle>
-                    <CardDescription>Which customers have the most returns</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="returns-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
+          {/* Sales Reports Tab */}
+          <TabsContent value="sales" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className="md:col-span-2 border-primary/40">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-primary" />
+                    Sales Summary
+                  </CardTitle>
+                  <CardDescription>
+                    Gross, discounts, tax, net, refunds, daily takings, top products and tender
+                    split — the same figures the Reports screen shows, taken from the same
+                    server-computed source so the paper and the screen cannot disagree.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-summary" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-blue-500" />
-                      Returns Monthly Trend
-                    </CardTitle>
-                    <CardDescription>Return volume and refund amounts by month</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="returns-monthly" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-orange-500" />
-                      Returns by Reason
-                    </CardTitle>
-                    <CardDescription>Analysis of why products are being returned</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="returns-reason" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            {/* Customers Tab */}
-            <TabsContent value="customers" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-blue-500" />
-                      Customer List
-                    </CardTitle>
-                    <CardDescription>Export all customers with contact information</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge variant="outline">{customers.length} customers</Badge>
-                    </div>
-                    <ExportButtons reportType="customer-list" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShoppingCart className="w-5 h-5 text-purple-500" />
-                      Customer Order History
-                    </CardTitle>
-                    <CardDescription>POS sales and service quotes for a specific customer</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label>Select Customer</Label>
-                      <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a customer..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {customers.map(c => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name} {c.email ? `(${c.email})` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <ExportButtons reportType="customer-history" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
-                      All Customer Histories
-                      <Badge>Combined</Badge>
-                    </CardTitle>
-                    <CardDescription>
-                      Complete order history for ALL customers (POS sales + Service quotes)
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="customer-history-all" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            {/* Services Tab */}
-            <TabsContent value="services" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Briefcase className="w-5 h-5 text-blue-500" />
-                      Services by Type
-                    </CardTitle>
-                    <CardDescription>All services with pricing and details</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge variant="outline">{services.length} services</Badge>
-                      <Badge variant="outline">{services.filter(s => s.isActive).length} active</Badge>
-                    </div>
-                    <ExportButtons reportType="services-type" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-purple-500" />
-                      Services by Category
-                    </CardTitle>
-                    <CardDescription>Category breakdown with revenue from completed quotes</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ExportButtons reportType="services-category" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            {/* Inventory Tab */}
-            <TabsContent value="inventory" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Download className="w-5 h-5 text-blue-500" />
-                    Inventory Export
+                    <BarChart3 className="w-5 h-5 text-blue-500" />
+                    Sales Month-over-Month
                   </CardTitle>
-                  <CardDescription>Complete inventory with all product variants, SKUs, and stock levels</CardDescription>
+                  <CardDescription>Revenue and order trends by month</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-mom" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-green-500" />
+                    Sales Week-over-Week
+                  </CardTitle>
+                  <CardDescription>Revenue and order trends by week</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-wow" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-purple-500" />
+                    Sales by Customer
+                  </CardTitle>
+                  <CardDescription>Revenue breakdown by customer</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5 text-orange-500" />
+                    Sales by Item
+                  </CardTitle>
+                  <CardDescription>Top selling products with revenue</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-item" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Store className="w-5 h-5 text-indigo-500" />
+                    Sales by Register
+                  </CardTitle>
+                  <CardDescription>
+                    Per-till transactions, net and average ticket, including the web-vs-drawer split
+                    and any retired or disabled register that still traded in range.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-register" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-teal-500" />
+                    Sales by Cashier
+                  </CardTitle>
+                  <CardDescription>Per-cashier transactions, net and average ticket</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="sales-cashier" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-emerald-500" />
+                    Trending Report
+                    <Badge variant="secondary">Products & Services</Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    What's hot: Compare recent 30 days vs previous period. Shows growth/decline trends.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="trending" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Loss Prevention Tab — drawer variance and no-sale counts, the
+              reports that catch problems. */}
+          <TabsContent value="loss-prevention" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-red-500" />
+                    Drawer Variance by Register
+                  </CardTitle>
+                  <CardDescription>
+                    Closed drawer sessions whose counted cash did not match what was expected —
+                    sessions, total variance, worst session, and short count per till.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="drawer-variance" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-amber-500" />
+                    No-Sale Counts
+                  </CardTitle>
+                  <CardDescription>
+                    Drawers opened with nothing rung up, per register — the single best theft signal
+                    a POS can report on.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="no-sale-counts" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Returns Tab */}
+          <TabsContent value="returns" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <RotateCcw className="w-5 h-5 text-red-500" />
+                    All Returns
+                  </CardTitle>
+                  <CardDescription>Complete list of all returns and refunds</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 mb-3">
-                    <Badge variant="outline">{products.length} products</Badge>
-                    <Badge variant="outline">
-                      {products.reduce((sum, p) => sum + (p.variants?.length || 0), 0)} variants
+                    <Badge variant="outline">{returns.length} returns</Badge>
+                    <Badge variant="outline" className="bg-green-50 text-green-700">
+                      {returns.filter(r => r.status === 'completed').length} completed
                     </Badge>
                   </div>
-                  <ExportButtons reportType="inventory" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                  <ExportButtons reportType="returns-all" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-purple-500" />
+                    Returns by Customer
+                  </CardTitle>
+                  <CardDescription>Which customers have the most returns</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="returns-customer" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-blue-500" />
+                    Returns Monthly Trend
+                  </CardTitle>
+                  <CardDescription>Return volume and refund amounts by month</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="returns-monthly" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-orange-500" />
+                    Returns by Reason
+                  </CardTitle>
+                  <CardDescription>Analysis of why products are being returned</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="returns-reason" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Customers Tab */}
+          <TabsContent value="customers" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-500" />
+                    Customer List
+                  </CardTitle>
+                  <CardDescription>Export all customers with contact information</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Badge variant="outline">{customers.length} customers</Badge>
+                  </div>
+                  <ExportButtons reportType="customer-list" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShoppingCart className="w-5 h-5 text-purple-500" />
+                    Customer Order History
+                  </CardTitle>
+                  <CardDescription>POS sales and service quotes for a specific customer</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label>Select Customer</Label>
+                    <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a customer..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customers.map(c => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name} {c.email ? `(${c.email})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <ExportButtons reportType="customer-history" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
+                    All Customer Histories
+                    <Badge>Combined</Badge>
+                  </CardTitle>
+                  <CardDescription>
+                    Complete order history for ALL customers (POS sales + Service quotes)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="customer-history-all" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Services Tab */}
+          <TabsContent value="services" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-blue-500" />
+                    Services by Type
+                  </CardTitle>
+                  <CardDescription>All services with pricing and details</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Badge variant="outline">{services.length} services</Badge>
+                    <Badge variant="outline">{services.filter(s => s.isActive).length} active</Badge>
+                  </div>
+                  <ExportButtons reportType="services-type" formats={['pdf', 'excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-purple-500" />
+                    Services by Category
+                  </CardTitle>
+                  <CardDescription>Category breakdown with revenue from completed quotes</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExportButtons reportType="services-category" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Inventory Tab */}
+          <TabsContent value="inventory" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="w-5 h-5 text-blue-500" />
+                  Inventory Export
+                </CardTitle>
+                <CardDescription>Complete inventory with all product variants, SKUs, and stock levels</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant="outline">{products.length} products</Badge>
+                  <Badge variant="outline">
+                    {products.reduce((sum, p) => sum + (p.variants?.length || 0), 0)} variants
+                  </Badge>
+                </div>
+                <ExportButtons reportType="inventory" formats={['excel', 'csv']} loading={loading} onExport={handleExport} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </AdminLayout>
   );
 }

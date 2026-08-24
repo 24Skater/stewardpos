@@ -11,7 +11,6 @@ import { Switch } from '@/components/ui/switch';
 import { servicesApi, type Service, type ServiceUnitType } from '@/lib/api';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
@@ -147,196 +146,194 @@ export default function AdminServices() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Services Catalog</h1>
-              <p className="text-muted-foreground">Manage service offerings</p>
-            </div>
-            {canWrite && (
-              <Button onClick={handleAddService}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Service
-              </Button>
-            )}
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Services Catalog</h1>
+            <p className="text-muted-foreground">Manage service offerings</p>
           </div>
+          {canWrite && (
+            <Button onClick={handleAddService}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Service
+            </Button>
+          )}
+        </div>
 
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search services..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search services..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
+        </div>
 
-          <div className="bg-card rounded-lg border border-border">
-            <Table>
-              <TableHeader>
+        <div className="bg-card rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Service Name</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Base Price</TableHead>
+                <TableHead>Unit Type</TableHead>
+                <TableHead>Status</TableHead>
+                {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
                 <TableRow>
-                  <TableHead>Service Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Base Price</TableHead>
-                  <TableHead>Unit Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
+                  <TableCell colSpan={7} className="text-center py-8">
+                    Loading services...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      Loading services...
+              ) : filteredServices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No services found. {canWrite && 'Click "Add Service" to create one.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredServices.map((service) => (
+                  <TableRow key={service.id}>
+                    <TableCell className="font-medium">{service.name}</TableCell>
+                    <TableCell>{service.category}</TableCell>
+                    <TableCell className="max-w-xs truncate">{service.description}</TableCell>
+                    <TableCell>
+                      {service.basePrice ? `$${service.basePrice.toFixed(2)}` : '—'}
                     </TableCell>
-                  </TableRow>
-                ) : filteredServices.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No services found. {canWrite && 'Click "Add Service" to create one.'}
+                    <TableCell className="capitalize">{service.unitType || '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant={service.isActive ? 'secondary' : 'outline'}>
+                        {service.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
                     </TableCell>
+                    {(canWrite || canDelete) && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {canWrite && (
+                            <Button variant="ghost" size="icon" onClick={() => handleEditService(service)}>
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteService(service.id)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
-                ) : (
-                  filteredServices.map((service) => (
-                    <TableRow key={service.id}>
-                      <TableCell className="font-medium">{service.name}</TableCell>
-                      <TableCell>{service.category}</TableCell>
-                      <TableCell className="max-w-xs truncate">{service.description}</TableCell>
-                      <TableCell>
-                        {service.basePrice ? `$${service.basePrice.toFixed(2)}` : '—'}
-                      </TableCell>
-                      <TableCell className="capitalize">{service.unitType || '—'}</TableCell>
-                      <TableCell>
-                        <Badge variant={service.isActive ? 'secondary' : 'outline'}>
-                          {service.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      {(canWrite || canDelete) && (
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {canWrite && (
-                              <Button variant="ghost" size="icon" onClick={() => handleEditService(service)}>
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                            )}
-                            {canDelete && (
-                              <Button variant="ghost" size="icon" onClick={() => handleDeleteService(service.id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-          {/* Edit/Create Service Dialog */}
-          <Dialog open={editDialogOpen} onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setEditingService(null);
-              setIsNewService(false);
-            }
-          }}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{isNewService ? 'Add Service' : 'Edit Service'}</DialogTitle>
-                <DialogDescription>
-                  {isNewService ? 'Create a new service offering' : 'Update service details'}
-                </DialogDescription>
-              </DialogHeader>
-              {editingService && (
-                <div className="space-y-4">
+        {/* Edit/Create Service Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setEditingService(null);
+            setIsNewService(false);
+          }
+        }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{isNewService ? 'Add Service' : 'Edit Service'}</DialogTitle>
+              <DialogDescription>
+                {isNewService ? 'Create a new service offering' : 'Update service details'}
+              </DialogDescription>
+            </DialogHeader>
+            {editingService && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Service Name *</Label>
+                  <Input
+                    id="name"
+                    value={editingService.name}
+                    onChange={(e) => setEditingService({ ...editingService, name: e.target.value })}
+                    placeholder="e.g., Photography Session"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category *</Label>
+                  <Input
+                    id="category"
+                    value={editingService.category}
+                    onChange={(e) => setEditingService({ ...editingService, category: e.target.value })}
+                    placeholder="e.g., Media, Audio, Consulting"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={editingService.description || ''}
+                    onChange={(e) => setEditingService({ ...editingService, description: e.target.value })}
+                    placeholder="Describe the service..."
+                    rows={3}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Service Name *</Label>
+                    <Label htmlFor="basePrice">Base Price</Label>
                     <Input
-                      id="name"
-                      value={editingService.name}
-                      onChange={(e) => setEditingService({ ...editingService, name: e.target.value })}
-                      placeholder="e.g., Photography Session"
+                      id="basePrice"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editingService.basePrice || ''}
+                      onChange={(e) => setEditingService({ ...editingService, basePrice: parseFloat(e.target.value) || 0 })}
+                      placeholder="0.00"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="category">Category *</Label>
-                    <Input
-                      id="category"
-                      value={editingService.category}
-                      onChange={(e) => setEditingService({ ...editingService, category: e.target.value })}
-                      placeholder="e.g., Media, Audio, Consulting"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={editingService.description || ''}
-                      onChange={(e) => setEditingService({ ...editingService, description: e.target.value })}
-                      placeholder="Describe the service..."
-                      rows={3}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="basePrice">Base Price</Label>
-                      <Input
-                        id="basePrice"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={editingService.basePrice || ''}
-                        onChange={(e) => setEditingService({ ...editingService, basePrice: parseFloat(e.target.value) || 0 })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="unitType">Unit Type</Label>
-                      <Select
-                        value={editingService.unitType}
-                        onValueChange={(value) => setEditingService({ ...editingService, unitType: value as ServiceUnitType })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="flat">Flat Rate</SelectItem>
-                          <SelectItem value="hourly">Hourly</SelectItem>
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="per_item">Per Item</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="isActive">Active</Label>
-                    <Switch
-                      id="isActive"
-                      checked={editingService.isActive}
-                      onCheckedChange={(checked) => setEditingService({ ...editingService, isActive: checked })}
-                    />
+                    <Label htmlFor="unitType">Unit Type</Label>
+                    <Select
+                      value={editingService.unitType}
+                      onValueChange={(value) => setEditingService({ ...editingService, unitType: value as ServiceUnitType })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="flat">Flat Rate</SelectItem>
+                        <SelectItem value="hourly">Hourly</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="per_item">Per Item</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveService}>
-                  {isNewService ? 'Create Service' : 'Save Changes'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="isActive">Active</Label>
+                  <Switch
+                    id="isActive"
+                    checked={editingService.isActive}
+                    onCheckedChange={(checked) => setEditingService({ ...editingService, isActive: checked })}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveService}>
+                {isNewService ? 'Create Service' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AdminLayout>
   );
 }

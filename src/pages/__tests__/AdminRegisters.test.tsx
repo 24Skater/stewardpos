@@ -183,9 +183,6 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastSpy, dismiss: vi.fn(), toasts: [] }),
 }));
 
-vi.mock('@/components/ProtectedRoute', () => ({
-  default: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
 vi.mock('@/components/AdminLayout', () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

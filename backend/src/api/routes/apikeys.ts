@@ -7,6 +7,7 @@ import { authorize } from '../middleware/authorize';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import { BCRYPT_ROUNDS } from '../../services/hashing';
 
 const router = Router();
 
@@ -66,7 +67,7 @@ function generateApiKey(): { key: string; prefix: string; hash: string } {
   const prefix = 'spk_' + crypto.randomBytes(4).toString('hex'); // 8 char prefix
   const secret = crypto.randomBytes(32).toString('hex'); // 64 char secret
   const key = `${prefix}_${secret}`;
-  const hash = bcrypt.hashSync(key, 10);
+  const hash = bcrypt.hashSync(key, BCRYPT_ROUNDS);
   return { key, prefix, hash };
 }
 

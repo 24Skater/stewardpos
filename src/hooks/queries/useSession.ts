@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCurrentSession, type AuthSession } from '@/lib/auth';
+import { clearSessionCache, getCurrentSession, type AuthSession } from '@/lib/auth';
 
 const SESSION_KEY = ['session'] as const;
 
@@ -19,8 +19,18 @@ export function useSession() {
   });
 }
 
-/** Drop the cached session — call after login or logout so guards re-evaluate. */
+/**
+ * Drop the cached session — call after login or logout so guards re-evaluate.
+ *
+ * Both caches, in that order. `auth.ts` keeps its own module-level copy and
+ * returns it without asking the server; clearing only the query cache re-ran
+ * the query and got the stale object straight back, so an invalidation looked
+ * like it worked and changed nothing.
+ */
 export function useInvalidateSession() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: SESSION_KEY });
+  return () => {
+    clearSessionCache();
+    return queryClient.invalidateQueries({ queryKey: SESSION_KEY });
+  };
 }
