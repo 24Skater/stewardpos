@@ -82,16 +82,6 @@ export function logout(): void {
   });
 }
 
-// Legacy login function - now redirects to API-based flow
-// This is kept for backward compatibility during migration
-export async function login(email: string, password: string): Promise<AuthSession | null> {
-  // This should now be handled by the Login page component
-  // which calls the API directly
-  // This function is kept for compatibility but will return null
-  // The actual login is done via API in Login.tsx
-  return null;
-}
-
 /**
  * Whether the session may take `action` on `domain`.
  *

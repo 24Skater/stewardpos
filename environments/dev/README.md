@@ -1,29 +1,32 @@
 # Development Environment
 
-This directory contains the development environment configuration.
+Compose overrides for local development. The base stack lives in the repository
+root; this directory only holds what differs.
 
 ## Files
 
-- `docker-compose.dev.yml` - Docker Compose overrides for development
-- `deploy-dev.sh` - Linux/Mac deployment script
-- `deploy-dev.ps1` - Windows PowerShell deployment script
-- `.env.dev` - Environment variables (create from `.env.dev.example` in root)
+- `docker-compose.dev.yml` — Docker Compose overrides for development
+- `.env.dev` — environment variables, gitignored. Start from `.env.example` in the root
 
-## Quick Start
+The deployment scripts live in `scripts/` at the repository root, not here.
+There used to be a second copy in this directory; the two had drifted apart, so
+the root pair is now the only one.
 
-1. Copy environment template from root:
-   ```bash
-   cp ../.env.dev.example .env.dev
-   ```
+## Quick start
 
-2. Deploy:
-   ```bash
-   # Linux/Mac
-   ./deploy-dev.sh
-   
-   # Windows
-   .\deploy-dev.ps1
-   ```
+Run from the **repository root**:
+
+```bash
+cp .env.example .env.dev     # then edit it
+./scripts/deploy-dev.sh      # Linux/Mac
+.\scripts\deploy-dev.ps1     # Windows
+```
+
+Or drive Compose directly, also from the root:
+
+```bash
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml up -d
+```
 
 ## Access
 
@@ -31,13 +34,3 @@ This directory contains the development environment configuration.
 - Backend: http://localhost:3002
 - Database: localhost:5433
 - MinIO Console: http://localhost:9003
-
-## Usage
-
-Deploy from this directory:
-```bash
-docker-compose -f ../../docker-compose.yml -f docker-compose.dev.yml up -d
-```
-
-Or use the deployment scripts which handle this automatically.
-

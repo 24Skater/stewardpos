@@ -13,8 +13,8 @@ else
 fi
 
 # Build and start services
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml build
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml up -d
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml build
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml up -d
 
 echo "✅ QA/Staging environment deployed!"
 echo ""
