@@ -1938,12 +1938,16 @@ export class SQLiteAdapter {
       const now = Date.now();
       const result = this.db
         .prepare(
-          `INSERT INTO audit_logs (timestamp, user_id, action, entity, entity_id, before, after)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO audit_logs (timestamp, user_id, actor_label, action, entity, entity_id, before, after)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
-          log.userId,
+          // `?? null` on both: better-sqlite3 refuses to bind `undefined`,
+          // and an unattributed row is exactly the case where these arrive
+          // missing rather than empty.
+          (log.userId as string | null) ?? null,
+          (log.actorLabel as string | null) ?? null,
           log.action,
           log.entity,
           log.entityId,
@@ -1959,6 +1963,7 @@ export class SQLiteAdapter {
         id: l.id,
         timestamp: l.timestamp,
         userId: l.user_id,
+        actorLabel: l.actor_label,
         action: l.action,
         entity: l.entity,
         entityId: l.entity_id,
@@ -2027,6 +2032,7 @@ export class SQLiteAdapter {
           userId: l.user_id,
           userName: l.user_name,
           userEmail: l.user_email,
+          actorLabel: l.actor_label,
           action: l.action,
           entity: l.entity,
           entityId: l.entity_id,

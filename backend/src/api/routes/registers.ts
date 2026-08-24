@@ -238,6 +238,10 @@ router.post(
         action: 'create',
         entity: 'register_shift',
         entityId: String(result.shift.id),
+        // This request has no session — it is authenticated by the device
+        // credential — so the cashier whose PIN just matched has to be named,
+        // or the row records that somebody signed on and not who.
+        actorUserId: String(result.user.id),
         after: {
           registerId: req.params.id,
           userId: result.user.id,
@@ -285,6 +289,9 @@ router.post(
         action: 'update',
         entity: 'register_shift',
         entityId: String(openShift.id),
+        // Attributed to the cashier who was on the shift, for the same reason
+        // signing on is: the device credential proves the till, not a person.
+        actorUserId: String(openShift.userId),
         before: openShift,
         after: ended,
       });
