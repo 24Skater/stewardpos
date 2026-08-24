@@ -1,34 +1,41 @@
-# QA/Staging Environment
+# QA / Staging Environment
 
-This directory contains the QA/Staging environment configuration.
+Compose overrides for QA. The base stack lives in the repository root; this
+directory only holds what differs.
 
 ## Files
 
-- `docker-compose.qa.yml` - Docker Compose overrides for QA
-- `deploy-qa.sh` - Linux/Mac deployment script
-- `deploy-qa.ps1` - Windows PowerShell deployment script
-- `.env.qa` - Environment variables (create from `.env.qa.example` in root)
+- `docker-compose.qa.yml` — Docker Compose overrides for QA
+- `.env.qa` — environment variables, gitignored. Start from `.env.example` in the root
 
-## Quick Start
+The deployment scripts live in `scripts/` at the repository root, not here.
+There used to be a second copy in this directory; the two had drifted apart, so
+the root pair is now the only one.
 
-1. Copy environment template from root:
-   ```bash
-   cp ../.env.qa.example .env.qa
-   ```
+## Quick start
 
-2. Edit `.env.qa` with your QA settings:
-   - Update database credentials
-   - Set CORS_ORIGIN to your QA domain
-   - Configure JWT_SECRET (min 32 characters)
+Run from the **repository root**:
 
-3. Deploy:
-   ```bash
-   # Linux/Mac
-   ./deploy-qa.sh
-   
-   # Windows
-   .\deploy-qa.ps1
-   ```
+```bash
+cp .env.example .env.qa
+```
+
+Then edit `.env.qa`:
+
+- update the database credentials
+- set `CORS_ORIGIN` to your QA domain
+- set `JWT_SECRET` to at least 32 characters
+
+```bash
+./scripts/deploy-qa.sh       # Linux/Mac
+.\scripts\deploy-qa.ps1      # Windows
+```
+
+Or drive Compose directly, also from the root:
+
+```bash
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml up -d
+```
 
 ## Access
 
@@ -36,13 +43,3 @@ This directory contains the QA/Staging environment configuration.
 - Backend: http://localhost:3003
 - Database: localhost:5434
 - MinIO Console: http://localhost:9005
-
-## Usage
-
-Deploy from this directory:
-```bash
-docker-compose -f ../../docker-compose.yml -f docker-compose.qa.yml up -d
-```
-
-Or use the deployment scripts which handle this automatically.
-
