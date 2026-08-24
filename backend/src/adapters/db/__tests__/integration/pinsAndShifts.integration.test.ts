@@ -237,3 +237,109 @@ describe('register_shifts', () => {
     }
   );
 });
+
+/**
+ * The shift log the admin screen reads.
+ *
+ * `register_shifts` had no list query at all: every existing method fetched
+ * exactly one shift (the open one, or one by id), because the till only ever
+ * needs to know who is standing at it right now. Nothing could answer "who
+ * was on this till last Tuesday" — the question a shift record exists for.
+ *
+ * Tested against real SQL because the interesting parts are the joins and the
+ * org scoping, and `register_shifts` carries no `org_id` of its own: it is
+ * reached through `registers`, exactly as `getRegisterOverrides` does it. A
+ * mocked adapter proves none of that.
+ */
+describe('getRegisterShifts', () => {
+  // The suite above deliberately leaves a shift open to prove the
+  // one-open-per-register index; `createRegisterShift` would hit it here.
+  beforeAll(async () => {
+    await h.query(
+      "UPDATE register_shifts SET ended_at = NOW(), end_reason = 'superseded' WHERE register_id = $1 AND ended_at IS NULL",
+      [registerId]
+    );
+  });
+
+  it('returns a register\'s shifts newest first, with the names a UUID cannot show', async () => {
+    const userId = await makeUser(`${mark}-shifts-a@example.com`);
+    const older = await h.adapter.createRegisterShift({ registerId, userId });
+    await h.adapter.endRegisterShift(String(older.id), 'signed_out');
+    const newer = await h.adapter.createRegisterShift({ registerId, userId });
+    await h.adapter.endRegisterShift(String(newer.id), 'idle_timeout');
+
+    const { shifts, total } = await h.adapter.getRegisterShifts({
+      orgId,
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBeGreaterThanOrEqual(2);
+    expect(shifts[0].id).toBe(String(newer.id));
+    expect(shifts[0].endReason).toBe('idle_timeout');
+    expect(shifts[0].cashierName).toBe(`${mark} person`);
+    expect(shifts[0].registerDisplayCode).toBe(`${mark}-REG-01`);
+  });
+
+  it('scopes to the org, so one shop cannot read another shop\'s roster', async () => {
+    const { total } = await h.adapter.getRegisterShifts({
+      orgId: DEFAULT_ORG_ID,
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBe(0);
+  });
+
+  it('filters to the shift that is still open, which is "who is on the floor"', async () => {
+    const userId = await makeUser(`${mark}-shifts-b@example.com`);
+    const open = await h.adapter.createRegisterShift({ registerId, userId });
+
+    const { shifts } = await h.adapter.getRegisterShifts({
+      orgId,
+      openOnly: true,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(shifts.map((s) => s.id)).toEqual([String(open.id)]);
+    expect(shifts[0].endedAt).toBeNull();
+
+    await h.adapter.endRegisterShift(String(open.id), 'signed_out');
+  });
+
+  it('filters by cashier, and pages with a total counted before the limit', async () => {
+    const mine = await makeUser(`${mark}-shifts-c@example.com`);
+    const theirs = await makeUser(`${mark}-shifts-d@example.com`);
+    for (const userId of [mine, mine, theirs]) {
+      const shift = await h.adapter.createRegisterShift({ registerId, userId });
+      await h.adapter.endRegisterShift(String(shift.id), 'signed_out');
+    }
+
+    const page = await h.adapter.getRegisterShifts({ orgId, userId: mine, limit: 1, offset: 0 });
+
+    expect(page.total).toBe(2);
+    expect(page.shifts).toHaveLength(1);
+    expect(page.shifts[0].userId).toBe(mine);
+  });
+
+  it('names the cashier an admin was covering for, which is the whole point of migration 020', async () => {
+    const admin = await makeUser(`${mark}-shifts-e@example.com`);
+    const covered = await makeUser(`${mark}-shifts-f@example.com`);
+    const shift = await h.adapter.createRegisterShift({
+      registerId,
+      userId: admin,
+      emulatedUserId: covered,
+    });
+
+    const { shifts } = await h.adapter.getRegisterShifts({ orgId, openOnly: true, limit: 50, offset: 0 });
+
+    expect(shifts[0].userId).toBe(admin);
+    expect(shifts[0].emulatedUserId).toBe(covered);
+    expect(shifts[0].emulatedUserName).toBe(`${mark} person`);
+
+    await h.adapter.endRegisterShift(String(shift.id), 'signed_out');
+  });
+});

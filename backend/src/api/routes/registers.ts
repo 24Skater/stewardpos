@@ -537,6 +537,82 @@ router.get(
   }
 );
 
+const SHIFT_LOG_LIMIT_DEFAULT = 50;
+const SHIFT_LOG_LIMIT_MAX = 200;
+
+const shiftLogQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(SHIFT_LOG_LIMIT_MAX).default(SHIFT_LOG_LIMIT_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0),
+  registerId: z.string().trim().min(1).optional(),
+  locationId: z.string().trim().min(1).optional(),
+  userId: z.string().trim().min(1).optional(),
+  /** Epoch milliseconds, both ends inclusive, compared against `startedAt`. */
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
+  // `.default(false)` rather than optional: the page always sends one or the
+  // other, and a tri-state here would make "all shifts" and "not specified"
+  // two spellings of the same query.
+  openOnly: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .transform((value) => value === true || value === 'true')
+    .default(false),
+});
+
+/**
+ * GET /api/registers/shifts[?registerId=&locationId=&userId=&openOnly=&from=&to=]
+ *
+ * The shift log: who stood at which till, when, and how the shift ended.
+ *
+ * Every other shift endpoint answers "who is on this register right now",
+ * because that is all a till needs to know. This is the one that answers "who
+ * was on it on Tuesday" — the question the table is kept for, and one nothing
+ * in the app could ask before. Paginated exactly as `/overrides` above and
+ * `GET /api/admin/audit` are.
+ *
+ * Registered ahead of `GET /:id`, or Express would look up a register
+ * literally named "shifts" — the same ordering `/overrides` depends on.
+ */
+router.get(
+  '/shifts',
+  requirePermission('registers', 'read'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const query = shiftLogQuerySchema.parse(req.query);
+      const orgId = req.orgId ?? DEFAULT_ORG_ID;
+
+      if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+        throw new ValidationError('The start of the range must not be after its end');
+      }
+
+      const { shifts, total } = await db.getAdapter().getRegisterShifts({
+        orgId,
+        limit: query.limit,
+        offset: query.offset,
+        registerId: query.registerId,
+        locationId: query.locationId,
+        userId: query.userId,
+        openOnly: query.openOnly,
+        from: query.from,
+        to: query.to,
+      });
+
+      res.json({
+        success: true,
+        data: shifts,
+        meta: {
+          total,
+          limit: query.limit,
+          offset: query.offset,
+          page: Math.floor(query.offset / query.limit) + 1,
+          hasMore: query.offset + shifts.length < total,
+        },
+      });
+    } catch (error) {
+      next(asValidationError(error));
+    }
+  }
+);
+
 /**
  * GET /api/registers/:id
  *

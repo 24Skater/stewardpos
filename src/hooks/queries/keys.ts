@@ -100,6 +100,34 @@ export const queryKeys = {
         filter?.limit ?? '',
         filter?.offset ?? '',
       ] as const,
+    /**
+     * The shift log — see `useShifts.ts`. Keyed on every filter for the same
+     * reason the override log is: switching register, cashier or date must
+     * re-fetch rather than show the previous filter's page under a new
+     * heading.
+     */
+    shiftLog: (filter?: {
+      registerId?: string;
+      locationId?: string;
+      userId?: string;
+      openOnly?: boolean;
+      from?: number;
+      to?: number;
+      limit?: number;
+      offset?: number;
+    }) =>
+      [
+        'registers',
+        'shiftLog',
+        filter?.registerId ?? '',
+        filter?.locationId ?? '',
+        filter?.userId ?? '',
+        filter?.openOnly ?? false,
+        filter?.from ?? '',
+        filter?.to ?? '',
+        filter?.limit ?? '',
+        filter?.offset ?? '',
+      ] as const,
   },
   locations: {
     /**

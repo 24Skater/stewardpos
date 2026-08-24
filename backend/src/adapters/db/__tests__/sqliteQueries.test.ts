@@ -375,3 +375,120 @@ describeSqlite('reporting aggregations on SQLite', () => {
     expect(await adapter.getReturnsByReason(RANGE)).toEqual([]);
   });
 });
+
+/**
+ * The shift log's SQL, on SQLite.
+ *
+ * Six joins across four tables, and one place the dialects genuinely diverge:
+ * `started_at` is INTEGER milliseconds here and TIMESTAMP in Postgres, so the
+ * date filters compare against a raw epoch number rather than
+ * `to_timestamp()`. That is exactly the sort of difference that typechecks
+ * fine and fails at runtime on whichever dialect nobody ran.
+ *
+ * This block also puts migration 021's SQLite half — a full `audit_logs`
+ * rebuild, which SQLite needs because it cannot drop a NOT NULL in place —
+ * through the migrator above, which is the only place it executes at all.
+ */
+describeSqlite('getRegisterShifts on SQLite', () => {
+  const ORG = '00000000-0000-0000-0000-0000000000f1';
+  const LOCATION = '00000000-0000-0000-0000-0000000000f2';
+  let registerId: string;
+  let cashierId: string;
+  let openShiftId: string;
+
+  beforeAll(async () => {
+    const db = new Database(filename);
+    db.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(
+      ORG,
+      'Shift Log Shop',
+      'shift-log-shop'
+    );
+    db.prepare('INSERT INTO locations (id, org_id, name, slug) VALUES (?, ?, ?, ?)').run(
+      LOCATION,
+      ORG,
+      'Front of House',
+      'front-of-house'
+    );
+    db.close();
+
+    const cashier = await adapter.createUser({
+      email: 'shift.log@example.com',
+      passwordHash: 'not-a-real-hash',
+      name: 'Casey Cashier',
+      status: 'active',
+      roleIds: [],
+    });
+    cashierId = String(cashier.id);
+
+    const register = await adapter.createRegister({
+      org_id: ORG,
+      location_id: LOCATION,
+      name: 'Front Till',
+      register_number: 1,
+      display_code: 'FOH-01',
+      status: 'active',
+    });
+    registerId = String((register as Record<string, unknown>).id);
+
+    const closed = await adapter.createRegisterShift({ registerId, userId: cashierId });
+    await adapter.endRegisterShift(String(closed.id), 'signed_out');
+
+    const open = await adapter.createRegisterShift({ registerId, userId: cashierId });
+    openShiftId = String(open.id);
+  });
+
+  it('joins the cashier, till and location names onto the shift', async () => {
+    const { shifts, total } = await adapter.getRegisterShifts({
+      orgId: ORG,
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBe(2);
+    expect(shifts[0]).toMatchObject({
+      id: openShiftId,
+      cashierName: 'Casey Cashier',
+      registerName: 'Front Till',
+      registerDisplayCode: 'FOH-01',
+      locationName: 'Front of House',
+      endedAt: null,
+    });
+  });
+
+  it('filters to open shifts, by cashier, and by an epoch-millisecond range', async () => {
+    const open = await adapter.getRegisterShifts({ orgId: ORG, openOnly: true, limit: 50, offset: 0 });
+    expect(open.shifts.map((s) => s.id)).toEqual([openShiftId]);
+
+    const mine = await adapter.getRegisterShifts({
+      orgId: ORG,
+      userId: cashierId,
+      limit: 50,
+      offset: 0,
+    });
+    expect(mine.total).toBe(2);
+
+    // The range filter is the dialect-specific one: a bare number here, a
+    // `to_timestamp()` call in Postgres.
+    const longAgo = await adapter.getRegisterShifts({
+      orgId: ORG,
+      from: Date.parse('2001-01-01T00:00:00.000Z'),
+      to: Date.parse('2001-12-31T23:59:59.999Z'),
+      limit: 50,
+      offset: 0,
+    });
+    expect(longAgo.total).toBe(0);
+    expect(longAgo.shifts).toEqual([]);
+  });
+
+  it('scopes to the org, so another shop\'s till is not readable by id', async () => {
+    const { total } = await adapter.getRegisterShifts({
+      orgId: '00000000-0000-0000-0000-000000000001',
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBe(0);
+  });
+});

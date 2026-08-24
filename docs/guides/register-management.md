@@ -116,6 +116,33 @@ whoever logged the browser in.
 Clearing someone's PIN revokes their ability to sign on to any till. It does not
 end a shift they already have open; their next sign-on is what fails.
 
+### Signing off
+
+A cashier signs out at the till itself — there is no back-office button that
+ends someone's shift, on purpose: the till's screen would lock under them,
+possibly mid-sale.
+
+A shift also ends on its own in three other ways, and the shift log names which
+one happened:
+
+| Ended | What it means |
+| --- | --- |
+| Signed out | The cashier signed out at the till. |
+| Idle timeout | Nobody signed out; the till locked itself after the idle timeout. |
+| Taken over | Another cashier signed on over the top of this shift. |
+| Device revoked | The till's device credential was revoked. |
+
+### The shift log
+
+**Admin → Shifts** is where you find out who was on which till and when.
+Filter by register, by cashier, or by date, and use **On the floor now** to see
+who is signed on at this moment.
+
+An admin who covered a till from a back-office browser shows as themselves,
+with "covering for <name>" beneath. That is deliberate: the sale is attributed
+to whoever actually rang it, and the person they stood in for is recorded
+beside it rather than in place of it.
+
 ---
 
 ## Manager overrides
