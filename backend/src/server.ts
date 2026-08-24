@@ -1,6 +1,7 @@
 import config from './config';
 import logger from './utils/logger';
 import db from './services/database';
+import { verifyStorage } from './storage';
 import app from './app';
 
 const PORT = config.port;
@@ -19,10 +20,16 @@ const startServer = async () => {
 
     logger.info('✅ Database connection successful');
 
+    // Before the port opens, not on the first upload: a bucket that does not
+    // exist or a volume mounted read-only is a configuration mistake, and the
+    // useful moment to report one is at startup with the operator watching.
+    await verifyStorage();
+
     app.listen(PORT, HOST, () => {
       logger.info(`🚀 Server running on http://${HOST}:${PORT}`);
       logger.info(`📊 Environment: ${config.nodeEnv}`);
       logger.info(`🗄️  Database: ${config.database.adapter}`);
+      logger.info(`🖼️  Uploads: ${config.storage.adapter}`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

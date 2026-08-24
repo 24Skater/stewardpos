@@ -50,8 +50,8 @@ cp .env.prod.example .env.prod
 # - Generate JWT_SECRET: openssl rand -base64 32
 # - Use strong passwords (min 32 characters)
 # - Set CORS_ORIGIN to your production domain
-# - Configure email/SMS providers
-# - Set up external storage (S3, Azure, etc.)
+# - Configure the email provider
+# - Point uploads at a bucket (STORAGE_ADAPTER=s3)
 
 # Then deploy:
 ./scripts/deploy-prod.sh       # Linux/Mac
@@ -131,11 +131,11 @@ these existed the file had no bound at all and grew for the life of the install.
 - [ ] TRUST_PROXY matches the number of proxies in front of the API
 
 The first three are enforced: the backend **refuses to start** in production if
-`JWT_SECRET`, `DB_PASSWORD` or `MINIO_SECRET_KEY` is one of the placeholders
+`JWT_SECRET`, `DB_PASSWORD` or `S3_SECRET_ACCESS_KEY` is one of the placeholders
 this repository ships. A skipped line fails loudly at boot rather than quietly
 for the life of the install.
 - [ ] Email provider configured
-- [ ] External storage configured (S3/Azure)
+- [ ] Uploads: `STORAGE_ADAPTER` set, and `S3_BUCKET` + `S3_SECRET_ACCESS_KEY` if `s3`
 - [ ] SSL/TLS certificates configured
 - [ ] Backups configured
 - [ ] Monitoring set up

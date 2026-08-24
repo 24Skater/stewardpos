@@ -23,6 +23,9 @@ const updateTerminalTransactionByChargeId = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
+    // `/api/health/db` used to answer healthy unconditionally; it now actually
+    // asks, so the mock has to be able to answer.
+    testConnection: async () => true,
     getAdapter: () => ({
       getUserByEmail,
       getSettings,

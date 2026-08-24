@@ -32,10 +32,10 @@ describe('findWeakSecrets', () => {
     expect(problems[0]).toMatch(/openssl rand/);
   });
 
-  it('rejects the shipped database and MinIO passwords', () => {
+  it('rejects the shipped database and bucket passwords', () => {
     const problems = findWeakSecrets([
       { name: 'DB_PASSWORD', value: 'stewardpos_secure_password_123' },
-      { name: 'MINIO_SECRET_KEY', value: 'CHANGE_THIS_PASSWORD' },
+      { name: 'S3_SECRET_ACCESS_KEY', value: 'CHANGE_THIS_PASSWORD' },
     ]);
 
     expect(problems).toHaveLength(2);
@@ -69,7 +69,7 @@ describe('findWeakSecrets', () => {
     const problems = findWeakSecrets([
       { name: 'JWT_SECRET', value: 'CHANGE_THIS_MIN_32_CHARACTERS_SECRET', minLength: 32 },
       { name: 'DB_PASSWORD', value: 'postgres' },
-      { name: 'MINIO_SECRET_KEY', value: undefined },
+      { name: 'S3_SECRET_ACCESS_KEY', value: undefined },
     ]);
 
     expect(problems).toHaveLength(3);
@@ -98,14 +98,27 @@ describe('productionSecrets', () => {
     expect(sqlite).not.toContain('DB_PASSWORD');
   });
 
-  it('checks the MinIO key only when one is configured', () => {
-    // Object storage is optional — uploads fall back to a volume-backed disk
-    // path — so an install that never configured it has no secret to be weak.
-    const without = productionSecrets({} as NodeJS.ProcessEnv).map((s) => s.name);
-    const with_ = productionSecrets({ MINIO_SECRET_KEY: 'x' } as NodeJS.ProcessEnv).map((s) => s.name);
+  it('checks the bucket key only when the s3 adapter is selected', () => {
+    // Object storage is optional — the default adapter writes to a volume — so
+    // an install that never selected it has no bucket secret to be weak. Keyed
+    // off STORAGE_ADAPTER rather than off a variable being present: the old
+    // check watched MINIO_SECRET_KEY, which the app read for nothing else and
+    // which said nothing about whether a bucket was actually in use.
+    const local = productionSecrets({} as NodeJS.ProcessEnv).map((s) => s.name);
+    const s3 = productionSecrets({ STORAGE_ADAPTER: 's3' } as NodeJS.ProcessEnv).map((s) => s.name);
 
-    expect(without).not.toContain('MINIO_SECRET_KEY');
-    expect(with_).toContain('MINIO_SECRET_KEY');
+    expect(local).not.toContain('S3_SECRET_ACCESS_KEY');
+    expect(s3).toContain('S3_SECRET_ACCESS_KEY');
+  });
+
+  it('demands the bucket key even when it is simply absent', () => {
+    // The failure mode worth naming: STORAGE_ADAPTER=s3 with no credential at
+    // all should stop the boot, not start and fail on the first upload.
+    const problems = findWeakSecrets(
+      productionSecrets({ STORAGE_ADAPTER: 's3' } as NodeJS.ProcessEnv)
+    );
+
+    expect(problems).toContain('S3_SECRET_ACCESS_KEY is not set');
   });
 });
 
