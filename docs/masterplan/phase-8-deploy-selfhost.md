@@ -334,3 +334,13 @@ backup → insert marker → restore → marker gone, uploads intact
 - **MinIO is still unwired** — uploads use the volume-backed disk path, which is
   correct until there is more than one backend replica. The prod stack runs the
   container so the option is there, and `deploy-alternatives.md` covers S3.
+
+  > **Superseded 2026-08-24.** The premise did not hold: running the container
+  > did not make the option available, because no code path could reach a
+  > bucket. `STORAGE_ADAPTER=s3` validated and then wrote to local disk anyway,
+  > and the six `MINIO_*` variables the stack handed the backend named nothing
+  > it read. There is now a storage port with local and S3 adapters, the stack
+  > passes `S3_*`, and a `minio-createbucket` one-shot makes the bucket MinIO
+  > does not make for itself. `localstorage` remains the default and the right
+  > answer for a single backend. See the storage commit and
+  > `backend/src/storage/`.
