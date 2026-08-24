@@ -5,7 +5,6 @@ import { customersApi, discountsApi, productsApi, quotesApi, registersApi, repor
 import type { Customer } from '@/lib/api';
 import { DollarSign, ShoppingCart, Package, AlertTriangle, Briefcase, FileText, Users, Tag, Store } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { periodRange, toDateInput } from '@/lib/report-range';
 
@@ -233,120 +232,44 @@ export default function Dashboard() {
   ];
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground">Overview of your store performance</p>
-          </div>
+    <AdminLayout>
+      <div className="p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground">Overview of your store performance</p>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {cards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <Card key={card.title}>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      {card.title}
-                    </CardTitle>
-                    <Icon className={`w-4 h-4 ${card.color}`} />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{card.value}</div>
-                    {card.subValue && (
-                      <p className="text-xs text-muted-foreground mt-1">{card.subValue}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {cards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.title}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {card.title}
+                  </CardTitle>
+                  <Icon className={`w-4 h-4 ${card.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{card.value}</div>
+                  {card.subValue && (
+                    <p className="text-xs text-muted-foreground mt-1">{card.subValue}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-            {/* Combined Revenue Chart */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Revenue Trend (Last 7 Days)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={salesData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis 
-                      dataKey="date" 
-                      className="text-xs"
-                      tick={{ fill: 'var(--st-muted)' }}
-                    />
-                    <YAxis 
-                      className="text-xs"
-                      tick={{ fill: 'var(--st-muted)' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'var(--st-surface)',
-                        border: '1px solid var(--st-border)',
-                        borderRadius: '8px'
-                      }}
-                    />
-                    <Legend />
-                    <Line 
-                      type="monotone" 
-                      dataKey="sales" 
-                      stroke="var(--st-primary)" 
-                      strokeWidth={2}
-                      name="POS Sales ($)"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="services" 
-                      stroke="var(--st-link)" 
-                      strokeWidth={2}
-                      name="Service Revenue ($)"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Recent Quotes */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Quotes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentQuotes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">No quotes yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {recentQuotes.map((quote) => (
-                      <div key={quote.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium text-sm">{quote.customerName || 'Walk-in'}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(quote.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-sm">${quote.total.toFixed(2)}</p>
-                          {getStatusBadge(quote.status)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Orders Chart */}
-          <Card className="mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+          {/* Combined Revenue Chart */}
+          <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Orders (Last 7 Days)</CardTitle>
+              <CardTitle>Revenue Trend (Last 7 Days)</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={salesData}>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={salesData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis 
                     dataKey="date" 
@@ -365,18 +288,92 @@ export default function Dashboard() {
                     }}
                   />
                   <Legend />
-                  <Bar 
-                    dataKey="orders" 
-                    fill="var(--st-primary)"
-                    name="POS Orders"
-                    radius={[8, 8, 0, 0]}
+                  <Line 
+                    type="monotone" 
+                    dataKey="sales" 
+                    stroke="var(--st-primary)" 
+                    strokeWidth={2}
+                    name="POS Sales ($)"
                   />
-                </BarChart>
+                  <Line 
+                    type="monotone" 
+                    dataKey="services" 
+                    stroke="var(--st-link)" 
+                    strokeWidth={2}
+                    name="Service Revenue ($)"
+                  />
+                </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* Recent Quotes */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Quotes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentQuotes.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No quotes yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentQuotes.map((quote) => (
+                    <div key={quote.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium text-sm">{quote.customerName || 'Walk-in'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(quote.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm">${quote.total.toFixed(2)}</p>
+                        {getStatusBadge(quote.status)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      </AdminLayout>
-    </ProtectedRoute>
+
+        {/* Orders Chart */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Orders (Last 7 Days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={salesData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis 
+                  dataKey="date" 
+                  className="text-xs"
+                  tick={{ fill: 'var(--st-muted)' }}
+                />
+                <YAxis 
+                  className="text-xs"
+                  tick={{ fill: 'var(--st-muted)' }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'var(--st-surface)',
+                    border: '1px solid var(--st-border)',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="orders" 
+                  fill="var(--st-primary)"
+                  name="POS Orders"
+                  radius={[8, 8, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+    </AdminLayout>
   );
 }

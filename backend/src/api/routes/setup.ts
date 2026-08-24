@@ -8,6 +8,7 @@ import { Seeder } from '../../services/seeder';
 import config from '../../config';
 import { PERMISSION_RESOURCES } from '../middleware/authorize';
 import { ValidationError, getErrorMessage } from '../../utils/errors';
+import { BCRYPT_ROUNDS } from '../../services/hashing';
 
 const router = Router();
 
@@ -331,7 +332,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
     logger.info('Creating admin user...');
     try {
       const adapter = db.getAdapter();
-      const passwordHash = await bcrypt.hash(setupData.adminUser.password, 10);
+      const passwordHash = await bcrypt.hash(setupData.adminUser.password, BCRYPT_ROUNDS);
 
       if (config.database.adapter === 'postgres') {
         const pool = (adapter as any).pool;
