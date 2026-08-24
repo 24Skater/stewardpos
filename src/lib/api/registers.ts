@@ -277,6 +277,43 @@ export interface RegisterOverrideQuery {
 }
 
 /**
+ * One row of the shift log (`GET /api/registers/shifts`).
+ *
+ * Extends {@link Shift} — the till's own view of who is standing at it — with
+ * the names the back office needs. Every other shift endpoint answers "who is
+ * on this register right now"; this is the only one that answers "who was on
+ * it on Tuesday", which is what the record is kept for.
+ *
+ * `emulatedUserId`/`emulatedUserName` are the cashier an admin was standing in
+ * for (migration 020). They are never the attributed identity — `userId` is,
+ * always — so a row with both means "the admin rang these sales while covering
+ * for that cashier", not "that cashier rang them".
+ */
+export interface RegisterShift extends Shift {
+  emulatedUserId: string | null;
+  /** Joined for display; a table of raw UUIDs cannot answer who was on the till. */
+  cashierName: string | null;
+  cashierEmail: string | null;
+  emulatedUserName: string | null;
+  registerName: string | null;
+  registerDisplayCode: string | null;
+  locationName: string | null;
+}
+
+export interface RegisterShiftQuery {
+  limit?: number;
+  offset?: number;
+  registerId?: string;
+  locationId?: string;
+  userId?: string;
+  /** Only shifts nobody has signed out of — "who is on the floor". */
+  openOnly?: boolean;
+  /** Epoch ms, both ends inclusive, compared against `startedAt`. */
+  from?: number;
+  to?: number;
+}
+
+/**
  * Register endpoints (`backend/src/api/routes/registers.ts`).
  *
  * Registers are never deleted, only retired — permanently, since a retired
@@ -351,6 +388,13 @@ export const registersApi = {
    */
   overrides: (query?: RegisterOverrideQuery) =>
     apiClient.getList<RegisterOverride[]>(`/api/registers/overrides${qs(query)}`),
+
+  /**
+   * The shift log (`GET /api/registers/shifts`) — every shift ever opened in
+   * the org, newest first, paginated with a real total.
+   */
+  shifts: (query?: RegisterShiftQuery) =>
+    apiClient.getList<RegisterShift[]>(`/api/registers/shifts${qs(query)}`),
 };
 
 /**

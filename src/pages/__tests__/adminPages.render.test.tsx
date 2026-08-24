@@ -186,6 +186,7 @@ const PAGES: Array<[string, () => Promise<{ default: ComponentType }>]> = [
   ['AdminDiscounts', () => import('../admin/AdminDiscounts')],
   ['AdminRegisters', () => import('../admin/AdminRegisters')],
   ['AdminOverrides', () => import('../admin/AdminOverrides')],
+  ['AdminShifts', () => import('../admin/AdminShifts')],
 ];
 
 function renderPage(Page: ComponentType) {

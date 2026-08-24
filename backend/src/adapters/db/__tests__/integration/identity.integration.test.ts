@@ -302,4 +302,70 @@ describe('audit log', () => {
     expect(both.total).toBe(1);
     expect(both.logs[0]).toMatchObject({ action: 'delete', entity: 'product' });
   });
+
+  /**
+   * The rows nobody signed.
+   *
+   * Some audited events genuinely have no human on the request: a terminal
+   * redeeming a pairing code, a cashier signing on with a PIN. Those routes
+   * are authenticated by `X-Register-Token`, so `req.user` is undefined and
+   * `services/audit.ts` writes a null `userId` — which the route comments say
+   * is intended and which the service's own unit test asserts against a MOCKED
+   * adapter.
+   *
+   * The mock is what hid this. `audit_logs.user_id` was NOT NULL, so every one
+   * of those inserts violated the constraint, and `audit()` never throws by
+   * design — so the whole class of till events was dropped in silence for as
+   * long as the feature has existed. Only real SQL can catch that.
+   */
+  it('records an event that no user performed, so till activity is not dropped in silence', async () => {
+    const entityId = '00000000-0000-0000-0000-00000000dec1';
+
+    const written = await h.adapter.createAuditLog({
+      userId: null,
+      action: 'create',
+      entity: 'register_credential',
+      entityId,
+      after: { registerId: entityId, enrolled: true },
+    });
+    expect(written.id).toBeTruthy();
+
+    const { logs } = await h.adapter.getAuditLogs({ entity: 'register_credential' });
+    const mine = logs.find((log) => log.entityId === entityId || log.entity_id === entityId);
+    expect(mine).toBeTruthy();
+    // A LEFT JOIN, not an inner one: an unattributed row must still be
+    // readable, and must not claim a user it does not have.
+    expect(mine?.userId ?? mine?.user_id ?? null).toBeNull();
+    expect(mine?.userName ?? mine?.user_name ?? null).toBeNull();
+
+    await h.query('DELETE FROM audit_logs WHERE entity_id = $1', [entityId]);
+  });
+
+  /**
+   * The other half of the same hole. `authenticate` mints `api-key:<uuid>` and
+   * `register:<uuid>` so a non-human caller can be authorised like a person;
+   * neither is a UUID or a row in `users`, so putting one in `user_id` failed
+   * the insert rather than mis-attributing it — and `audit()` never throws, so
+   * every action an API key performed vanished. `services/audit.ts` now sends
+   * the label instead; this proves the column holds it.
+   */
+  it('names a caller that is not a person, instead of losing the row', async () => {
+    const entityId = '00000000-0000-0000-0000-0000000000a1';
+
+    await h.adapter.createAuditLog({
+      userId: null,
+      actorLabel: 'api-key:Nightly sync',
+      action: 'update',
+      entity: 'product',
+      entityId,
+    });
+
+    const { logs } = await h.adapter.getAuditLogs({ entity: 'product' });
+    const mine = logs.find((log) => log.entityId === entityId);
+    expect(mine).toBeTruthy();
+    expect(mine?.userId).toBeNull();
+    expect(mine?.actorLabel).toBe('api-key:Nightly sync');
+
+    await h.query('DELETE FROM audit_logs WHERE entity_id = $1', [entityId]);
+  });
 });

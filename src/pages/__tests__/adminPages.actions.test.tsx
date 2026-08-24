@@ -50,6 +50,8 @@ const EMPTY_SHAPES: Record<string, unknown> = {
   // `.filter`. Model what the server sends.
   'adminApi.audit': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
   'receiptsApi.list': { data: [], meta: { total: 0, limit: 50, offset: 0, hasMore: false } },
+  'registersApi.shifts': { data: [], meta: { total: 0, limit: 50, offset: 0, hasMore: false } },
+  'registersApi.overrides': { data: [], meta: { total: 0, limit: 50, offset: 0, hasMore: false } },
   'productsApi.listPage': { data: [], meta: { total: 0, limit: 50, offset: 0 } },
   'categoriesApi.listWithUnmanaged': { data: [], meta: { total: 0, unmanaged: [] } },
   // The real shape of `POST /api/receipts/:id/start-return`. Stubbed as `{}`,
@@ -333,6 +335,37 @@ describe('AdminAudit', () => {
   }, TIMEOUT);
 });
 
+describe('AdminShifts', () => {
+  it('asks the server again when a filter changes, rather than filtering a page in the browser', async () => {
+    // The shift log is paginated server-side, so a filter applied in the
+    // browser would search whichever fifty rows happened to be on screen —
+    // the exact defect the audit screen shipped with before Phase 6.
+    const { default: Page } = await import('../admin/AdminShifts');
+    renderPage(Page);
+
+    await waitFor(() => expect(calls).toContain('registersApi.shifts'));
+    const before = calls.filter((c) => c === 'registersApi.shifts').length;
+
+    fireEvent.click(await screen.findByRole('button', { name: /on the floor now/i }));
+
+    await waitFor(() => {
+      expect(calls.filter((c) => c === 'registersApi.shifts').length).toBeGreaterThan(before);
+    });
+  }, TIMEOUT);
+
+  it('says nobody is on a till when the open-shift filter finds nothing', async () => {
+    // An empty result under "on the floor now" and an empty result under no
+    // filter mean different things, and a single "no results" line would say
+    // neither.
+    const { default: Page } = await import('../admin/AdminShifts');
+    renderPage(Page);
+
+    fireEvent.click(await screen.findByRole('button', { name: /on the floor now/i }));
+
+    expect(await screen.findByText(/nobody is signed on to a till/i)).toBeTruthy();
+  }, TIMEOUT);
+});
+
 describe('AdminInventory', () => {
   it('opens the product dialog and reaches the API on create', async () => {
     // Inventory is where a shop spends most of its admin time, and a create
@@ -429,6 +462,7 @@ describe('every admin page', () => {
     ['AdminSettings', () => import('../admin/AdminSettings')],
     ['AdminRoles', () => import('../admin/AdminRoles')],
     ['AdminAudit', () => import('../admin/AdminAudit')],
+    ['AdminShifts', () => import('../admin/AdminShifts')],
     ['AdminQuotes', () => import('../admin/AdminQuotes')],
     ['AdminApiKeys', () => import('../admin/AdminApiKeys')],
     ['AdminReturns', () => import('../admin/AdminReturns')],

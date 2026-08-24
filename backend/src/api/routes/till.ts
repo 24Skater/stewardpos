@@ -161,6 +161,9 @@ router.post(
         action: 'create',
         entity: 'register_shift',
         entityId: String(result.shift.id),
+        // No session on this request by design — see the module comment — so
+        // the cashier the PIN identified is named explicitly.
+        actorUserId: String(result.user.id),
         after: {
           registerId,
           userId: result.user.id,

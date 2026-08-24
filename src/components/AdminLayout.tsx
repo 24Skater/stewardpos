@@ -23,6 +23,7 @@ import {
   Sun,
   Moon,
   Store,
+  Clock,
 } from 'lucide-react';
 import {
   Button,
@@ -47,6 +48,7 @@ const navItems = [
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
   { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/registers', label: 'Registers', icon: Store },
+  { path: '/admin/shifts', label: 'Shifts', icon: Clock },
   { path: '/admin/overrides', label: 'Manager Overrides', icon: ShieldCheck },
   { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
   { path: '/admin/exports', label: 'Exports', icon: Download },

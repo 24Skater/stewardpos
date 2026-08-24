@@ -375,3 +375,154 @@ describeSqlite('reporting aggregations on SQLite', () => {
     expect(await adapter.getReturnsByReason(RANGE)).toEqual([]);
   });
 });
+
+/**
+ * The shift log's SQL, on SQLite.
+ *
+ * Six joins across four tables, and one place the dialects genuinely diverge:
+ * `started_at` is INTEGER milliseconds here and TIMESTAMP in Postgres, so the
+ * date filters compare against a raw epoch number rather than
+ * `to_timestamp()`. That is exactly the sort of difference that typechecks
+ * fine and fails at runtime on whichever dialect nobody ran.
+ *
+ * This block also puts migration 021's SQLite half — a full `audit_logs`
+ * rebuild, which SQLite needs because it cannot drop a NOT NULL in place —
+ * through the migrator above, which is the only place it executes at all.
+ */
+describeSqlite('getRegisterShifts on SQLite', () => {
+  const ORG = '00000000-0000-0000-0000-0000000000f1';
+  /** A fixed, well-past start time so the two seeded shifts cannot collide. */
+  const SHIFT_START = Date.parse('2026-08-18T09:00:00.000Z');
+  const LOCATION = '00000000-0000-0000-0000-0000000000f2';
+  let registerId: string;
+  let cashierId: string;
+  let openShiftId: string;
+
+  beforeAll(async () => {
+    const db = new Database(filename);
+    db.prepare('INSERT INTO organizations (id, name, slug) VALUES (?, ?, ?)').run(
+      ORG,
+      'Shift Log Shop',
+      'shift-log-shop'
+    );
+    db.prepare('INSERT INTO locations (id, org_id, name, slug) VALUES (?, ?, ?, ?)').run(
+      LOCATION,
+      ORG,
+      'Front of House',
+      'front-of-house'
+    );
+    db.close();
+
+    const cashier = await adapter.createUser({
+      email: 'shift.log@example.com',
+      passwordHash: 'not-a-real-hash',
+      name: 'Casey Cashier',
+      status: 'active',
+      roleIds: [],
+    });
+    cashierId = String(cashier.id);
+
+    const register = await adapter.createRegister({
+      org_id: ORG,
+      location_id: LOCATION,
+      name: 'Front Till',
+      register_number: 1,
+      display_code: 'FOH-01',
+      status: 'active',
+    });
+    registerId = String((register as Record<string, unknown>).id);
+
+    const closed = await adapter.createRegisterShift({ registerId, userId: cashierId });
+    await adapter.endRegisterShift(String(closed.id), 'signed_out');
+
+    const open = await adapter.createRegisterShift({ registerId, userId: cashierId });
+    openShiftId = String(open.id);
+
+    // Stamp the two shifts an hour apart.
+    //
+    // `started_at` is INTEGER milliseconds on SQLite, and these two rows are
+    // created back to back, so they land in the same millisecond and the
+    // `id DESC` tie-break decides the order — by random UUID, i.e. a coin
+    // flip. That tie-break is there to make paging stable, not to order
+    // rows chronologically, so the fix belongs in the fixture: give the
+    // shifts distinct start times, as any two real shifts have. Postgres
+    // never showed this because its TIMESTAMP resolution separates them.
+    const stamp = new Database(filename);
+    stamp
+      .prepare(
+        'UPDATE register_shifts SET started_at = ?, last_activity_at = ?, ended_at = ? WHERE id = ?'
+      )
+      .run(SHIFT_START, SHIFT_START, SHIFT_START + 30 * 60_000, String(closed.id));
+    stamp
+      .prepare('UPDATE register_shifts SET started_at = ?, last_activity_at = ? WHERE id = ?')
+      .run(SHIFT_START + 3_600_000, SHIFT_START + 3_600_000, String(open.id));
+    stamp.close();
+  });
+
+  it('joins the cashier, till and location names onto the shift', async () => {
+    const { shifts, total } = await adapter.getRegisterShifts({
+      orgId: ORG,
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBe(2);
+    expect(shifts[0]).toMatchObject({
+      id: openShiftId,
+      cashierName: 'Casey Cashier',
+      registerName: 'Front Till',
+      registerDisplayCode: 'FOH-01',
+      locationName: 'Front of House',
+      endedAt: null,
+    });
+  });
+
+  it('filters to open shifts, by cashier, and by an epoch-millisecond range', async () => {
+    const open = await adapter.getRegisterShifts({ orgId: ORG, openOnly: true, limit: 50, offset: 0 });
+    expect(open.shifts.map((s) => s.id)).toEqual([openShiftId]);
+
+    const mine = await adapter.getRegisterShifts({
+      orgId: ORG,
+      userId: cashierId,
+      limit: 50,
+      offset: 0,
+    });
+    expect(mine.total).toBe(2);
+
+    // The range filter is the dialect-specific one: a bare number here, a
+    // `to_timestamp()` call in Postgres.
+    const longAgo = await adapter.getRegisterShifts({
+      orgId: ORG,
+      from: Date.parse('2001-01-01T00:00:00.000Z'),
+      to: Date.parse('2001-12-31T23:59:59.999Z'),
+      limit: 50,
+      offset: 0,
+    });
+    expect(longAgo.total).toBe(0);
+    expect(longAgo.shifts).toEqual([]);
+
+    // And the same filter finds the rows it should — a range test that only
+    // ever proves "nothing matched" would pass just as happily against a
+    // query that matched nothing at all.
+    const theDay = await adapter.getRegisterShifts({
+      orgId: ORG,
+      from: SHIFT_START - 3_600_000,
+      to: SHIFT_START + 3_600_000,
+      limit: 50,
+      offset: 0,
+    });
+    expect(theDay.total).toBe(2);
+  });
+
+  it('scopes to the org, so another shop\'s till is not readable by id', async () => {
+    const { total } = await adapter.getRegisterShifts({
+      orgId: '00000000-0000-0000-0000-000000000001',
+      registerId,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(total).toBe(0);
+  });
+});

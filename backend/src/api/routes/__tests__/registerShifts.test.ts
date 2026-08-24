@@ -263,6 +263,41 @@ async function touchRegisterShiftActivity(shiftId: string): Promise<FakeShift | 
   return { ...row };
 }
 
+/**
+ * The shift log's read side. Faked at the same level as the rest of this
+ * file: the SQL itself is covered against a real Postgres in
+ * `pinsAndShifts.integration.test.ts` and against real SQLite in
+ * `sqliteQueries.test.ts`. What the route test is for is the parts those
+ * cannot see — that `/shifts` is matched before `/:id`, that the query string
+ * is parsed and validated, and that the response carries usable pagination.
+ */
+async function getRegisterShifts(filter: {
+  orgId: string;
+  limit: number;
+  offset: number;
+  registerId?: string;
+  userId?: string;
+  openOnly?: boolean;
+  from?: number;
+  to?: number;
+}): Promise<{ shifts: Record<string, unknown>[]; total: number }> {
+  let rows = [...shifts.values()];
+  if (filter.registerId) rows = rows.filter((row) => row.registerId === filter.registerId);
+  if (filter.userId) rows = rows.filter((row) => row.userId === filter.userId);
+  if (filter.openOnly) rows = rows.filter((row) => row.endedAt == null);
+  if (filter.from !== undefined) rows = rows.filter((row) => row.startedAt >= filter.from!);
+  if (filter.to !== undefined) rows = rows.filter((row) => row.startedAt <= filter.to!);
+
+  rows.sort((a, b) => b.startedAt - a.startedAt || b.id.localeCompare(a.id));
+
+  return {
+    shifts: rows
+      .slice(filter.offset, filter.offset + filter.limit)
+      .map((row) => ({ ...row, cashierName: users.get(row.userId)?.name ?? null })),
+    total: rows.length,
+  };
+}
+
 async function createAuditLog(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   auditLogs.push(payload);
   return payload;
@@ -307,6 +342,7 @@ vi.mock('../../../services/database', () => ({
       createRegisterShift,
       endRegisterShift,
       touchRegisterShiftActivity,
+      getRegisterShifts,
       createAuditLog,
       getProductById,
       getSettings,
@@ -726,5 +762,156 @@ describe('POST /api/registers/:id/shifts rate limiting', () => {
     }
 
     expect(blocked).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The shift log. Nothing in the app could ask "who was on this till on
+ * Tuesday" before this route existed — every other shift endpoint answers
+ * only "who is on it right now", which is all a till needs and none of what a
+ * manager needs.
+ *
+ * Shifts are seeded straight into the fake store rather than rung up through
+ * `POST /:id/shifts`. That route is behind a PIN rate limiter which the
+ * throttling suite above deliberately exhausts, so driving it from here made
+ * these tests pass alone and fail in the file — and it is the GET under test
+ * either way.
+ */
+describe('GET /api/registers/shifts', () => {
+  function seedCashier(id: string, name: string): void {
+    users.set(id, {
+      id,
+      name,
+      email: `${id}@example.com`,
+      status: 'active',
+      orgId: DEFAULT_ORG_ID,
+      pinHash: null,
+      pinSetAt: null,
+      pinFailedCount: 0,
+      pinLockedUntil: null,
+      roleIds: [],
+      roles: [],
+    });
+  }
+
+  function seedShift(
+    registerId: string,
+    userId: string,
+    startedAt: number,
+    endReason: string | null = null
+  ): FakeShift {
+    const id = `seeded-shift-${++seq}`;
+    const row: FakeShift = {
+      id,
+      registerId,
+      userId,
+      startedAt,
+      lastActivityAt: startedAt,
+      endedAt: endReason ? startedAt + 60_000 : null,
+      endReason,
+      createdAt: startedAt,
+    };
+    shifts.set(id, row);
+    return row;
+  }
+
+  const TUESDAY = Date.parse('2026-08-18T09:00:00.000Z');
+
+  it('lists shifts newest first, with the cashier named rather than a bare id', async () => {
+    seedCashier('u1', 'Casey');
+    seedShift('rA', 'u1', TUESDAY, 'signed_out');
+    seedShift('rA', 'u1', TUESDAY + 3_600_000);
+
+    const response = await request(app).get('/api/registers/shifts').set(adminAuth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(2);
+    expect(response.body.data[0].endedAt).toBeNull();
+    expect(response.body.data[1].endReason).toBe('signed_out');
+    expect(response.body.data[0].cashierName).toBe('Casey');
+    expect(response.body.meta).toMatchObject({ total: 2, limit: 50, offset: 0, hasMore: false });
+  });
+
+  it('is matched ahead of GET /:id, not read as a register named "shifts"', async () => {
+    // `/shifts` and `/:id` are both single-segment routes on this router, so
+    // this holds only while `/shifts` is registered first. A register-shaped
+    // body here means someone moved it below and Express looked one up by
+    // that name.
+    const response = await request(app).get('/api/registers/shifts').set(adminAuth());
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.data)).toBe(true);
+  });
+
+  it('filters to whoever is on the floor right now', async () => {
+    seedCashier('u1', 'Casey');
+    seedCashier('u2', 'Rae');
+    seedShift('rA', 'u1', TUESDAY, 'signed_out');
+    seedShift('rB', 'u2', TUESDAY + 1000);
+
+    const response = await request(app).get('/api/registers/shifts?openOnly=true').set(adminAuth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].cashierName).toBe('Rae');
+  });
+
+  it('filters by register and by cashier', async () => {
+    seedCashier('u1', 'Casey');
+    seedCashier('u2', 'Rae');
+    seedShift('rA', 'u1', TUESDAY, 'signed_out');
+    seedShift('rB', 'u2', TUESDAY + 1000, 'signed_out');
+
+    const byRegister = await request(app).get('/api/registers/shifts?registerId=rB').set(adminAuth());
+    expect(byRegister.body.data).toHaveLength(1);
+    expect(byRegister.body.data[0].registerId).toBe('rB');
+
+    const byCashier = await request(app).get('/api/registers/shifts?userId=u1').set(adminAuth());
+    expect(byCashier.body.data).toHaveLength(1);
+    expect(byCashier.body.data[0].userId).toBe('u1');
+  });
+
+  it('filters by the day a shift started, which is the question the log is for', async () => {
+    seedCashier('u1', 'Casey');
+    seedShift('rA', 'u1', TUESDAY, 'signed_out');
+    seedShift('rA', 'u1', TUESDAY + 7 * 24 * 3_600_000, 'signed_out');
+
+    const response = await request(app)
+      .get(`/api/registers/shifts?from=${TUESDAY - 3_600_000}&to=${TUESDAY + 3_600_000}`)
+      .set(adminAuth());
+
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.meta.total).toBe(1);
+  });
+
+  it('pages, reporting a total counted before the limit', async () => {
+    seedCashier('u1', 'Casey');
+    seedShift('rA', 'u1', TUESDAY, 'signed_out');
+    seedShift('rA', 'u1', TUESDAY + 1000, 'signed_out');
+
+    const response = await request(app).get('/api/registers/shifts?limit=1').set(adminAuth());
+
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.meta).toMatchObject({ total: 2, hasMore: true, page: 1 });
+  });
+
+  it('refuses a range that ends before it starts, rather than returning nothing', async () => {
+    const response = await request(app)
+      .get('/api/registers/shifts?from=2000&to=1000')
+      .set(adminAuth());
+
+    expect(response.status).toBe(400);
+  });
+
+  it('refuses a limit beyond the cap instead of holding an unbounded result set', async () => {
+    const response = await request(app).get('/api/registers/shifts?limit=5000').set(adminAuth());
+
+    expect(response.status).toBe(400);
+  });
+
+  it('needs a session: a device token is not a back-office credential', async () => {
+    const response = await request(app).get('/api/registers/shifts').set('X-Register-Token', 'not-a-session');
+
+    expect(response.status).toBe(401);
   });
 });

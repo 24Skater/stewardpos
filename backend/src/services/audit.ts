@@ -41,6 +41,20 @@ interface AuditInput {
   action: AuditAction;
   entity: AuditEntity;
   entityId: string;
+  /**
+   * Who to attribute this to, when the request cannot say.
+   *
+   * A till request is authenticated by `X-Register-Token`, not a session, so
+   * it has no `req.user` — but the routes that open and close a shift know
+   * exactly whose PIN just matched. Without naming them the trail would record
+   * only that *somebody* signed on, which is the one question a shift log
+   * exists to answer.
+   *
+   * Takes precedence over `req.user` deliberately: where both exist the till
+   * knows better than the session. Leave it unset on ordinary back-office
+   * routes.
+   */
+  actorUserId?: string;
   /** State before the change; omit on create. */
   before?: unknown;
   /** State after the change; omit on delete. */
@@ -72,6 +86,43 @@ const REDACTED_KEYS = new Set([
   'pin_hash',
 ]);
 
+/**
+ * Principals the permission system invents, which are not rows in `users`.
+ *
+ * `authenticate` mints `register:<uuid>` for a no-PIN till session and
+ * `api-key:<uuid>` for a key, so that `requirePermission` can treat a
+ * non-human caller like a person. Neither is a row in `users`, and
+ * `audit_logs.user_id` is a UUID with a foreign key to that table — so
+ * writing one there does not produce a badly-attributed row, it produces no
+ * row at all, silently, because `audit()` never throws. Every action ever
+ * performed by an API key was lost this way.
+ */
+const SYNTHETIC_PRINCIPAL_PREFIXES = ['register:', 'api-key:'];
+
+function isSyntheticPrincipal(id: string): boolean {
+  return SYNTHETIC_PRINCIPAL_PREFIXES.some((prefix) => id.startsWith(prefix));
+}
+
+interface Actor {
+  userId: string | null;
+  /** What to show when there is no user to name; null for an ordinary person. */
+  actorLabel: string | null;
+}
+
+function resolveActor(req: AuthRequest, entry: AuditInput): Actor {
+  // An explicit actor is the route telling us something the request cannot —
+  // whose PIN matched at a till with no session. It outranks everything.
+  if (entry.actorUserId) return { userId: entry.actorUserId, actorLabel: null };
+
+  const principal = req.user;
+  if (!principal) return { userId: null, actorLabel: null };
+  if (!isSyntheticPrincipal(principal.id)) return { userId: principal.id, actorLabel: null };
+
+  // Synthetic principal: keep the row and say honestly what did it, rather
+  // than forcing an id the column cannot hold.
+  return { userId: null, actorLabel: principal.email ?? principal.id };
+}
+
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);
   if (!value || typeof value !== 'object') return value;
@@ -97,8 +148,14 @@ function redact(value: unknown): unknown {
  */
 export async function audit(req: AuthRequest, entry: AuditInput): Promise<void> {
   try {
+    const actor = resolveActor(req, entry);
+
     await db.getAdapter().createAuditLog({
-      userId: req.user?.id ?? null,
+      // Null is a real answer — "a device did this, no human was on the
+      // request" — and `audit_logs.user_id` is nullable so it can be recorded
+      // rather than silently rejected. See migration 021.
+      userId: actor.userId,
+      actorLabel: actor.actorLabel,
       action: entry.action,
       entity: entry.entity,
       entityId: entry.entityId,
