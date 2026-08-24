@@ -107,4 +107,71 @@ describe('audit', () => {
 
     expect(createAuditLog.mock.calls[0][0].userId).toBeNull();
   });
+
+  /**
+   * A till request carries no `req.user` — it is authenticated by the device
+   * credential, not a session — but the routes that open and close a shift
+   * know exactly whose PIN just matched. Without this the audit trail would
+   * say only that *somebody* signed on, which is the one question the shift
+   * log exists to answer.
+   */
+  it('attributes an action to the actor a session-less route names', async () => {
+    await audit({} as never, {
+      action: 'create',
+      entity: 'register_shift',
+      entityId: 's1',
+      actorUserId: 'cashier-9',
+    });
+
+    expect(createAuditLog.mock.calls[0][0].userId).toBe('cashier-9');
+  });
+
+  it('prefers the named actor over the session user, since the till knows better', async () => {
+    await audit(req, {
+      action: 'update',
+      entity: 'register_shift',
+      entityId: 's1',
+      actorUserId: 'cashier-9',
+    });
+
+    expect(createAuditLog.mock.calls[0][0].userId).toBe('cashier-9');
+  });
+
+  /**
+   * `audit_logs.user_id` is a UUID with a foreign key to `users`. A non-human
+   * principal's id is neither: `authenticate` mints `register:<uuid>` for a
+   * no-PIN till session and `api-key:<uuid>` for a key, both shaped for the
+   * permission system rather than for this table. Writing one there fails the
+   * insert outright — and `audit()` never throws — so every action an API key
+   * ever performed was discarded in silence. The label keeps the row.
+   */
+  it('does not put a synthetic api-key principal in a column that holds user ids', async () => {
+    await audit(
+      { user: { id: 'api-key:11111111-1111-1111-1111-111111111111', email: 'api-key:Nightly sync' } } as never,
+      { action: 'update', entity: 'product', entityId: 'p1' }
+    );
+
+    const written = createAuditLog.mock.calls[0][0];
+    expect(written.userId).toBeNull();
+    expect(written.actorLabel).toBe('api-key:Nightly sync');
+  });
+
+  it('does the same for a register principal, which is a till with nobody signed on', async () => {
+    await audit(
+      { user: { id: 'register:22222222-2222-2222-2222-222222222222', email: 'register:22222222-2222-2222-2222-222222222222' } } as never,
+      { action: 'create', entity: 'order', entityId: 'o1' }
+    );
+
+    const written = createAuditLog.mock.calls[0][0];
+    expect(written.userId).toBeNull();
+    expect(written.actorLabel).toBe('register:22222222-2222-2222-2222-222222222222');
+  });
+
+  it('leaves an ordinary user id alone', async () => {
+    await audit(req, { action: 'update', entity: 'product', entityId: 'p1' });
+
+    const written = createAuditLog.mock.calls[0][0];
+    expect(written.userId).toBe('user-1');
+    expect(written.actorLabel).toBeNull();
+  });
 });

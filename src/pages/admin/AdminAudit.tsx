@@ -13,13 +13,20 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 import { diffRecords, formatValue } from '@/lib/audit-diff';
+import { describeActor } from '@/lib/audit-actor';
 
 interface AuditLog {
   id: string;
   timestamp: number;
-  userId: string;
+  userId: string | null;
   userName?: string;
   userEmail?: string;
+  /**
+   * Set when no person performed the action: a terminal redeeming a pairing
+   * code, or an API key. Reads `api-key:<name>` or `register:<id>` — see
+   * `services/audit.ts`.
+   */
+  actorLabel?: string | null;
   action: string;
   entity: string;
   entityId: string;
@@ -35,8 +42,28 @@ interface AuditLog {
  * so the filter for the thing you are looking for disappears exactly when you
  * have paged away from it.
  */
-const ENTITIES = ['product', 'order', 'return', 'customer', 'user', 'role', 'settings', 'discount'];
-const ACTIONS = ['create', 'update', 'delete'];
+const ENTITIES = [
+  'product',
+  'category',
+  'order',
+  'return',
+  'customer',
+  'service',
+  'quote',
+  'user',
+  'role',
+  'settings',
+  'discount',
+  'promo_code',
+  'api_key',
+  'location',
+  'register',
+  'register_credential',
+  'register_shift',
+  'register_override',
+];
+const ACTIONS = ['create', 'update', 'delete', 'archive', 'refund', 'restock'];
+
 
 const PAGE_SIZE = 50;
 
@@ -238,7 +265,7 @@ export default function AdminAudit() {
                       <TableCell className="text-sm">{formatDate(log.timestamp)}</TableCell>
                       <TableCell>
                         <div>
-                          <span className="font-medium">{log.userName || 'Unknown'}</span>
+                          <span className="font-medium">{describeActor(log)}</span>
                           {log.userEmail && (
                             <p className="text-xs text-muted-foreground">{log.userEmail}</p>
                           )}
@@ -305,7 +332,7 @@ export default function AdminAudit() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">User</p>
-                      <p>{selectedLog.userName || selectedLog.userEmail || 'Unknown'}</p>
+                      <p>{describeActor(selectedLog)}</p>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Action</p>

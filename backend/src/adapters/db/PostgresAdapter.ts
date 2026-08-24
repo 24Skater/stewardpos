@@ -1957,11 +1957,12 @@ export class PostgresAdapter {
   async createAuditLog(log: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO audit_logs (user_id, action, entity, entity_id, before, after)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO audit_logs (user_id, actor_label, action, entity, entity_id, before, after)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
-          log.userId,
+          log.userId ?? null,
+          log.actorLabel ?? null,
           log.action,
           log.entity,
           log.entityId,
@@ -1975,6 +1976,7 @@ export class PostgresAdapter {
         id: l.id,
         timestamp: new Date(l.timestamp).getTime(),
         userId: l.user_id,
+        actorLabel: l.actor_label,
         action: l.action,
         entity: l.entity,
         entityId: l.entity_id,
@@ -2053,6 +2055,7 @@ export class PostgresAdapter {
           userId: l.user_id,
           userName: l.user_name,
           userEmail: l.user_email,
+          actorLabel: l.actor_label,
           action: l.action,
           entity: l.entity,
           entityId: l.entity_id,
