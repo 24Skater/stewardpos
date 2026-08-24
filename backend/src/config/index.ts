@@ -102,30 +102,41 @@ const configSchema = z.object({
     resendApiKey: z.string().optional(),
   }),
 
-  // SMS
-  sms: z.object({
-    adapter: z.enum(['console', 'twilio']).default('console'),
-    from: z.string().optional(),
-    twilio: z.object({
-      accountSid: z.string().optional(),
-      authToken: z.string().optional(),
-    }).optional(),
+  // Security
+  security: z.object({
+    /**
+     * bcrypt cost factor for passwords, PINs, device tokens and override grants.
+     *
+     * Floored at 10 rather than merely defaulted: this is the one knob here
+     * where a low value is silently worse than no knob, and `BCRYPT_ROUNDS=4`
+     * in a hurried `.env` would weaken every credential in the install with no
+     * visible symptom. Capped at 15 because the cost doubles per round and a
+     * shift change should not queue behind key derivation.
+     */
+    bcryptRounds: z.coerce.number().int().min(10).max(15).default(10),
   }),
 
-  // Storage
+  /**
+   * Where uploaded images live.
+   *
+   * `localstorage` writes to the `uploads` volume on the API host and is right
+   * for a single-backend install. `s3` targets any S3-compatible bucket —
+   * Amazon's, or the MinIO container in the Compose stack, via `S3_ENDPOINT`.
+   *
+   * The enum used to also offer `azure`, alongside an `azure` credentials
+   * block. Nothing implemented it, so setting it validated cleanly and then
+   * wrote to local disk anyway. An option that silently does something other
+   * than what it says is worse than no option; it is gone until somebody
+   * writes the adapter.
+   */
   storage: z.object({
-    adapter: z.enum(['localstorage', 's3', 'azure']).default('localstorage'),
+    adapter: z.enum(['localstorage', 's3']).default('localstorage'),
     s3: z.object({
       endpoint: z.string().optional(),
       region: z.string().optional(),
       bucket: z.string().optional(),
       accessKeyId: z.string().optional(),
       secretAccessKey: z.string().optional(),
-    }).optional(),
-    azure: z.object({
-      accountName: z.string().optional(),
-      accountKey: z.string().optional(),
-      container: z.string().optional(),
     }).optional(),
   }),
 
@@ -198,13 +209,8 @@ function buildConfig(): AppConfig {
       resendApiKey: process.env.EMAIL_RESEND_API_KEY,
     },
 
-    sms: {
-      adapter: (process.env.SMS_ADAPTER as any) || 'console',
-      from: process.env.SMS_FROM,
-      twilio: {
-        accountSid: process.env.TWILIO_ACCOUNT_SID,
-        authToken: process.env.TWILIO_AUTH_TOKEN,
-      },
+    security: {
+      bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '10', 10),
     },
 
     storage: {
@@ -215,11 +221,6 @@ function buildConfig(): AppConfig {
         bucket: process.env.S3_BUCKET,
         accessKeyId: process.env.S3_ACCESS_KEY_ID,
         secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-      },
-      azure: {
-        accountName: process.env.AZURE_STORAGE_ACCOUNT_NAME,
-        accountKey: process.env.AZURE_STORAGE_ACCOUNT_KEY,
-        container: process.env.AZURE_STORAGE_CONTAINER,
       },
     },
 

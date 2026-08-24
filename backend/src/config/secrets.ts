@@ -83,9 +83,10 @@ export function findWeakSecrets(secrets: readonly SecretToCheck[]): string[] {
 /**
  * The secrets a production install must have set for itself.
  *
- * MinIO's is included but tolerated when absent: object storage is optional —
- * uploads fall back to a volume-backed disk path — so an install that never
- * configured it has no secret to be weak.
+ * Each is conditional on actually being in use: a SQLite install has no
+ * database password, and an install storing uploads on a volume has no bucket
+ * credential. Demanding a strong value for something the install does not use
+ * teaches people to put a placeholder there, which is worse than not asking.
  */
 export function productionSecrets(env: NodeJS.ProcessEnv): SecretToCheck[] {
   const secrets: SecretToCheck[] = [
@@ -97,8 +98,22 @@ export function productionSecrets(env: NodeJS.ProcessEnv): SecretToCheck[] {
     secrets.push({ name: 'DB_PASSWORD', value: env.DB_PASSWORD, minLength: 12 });
   }
 
-  if (env.MINIO_SECRET_KEY) {
-    secrets.push({ name: 'MINIO_SECRET_KEY', value: env.MINIO_SECRET_KEY, minLength: 12 });
+  /**
+   * The bucket credential, keyed off the adapter rather than off whether a
+   * variable happens to be present.
+   *
+   * This checked `MINIO_SECRET_KEY` — a variable the app never read for any
+   * other purpose, and which said nothing about whether object storage was in
+   * use, because no code path could reach a bucket at all. Now that
+   * `STORAGE_ADAPTER=s3` means something, the question to ask is whether the
+   * install has selected it.
+   */
+  if (env.STORAGE_ADAPTER === 's3') {
+    secrets.push({
+      name: 'S3_SECRET_ACCESS_KEY',
+      value: env.S3_SECRET_ACCESS_KEY,
+      minLength: 12,
+    });
   }
 
   return secrets;
