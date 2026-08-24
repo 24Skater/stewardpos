@@ -313,6 +313,26 @@ function mapRegisterShift(row: DbRow): DbRow {
 }
 
 /**
+ * A shift row for the admin shift log, with the names joined in.
+ *
+ * Separate from {@link mapRegisterShift} because that one is the till's
+ * internal shape — the shift the register is standing on — and carries no
+ * display fields. This is the reporting shape: a table of raw UUIDs cannot
+ * answer "who was on this till", which is the only reason the log exists.
+ */
+function mapRegisterShiftSummary(row: DbRow): DbRow {
+  return {
+    ...mapRegisterShift(row),
+    cashierName: row.cashier_name ?? null,
+    cashierEmail: row.cashier_email ?? null,
+    emulatedUserName: row.emulated_user_name ?? null,
+    registerName: row.register_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
+    locationName: row.location_name ?? null,
+  };
+}
+
+/**
  * Turn a `register_overrides` row into the camelCase shape
  * `services/registerOverrides.ts` needs. Includes `grantHash` — like
  * `mapRegisterCredential`, this is an internal shape for the service layer's
@@ -6134,6 +6154,99 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting register overrides:', error);
       throw new DatabaseError('Failed to get override log');
+    }
+  }
+
+  /**
+   * The shift log: who stood at which till, when, and how the shift ended.
+   *
+   * `register_shifts` had no list query before this — every other method
+   * fetches exactly one shift, because that is all a till needs. Nothing could
+   * answer "who was on this register on Tuesday", which is the question the
+   * table exists to answer and the reason a shift is recorded at all.
+   *
+   * Scoped to `orgId` through a join on `registers`, since `register_shifts`
+   * carries no `org_id` of its own — the same route `getRegisterOverrides`
+   * takes, and for the same reason: without it, a bare register id from
+   * another shop would read that shop's roster.
+   *
+   * Ordered by `started_at DESC`, tie-broken on `id` so a page boundary cannot
+   * show the same row twice when two shifts share a timestamp.
+   */
+  async getRegisterShifts(filter: {
+    orgId: string;
+    limit: number;
+    offset: number;
+    registerId?: string;
+    locationId?: string;
+    userId?: string;
+    openOnly?: boolean;
+    from?: number;
+    to?: number;
+  }): Promise<{ shifts: DbRow[]; total: number }> {
+    try {
+      const conditions = ['r.org_id = $1'];
+      const params: unknown[] = [filter.orgId];
+
+      if (filter.registerId) {
+        params.push(filter.registerId);
+        conditions.push(`s.register_id = $${params.length}`);
+      }
+      if (filter.locationId) {
+        params.push(filter.locationId);
+        conditions.push(`r.location_id = $${params.length}`);
+      }
+      if (filter.userId) {
+        params.push(filter.userId);
+        conditions.push(`s.user_id = $${params.length}`);
+      }
+      if (filter.openOnly) {
+        conditions.push('s.ended_at IS NULL');
+      }
+      if (filter.from !== undefined) {
+        params.push(filter.from);
+        conditions.push(`s.started_at >= to_timestamp($${params.length} / 1000.0)`);
+      }
+      if (filter.to !== undefined) {
+        params.push(filter.to);
+        conditions.push(`s.started_at <= to_timestamp($${params.length} / 1000.0)`);
+      }
+
+      const where = conditions.join(' AND ');
+
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*) AS count FROM register_shifts s
+         JOIN registers r ON r.id = s.register_id
+         WHERE ${where}`,
+        params
+      );
+
+      const rowsResult = await this.pool.query(
+        `SELECT s.*,
+                u.name AS cashier_name,
+                u.email AS cashier_email,
+                e.name AS emulated_user_name,
+                r.name AS register_name,
+                r.display_code AS register_display_code,
+                l.name AS location_name
+         FROM register_shifts s
+         JOIN registers r ON r.id = s.register_id
+         LEFT JOIN locations l ON l.id = r.location_id
+         LEFT JOIN users u ON u.id = s.user_id
+         LEFT JOIN users e ON e.id = s.emulated_user_id
+         WHERE ${where}
+         ORDER BY s.started_at DESC, s.id DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, filter.limit, filter.offset]
+      );
+
+      return {
+        shifts: rowsResult.rows.map(mapRegisterShiftSummary),
+        total: Number(countResult.rows[0].count),
+      };
+    } catch (error) {
+      logger.error('Error getting register shifts:', error);
+      throw new DatabaseError('Failed to get the shift log');
     }
   }
 

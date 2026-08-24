@@ -111,6 +111,8 @@ export type {
   RegisterLiveness,
   RegisterOverride,
   RegisterOverrideQuery,
+  RegisterShift,
+  RegisterShiftQuery,
   RegisterPairingCode,
   RegisterStatus,
   RegisterType,

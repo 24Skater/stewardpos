@@ -45,6 +45,7 @@ const AdminReceipts = lazy(() => import("./pages/admin/AdminReceipts"));
 const AdminDiscounts = lazy(() => import("./pages/admin/AdminDiscounts"));
 const AdminRegisters = lazy(() => import("./pages/admin/AdminRegisters"));
 const AdminOverrides = lazy(() => import("./pages/admin/AdminOverrides"));
+const AdminShifts = lazy(() => import("./pages/admin/AdminShifts"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -96,6 +97,7 @@ const App = () => (
               <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
               <Route path="/admin/registers" element={<RequireAuth permission={{ domain: "registers", action: "read" }}><AdminRegisters /></RequireAuth>} />
               <Route path="/admin/overrides" element={<RequireAuth permission={{ domain: "registers", action: "read" }}><AdminOverrides /></RequireAuth>} />
+              <Route path="/admin/shifts" element={<RequireAuth permission={{ domain: "registers", action: "read" }}><AdminShifts /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
