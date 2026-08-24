@@ -391,6 +391,8 @@ describeSqlite('reporting aggregations on SQLite', () => {
  */
 describeSqlite('getRegisterShifts on SQLite', () => {
   const ORG = '00000000-0000-0000-0000-0000000000f1';
+  /** A fixed, well-past start time so the two seeded shifts cannot collide. */
+  const SHIFT_START = Date.parse('2026-08-18T09:00:00.000Z');
   const LOCATION = '00000000-0000-0000-0000-0000000000f2';
   let registerId: string;
   let cashierId: string;
@@ -435,6 +437,26 @@ describeSqlite('getRegisterShifts on SQLite', () => {
 
     const open = await adapter.createRegisterShift({ registerId, userId: cashierId });
     openShiftId = String(open.id);
+
+    // Stamp the two shifts an hour apart.
+    //
+    // `started_at` is INTEGER milliseconds on SQLite, and these two rows are
+    // created back to back, so they land in the same millisecond and the
+    // `id DESC` tie-break decides the order — by random UUID, i.e. a coin
+    // flip. That tie-break is there to make paging stable, not to order
+    // rows chronologically, so the fix belongs in the fixture: give the
+    // shifts distinct start times, as any two real shifts have. Postgres
+    // never showed this because its TIMESTAMP resolution separates them.
+    const stamp = new Database(filename);
+    stamp
+      .prepare(
+        'UPDATE register_shifts SET started_at = ?, last_activity_at = ?, ended_at = ? WHERE id = ?'
+      )
+      .run(SHIFT_START, SHIFT_START, SHIFT_START + 30 * 60_000, String(closed.id));
+    stamp
+      .prepare('UPDATE register_shifts SET started_at = ?, last_activity_at = ? WHERE id = ?')
+      .run(SHIFT_START + 3_600_000, SHIFT_START + 3_600_000, String(open.id));
+    stamp.close();
   });
 
   it('joins the cashier, till and location names onto the shift', async () => {
@@ -479,6 +501,18 @@ describeSqlite('getRegisterShifts on SQLite', () => {
     });
     expect(longAgo.total).toBe(0);
     expect(longAgo.shifts).toEqual([]);
+
+    // And the same filter finds the rows it should — a range test that only
+    // ever proves "nothing matched" would pass just as happily against a
+    // query that matched nothing at all.
+    const theDay = await adapter.getRegisterShifts({
+      orgId: ORG,
+      from: SHIFT_START - 3_600_000,
+      to: SHIFT_START + 3_600_000,
+      limit: 50,
+      offset: 0,
+    });
+    expect(theDay.total).toBe(2);
   });
 
   it('scopes to the org, so another shop\'s till is not readable by id', async () => {
