@@ -288,6 +288,23 @@ function mapRegisterShift(row: DbRow): DbRow {
 }
 
 /**
+ * A shift row for the admin shift log, with the names joined in. Counterpart
+ * to the Postgres mapper of the same name — see there for why the reporting
+ * shape is separate from the till's internal one.
+ */
+function mapRegisterShiftSummary(row: DbRow): DbRow {
+  return {
+    ...mapRegisterShift(row),
+    cashierName: row.cashier_name ?? null,
+    cashierEmail: row.cashier_email ?? null,
+    emulatedUserName: row.emulated_user_name ?? null,
+    registerName: row.register_name ?? null,
+    registerDisplayCode: row.register_display_code ?? null,
+    locationName: row.location_name ?? null,
+  };
+}
+
+/**
  * Turn a `register_overrides` row into the camelCase shape
  * `services/registerOverrides.ts` needs. Includes `grantHash` — like
  * `mapRegisterCredential`, this is an internal shape for the service layer's
@@ -1938,12 +1955,16 @@ export class SQLiteAdapter {
       const now = Date.now();
       const result = this.db
         .prepare(
-          `INSERT INTO audit_logs (timestamp, user_id, action, entity, entity_id, before, after)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO audit_logs (timestamp, user_id, actor_label, action, entity, entity_id, before, after)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
-          log.userId,
+          // `?? null` on both: better-sqlite3 refuses to bind `undefined`,
+          // and an unattributed row is exactly the case where these arrive
+          // missing rather than empty.
+          (log.userId as string | null) ?? null,
+          (log.actorLabel as string | null) ?? null,
           log.action,
           log.entity,
           log.entityId,
@@ -1959,6 +1980,7 @@ export class SQLiteAdapter {
         id: l.id,
         timestamp: l.timestamp,
         userId: l.user_id,
+        actorLabel: l.actor_label,
         action: l.action,
         entity: l.entity,
         entityId: l.entity_id,
@@ -2027,6 +2049,7 @@ export class SQLiteAdapter {
           userId: l.user_id,
           userName: l.user_name,
           userEmail: l.user_email,
+          actorLabel: l.actor_label,
           action: l.action,
           entity: l.entity,
           entityId: l.entity_id,
@@ -5917,6 +5940,91 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error getting register overrides:', error);
       throw new DatabaseError('Failed to get override log');
+    }
+  }
+
+  /**
+   * The shift log — counterpart to the Postgres method of the same name; see
+   * there for why it is scoped through `registers` rather than an `org_id` of
+   * its own.
+   *
+   * The timestamp comparisons take epoch milliseconds directly, because
+   * SQLite stores these columns as INTEGER milliseconds where Postgres stores
+   * TIMESTAMP — the one place the two queries genuinely differ.
+   */
+  async getRegisterShifts(filter: {
+    orgId: string;
+    limit: number;
+    offset: number;
+    registerId?: string;
+    locationId?: string;
+    userId?: string;
+    openOnly?: boolean;
+    from?: number;
+    to?: number;
+  }): Promise<{ shifts: DbRow[]; total: number }> {
+    try {
+      const conditions = ['r.org_id = ?'];
+      const params: unknown[] = [filter.orgId];
+
+      if (filter.registerId) {
+        conditions.push('s.register_id = ?');
+        params.push(filter.registerId);
+      }
+      if (filter.locationId) {
+        conditions.push('r.location_id = ?');
+        params.push(filter.locationId);
+      }
+      if (filter.userId) {
+        conditions.push('s.user_id = ?');
+        params.push(filter.userId);
+      }
+      if (filter.openOnly) {
+        conditions.push('s.ended_at IS NULL');
+      }
+      if (filter.from !== undefined) {
+        conditions.push('s.started_at >= ?');
+        params.push(filter.from);
+      }
+      if (filter.to !== undefined) {
+        conditions.push('s.started_at <= ?');
+        params.push(filter.to);
+      }
+
+      const where = conditions.join(' AND ');
+
+      const { count } = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM register_shifts s
+           JOIN registers r ON r.id = s.register_id
+           WHERE ${where}`
+        )
+        .get(...params) as { count: number };
+
+      const rows = this.db
+        .prepare(
+          `SELECT s.*,
+                  u.name AS cashier_name,
+                  u.email AS cashier_email,
+                  e.name AS emulated_user_name,
+                  r.name AS register_name,
+                  r.display_code AS register_display_code,
+                  l.name AS location_name
+           FROM register_shifts s
+           JOIN registers r ON r.id = s.register_id
+           LEFT JOIN locations l ON l.id = r.location_id
+           LEFT JOIN users u ON u.id = s.user_id
+           LEFT JOIN users e ON e.id = s.emulated_user_id
+           WHERE ${where}
+           ORDER BY s.started_at DESC, s.id DESC
+           LIMIT ? OFFSET ?`
+        )
+        .all(...params, filter.limit, filter.offset) as DbRow[];
+
+      return { shifts: rows.map(mapRegisterShiftSummary), total: Number(count) };
+    } catch (error) {
+      logger.error('Error getting register shifts:', error);
+      throw new DatabaseError('Failed to get the shift log');
     }
   }
 

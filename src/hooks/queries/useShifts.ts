@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { registersApi } from '@/lib/api';
+import { registersApi, type RegisterShiftQuery } from '@/lib/api';
 import { queryKeys } from './keys';
 
 /**
@@ -43,5 +43,22 @@ export function useEndShift() {
     onSuccess: (_data, registerId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.registers.currentShift(registerId) });
     },
+  });
+}
+
+/**
+ * The shift log — every shift ever opened in the org, newest first.
+ *
+ * Distinct from `useCurrentShift` above in both question and audience: that
+ * one asks a single till "is anybody signed on right now" and drives the lock
+ * screen, so it re-checks on a timer. This one asks the back office "who was
+ * on the tills, and when", which is a record of the past and does not change
+ * under the reader — so it is left to the default staleness rather than
+ * polling a history table.
+ */
+export function useRegisterShiftLog(query?: RegisterShiftQuery) {
+  return useQuery({
+    queryKey: queryKeys.registers.shiftLog(query),
+    queryFn: () => registersApi.shifts(query),
   });
 }

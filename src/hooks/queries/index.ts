@@ -31,5 +31,5 @@ export {
   useUpdateLocation,
   useUpdateRegister,
 } from './useRegisters';
-export { useCurrentShift, useEndShift, useStartShift } from './useShifts';
+export { useCurrentShift, useEndShift, useRegisterShiftLog, useStartShift } from './useShifts';
 export { useRegisterOverrides, useRequestOverride } from './useOverrides';
