@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult } from './TerminalPort';
+import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult, RefundRequest, RefundResult } from './TerminalPort';
+import { RefundNotSupportedError } from './errors';
 
 interface CloverConfig {
   apiToken: string;
@@ -76,6 +77,11 @@ export class CloverTerminalAdapter implements TerminalPort {
     await this.cloverFetch(`/v3/merchants/${this.merchantId}/remote_pay/${chargeId}`, {
       method: 'DELETE',
     });
+  }
+
+  /** Not implemented for Clover — see {@link RefundNotSupportedError}. */
+  async refundCharge(_request: RefundRequest): Promise<RefundResult> {
+    throw new RefundNotSupportedError('Clover');
   }
 
   async listReaders(): Promise<TerminalReader[]> {

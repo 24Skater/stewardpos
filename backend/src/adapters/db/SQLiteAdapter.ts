@@ -2981,11 +2981,13 @@ export class SQLiteAdapter {
   async createRefundTransaction(data: any): Promise<any> {
     try {
       const id = crypto.randomUUID();
+      const status = data.status || 'completed';
       this.db.prepare(
         `INSERT INTO refund_transactions (
           id, return_id, order_id, transaction_type, amount, currency,
-          payment_method, processor_transaction_id, status, processed_by, created_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          payment_method, processor_transaction_id, processor_response,
+          status, failure_reason, processed_by, created_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
         data.returnId,
@@ -2995,10 +2997,13 @@ export class SQLiteAdapter {
         data.currency || 'USD',
         data.paymentMethod,
         data.processorTransactionId,
-        data.status || 'completed',
+        data.processorResponse ?? null,
+        status,
+        data.failureReason ?? null,
         data.processedBy,
         Date.now(),
-        Date.now()
+        // Only a real completion time — see the Postgres adapter.
+        status === 'completed' || status === 'succeeded' ? Date.now() : null
       );
 
       return this.db.prepare('SELECT * FROM refund_transactions WHERE id = ?').get(id);
