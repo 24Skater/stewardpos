@@ -45,7 +45,7 @@ const navItems = [
   { path: '/admin/inventory', label: 'Inventory', icon: Package },
   { path: '/admin/receipts', label: 'Receipts', icon: Receipt },
   { path: '/admin/returns', label: 'Returns & Refunds', icon: RotateCcw },
-  { path: '/admin/reconciliation', label: 'Unreconciled Payments', icon: AlertTriangle },
+  { path: '/admin/reconciliation', label: 'Unreconciled Charges', icon: AlertTriangle },
   { path: '/admin/discounts', label: 'Discounts & Promos', icon: Tag },
   { path: '/admin/registers', label: 'Registers', icon: Store },
   { path: '/admin/shifts', label: 'Shifts', icon: Clock },

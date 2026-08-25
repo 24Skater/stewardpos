@@ -150,7 +150,7 @@ export default function AdminReconciliation() {
     <AdminLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Unreconciled Payments</h1>
+          <h1 className="text-2xl font-semibold">Unreconciled Charges</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Card payments that took money without a sale recorded against them. Payments still in
             progress are not listed.
