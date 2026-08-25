@@ -13,6 +13,11 @@ import { setPin, clearPin } from '../../services/pins';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../../utils/errors';
 import db from '../../services/database';
 import logger from '../../utils/logger';
+import {
+  encryptCredentials,
+  decryptSecret,
+  isEncrypted,
+} from '../../services/credentialCrypto';
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import componentsRoutes from './components';
@@ -489,6 +494,48 @@ const updateSettingsSchema = z.object({
  *
  * The replacement flag is what the UI renders as "configured".
  */
+/**
+ * Live or test, from the key prefix alone.
+ *
+ * Never the key itself: this says which world the shop is operating in, which
+ * is a thing the settings screen has to show, without handing back a secret
+ * that is write-only by design.
+ */
+function describeKeyMode(
+  credentials: Record<string, unknown> | null | undefined
+): 'live' | 'test' | 'unknown' | null {
+  if (!credentials) return null;
+
+  for (const value of Object.values(credentials)) {
+    if (typeof value !== 'string' || !value) continue;
+    // An encrypted value hides its own prefix, which is the point — the mode is
+    // read from the decrypted form at the one place that is allowed to see it.
+    const key = isEncrypted(value) ? safeDecrypt(value) : value;
+    if (!key) continue;
+    if (key.startsWith('sk_live_') || key.startsWith('rk_live_')) return 'live';
+    if (key.startsWith('sk_test_') || key.startsWith('rk_test_')) return 'test';
+  }
+
+  return Object.values(credentials).some((value) => value) ? 'unknown' : null;
+}
+
+/** Never let an unreadable credential break the settings screen. */
+function safeDecrypt(value: string): string | null {
+  try {
+    return decryptSecret(value);
+  } catch {
+    return null;
+  }
+}
+
+function credentialsEncrypted(
+  credentials: Record<string, unknown> | null | undefined
+): boolean {
+  if (!credentials) return false;
+  const stored = Object.values(credentials).filter((value) => typeof value === 'string' && value);
+  return stored.length > 0 && stored.every((value) => isEncrypted(value));
+}
+
 function withoutSecrets(settings: Record<string, unknown>): Record<string, unknown> {
   const config = settings.config as Record<string, unknown> | undefined;
   if (!config || !('terminalCredentials' in config)) return settings;
@@ -503,6 +550,17 @@ function withoutSecrets(settings: Record<string, unknown>): Record<string, unkno
       terminalCredentialsConfigured: Boolean(
         credentials && Object.values(credentials).some((value) => value)
       ),
+      /**
+       * Whether the configured key is a live one or a sandbox one.
+       *
+       * A shop that believes it is live while in a sandbox takes no money at
+       * all; the reverse charges real cards during training. Both are quiet
+       * failures, and the key prefix is the only thing that knows the answer —
+       * so it is surfaced even though the key itself never is.
+       */
+      terminalKeyMode: describeKeyMode(credentials),
+      /** Whether stored credentials are protected at rest on this install. */
+      terminalCredentialsEncrypted: credentialsEncrypted(credentials),
     },
   };
 }
@@ -545,6 +603,35 @@ router.get('/settings', requirePermission('settings', 'read'), async (_req: Auth
  * Sending a non-empty `terminalCredentials` still overwrites, which is how a key
  * gets rotated. Omitting it, or sending an empty object, means "leave as is".
  */
+/**
+ * Refuse an unrestricted live key.
+ *
+ * Stripe's own guidance is to use a restricted key (`rk_live_`) in live mode
+ * rather than the account secret, and when the key belongs to somebody else and
+ * sits in a database we operate, that stops being guidance. An `sk_live_` can
+ * charge cards, refund to destinations of its holder's choosing, read customer
+ * records and change where payouts land; an `rk_live_` scoped to what this
+ * integration needs can do none of that if it leaks.
+ *
+ * Test keys are left alone. The risk is the point, and forcing a restricted key
+ * during setup buys nothing but friction.
+ *
+ * Checked at save rather than at boot, so an install already holding such a key
+ * keeps working and meets this the next time somebody rotates it — which is the
+ * right moment to fix it, not mid-service.
+ */
+function rejectUnrestrictedLiveKeys(credentials: Record<string, unknown>): void {
+  for (const [name, value] of Object.entries(credentials)) {
+    if (typeof value === 'string' && value.startsWith('sk_live_')) {
+      throw new ValidationError(
+        `${name} is an unrestricted live secret key. Create a restricted key (rk_live_…) in the ` +
+          'Stripe dashboard with write access to Payment Intents, Refunds and Terminal, and read ' +
+          'access to Charges, then paste that instead.'
+      );
+    }
+  }
+}
+
 async function preserveSecrets(
   incoming: Record<string, unknown>,
   adapter: ReturnType<typeof db.getAdapter>
@@ -554,7 +641,19 @@ async function preserveSecrets(
 
   const submitted = config.terminalCredentials as Record<string, unknown> | undefined;
   const hasNewCredentials = Boolean(submitted && Object.values(submitted).some((value) => value));
-  if (hasNewCredentials) return incoming;
+  if (hasNewCredentials) {
+    rejectUnrestrictedLiveKeys(submitted as Record<string, unknown>);
+    // Encrypted on the way in, so the key and the ciphertext never share a
+    // resting place: the key is in the environment, the ciphertext in the
+    // database, and a dump of one is not enough to use the other.
+    return {
+      ...incoming,
+      config: {
+        ...config,
+        terminalCredentials: encryptCredentials(submitted as Record<string, unknown>),
+      },
+    };
+  }
 
   const existing = (await adapter.getSettings()) as Record<string, unknown> | null;
   const storedConfig = existing?.config as Record<string, unknown> | undefined;

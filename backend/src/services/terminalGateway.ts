@@ -6,6 +6,7 @@ import {
   type TerminalConfig,
 } from '../terminal/TerminalAdapterFactory';
 import type { TerminalPort } from '../terminal/TerminalPort';
+import { decryptCredentials } from './credentialCrypto';
 
 /**
  * Building the card-terminal adapter for whoever is asking.
@@ -59,7 +60,10 @@ export async function resolveTerminal(
   const paymentMethods = config.paymentMethods as Record<string, unknown> | undefined;
   const card = paymentMethods?.card as Record<string, unknown> | undefined;
   const provider = register?.terminalProvider || (card?.provider as string) || 'generic';
-  const creds = (config.terminalCredentials || {}) as Partial<TerminalConfig>;
+  // Decrypted at the one point they are used. Everywhere else — settings
+  // responses, audit rows, logs — they stay as stored, which is the whole
+  // reason the ciphertext is what lives in the database.
+  const creds = readTerminalCredentials(settings) as Partial<TerminalConfig>;
 
   // The register's reader wins over the store-wide one when it has been bound.
   const deviceField = DEVICE_FIELD_BY_PROVIDER[provider];
@@ -79,4 +83,21 @@ export async function resolveTerminal(
     }
     throw error;
   }
+}
+
+
+/**
+ * The shop's payment credentials, in usable form.
+ *
+ * The single place stored credentials are opened, so a caller that needs one —
+ * the terminal, the webhook verifier — cannot accidentally reach past it and
+ * work with the encrypted value, and so adding another storage format later
+ * means changing one function.
+ */
+export function readTerminalCredentials(
+  settings: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  const config = (settings?.config as Record<string, unknown>) || {};
+  const stored = (config.terminalCredentials || {}) as Record<string, unknown>;
+  return decryptCredentials(stored);
 }
