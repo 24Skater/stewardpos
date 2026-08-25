@@ -2,7 +2,13 @@ import { Pool } from 'pg';
 import logger from '../../utils/logger';
 import { escapeLike } from './like';
 import { DatabaseError, ValidationError } from '../../utils/errors';
-import { DbRow, asRows } from './types';
+import {
+  DbRow,
+  asRows,
+  type PaymentAttempt,
+  type PaymentAttemptCreate,
+  type PaymentAttemptUpdate,
+} from './types';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
 import type {
   AuditLogQuery,
@@ -4559,6 +4565,77 @@ export class PostgresAdapter {
   }
 
   // ===== Terminal Transaction Operations =====
+  /**
+   * Record what we are about to charge, before charging it.
+   *
+   * Written outside any transaction and on purpose: this row's whole job is to
+   * survive whatever happens next, including the request that created it dying
+   * mid-authorisation. A row rolled back with its own failure would tell us
+   * nothing about a card that was charged anyway.
+   */
+  async createPaymentAttempt(data: PaymentAttemptCreate): Promise<PaymentAttempt> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO payment_attempts
+           (org_id, register_id, cashier_user_id, shift_id,
+            amount_cents, currency, provider, cart_snapshot, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         RETURNING *`,
+        [
+          data.orgId ?? null,
+          data.registerId ?? null,
+          data.cashierUserId ?? null,
+          data.shiftId ?? null,
+          data.amountCents,
+          data.currency,
+          data.provider,
+          data.cartSnapshot === undefined ? null : JSON.stringify(data.cartSnapshot),
+        ]
+      );
+      return mapPaymentAttempt(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating payment attempt:', error);
+      throw new DatabaseError('Failed to record the payment attempt');
+    }
+  }
+
+  async getPaymentAttemptById(id: string): Promise<PaymentAttempt | null> {
+    try {
+      const result = await this.pool.query('SELECT * FROM payment_attempts WHERE id = $1', [id]);
+      return result.rows[0] ? mapPaymentAttempt(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error loading payment attempt:', error);
+      throw new DatabaseError('Failed to load the payment attempt');
+    }
+  }
+
+  /** Only the fields actually supplied, so a partial update cannot blank the rest. */
+  async updatePaymentAttempt(id: string, patch: PaymentAttemptUpdate): Promise<PaymentAttempt | null> {
+    const columns: Record<string, unknown> = {
+      status: patch.status,
+      charge_id: patch.chargeId,
+      order_id: patch.orderId,
+      failure_reason: patch.failureReason,
+    };
+    const present = Object.entries(columns).filter(([, value]) => value !== undefined);
+    if (present.length === 0) return this.getPaymentAttemptById(id);
+
+    try {
+      const assignments = present.map(([column], index) => `${column} = $${index + 2}`);
+      const result = await this.pool.query(
+        `UPDATE payment_attempts
+            SET ${assignments.join(', ')}, updated_at = NOW()
+          WHERE id = $1
+          RETURNING *`,
+        [id, ...present.map(([, value]) => value)]
+      );
+      return result.rows[0] ? mapPaymentAttempt(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error updating payment attempt:', error);
+      throw new DatabaseError('Failed to update the payment attempt');
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const result = await this.pool.query(
@@ -6259,4 +6336,47 @@ export class PostgresAdapter {
     }
   }
 
+}
+
+/**
+ * A payment_attempts row in the shape the application uses.
+ *
+ * `cart_snapshot` comes back parsed from JSONB on Postgres but as text on
+ * SQLite, so both adapters funnel through the same tolerant read.
+ */
+function mapPaymentAttempt(row: DbRow): PaymentAttempt {
+  return {
+    id: String(row.id),
+    orgId: row.org_id ?? null,
+    registerId: row.register_id ?? null,
+    cashierUserId: row.cashier_user_id ?? null,
+    shiftId: row.shift_id ?? null,
+    amountCents: Number(row.amount_cents),
+    currency: String(row.currency),
+    provider: String(row.provider),
+    chargeId: row.charge_id ?? null,
+    status: row.status,
+    failureReason: row.failure_reason ?? null,
+    orderId: row.order_id ?? null,
+    cartSnapshot: parseCartSnapshot(row.cart_snapshot),
+    createdAt: toEpochMillis(row.created_at),
+    updatedAt: toEpochMillis(row.updated_at),
+  };
+}
+
+function parseCartSnapshot(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // A snapshot we cannot read is a reporting inconvenience, never a reason to
+    // fail the lookup that someone is using to reconcile a real charge.
+    return null;
+  }
+}
+
+function toEpochMillis(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  return Number(value);
 }
