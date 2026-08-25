@@ -61,6 +61,39 @@ function renderReceiptText(
   lines.push(`Total     ${money(order.total)}`);
   if (order.paymentMethod) lines.push(`Paid by   ${order.paymentMethod}`);
 
+  /**
+   * The card-network fields, on an emailed receipt as much as a printed one.
+   *
+   * The obligation to show the application name and the AID for a chip payment
+   * is about the receipt the customer receives, not about paper — so a receipt
+   * arriving by email without them falls short of the same requirement.
+   *
+   * Each line only when the processor reported it: a contactless tap does not
+   * negotiate the same set as an inserted chip, and "AID" with nothing after it
+   * reads as a fault rather than as an absence.
+   */
+  const receipt = order.cardReceipt as Record<string, unknown> | null | undefined;
+  if (receipt) {
+    const emv: Array<[string, unknown]> = [
+      ['App', receipt.applicationPreferredName],
+      ['AID', receipt.dedicatedFileName],
+      ['Account', receipt.accountType],
+      ['Auth', receipt.authorizationCode],
+      ['ARC', receipt.authorizationResponseCode],
+      ['AC', receipt.applicationCryptogram],
+      ['TVR', receipt.terminalVerificationResults],
+      ['TSI', receipt.transactionStatusInformation],
+      ['CVM', receipt.cardholderVerificationMethod],
+    ];
+    const present = emv.filter(
+      ([, value]) => value !== null && value !== undefined && value !== ''
+    );
+    if (present.length > 0) {
+      lines.push('');
+      for (const [label, value] of present) lines.push(`${label}  ${String(value)}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
