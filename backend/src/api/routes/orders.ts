@@ -10,19 +10,13 @@ import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import { getOpenShift, touchShift } from '../../services/registerShifts';
 import { consumeOverride, describeOverrideFailure } from '../../services/registerOverrides';
+import { calculateChange, toCents, toDollars } from '../../services/pricing';
 import {
-  calculateChange,
-  repriceOrder,
-  toCents,
-  toDollars,
-  type PriceableProduct,
-} from '../../services/pricing';
-import {
-  validateAppliedDiscounts,
   type AppliedDiscountRequest,
   type ValidatedDiscount,
 } from '../../services/discountPricing';
-import { cashPortion, singleTender, validateTender } from '../../services/tender';
+import { cardPortion, cashPortion, singleTender, validateTender } from '../../services/tender';
+import { priceCart as priceCartService, type CartLine } from '../../services/cartPricing';
 
 const router = Router();
 
@@ -156,6 +150,14 @@ const createOrderSchema = z.object({
   ),
   cardTransactionId: z.string().optional(),
   cardAuthCode: z.string().optional(),
+  /**
+   * The payment attempt this sale is settling, from `POST /api/terminal/charge`.
+   *
+   * Present on any card sale rung through a reader. It is what turns "a card
+   * was charged" and "an order exists" into one fact rather than two hopeful
+   * ones, and it is checked against the tender before the order is written.
+   */
+  attemptId: z.string().uuid().optional(),
 });
 
 /**
@@ -222,67 +224,22 @@ router.get('/:id', requirePermission('orders', 'read'), async (req: AuthRequest,
   }
 });
 
-
-/** A cart line as both the quote and the create endpoint accept it. */
-interface CartLine {
-  productId: string;
-  variantId?: string;
-  quantity: number;
-  notes?: string;
-}
-
 /**
- * Price a cart authoritatively.
+ * Price a cart for whoever is making this request.
  *
- * The single path shared by `POST /api/orders/quote` and `POST /api/orders`, so
- * the figure the register is quoted is by construction the figure it will be
- * charged. Two implementations would drift, and the failure mode is a customer's
- * card charged one amount while the order records another.
- *
- * Everything the client said about money is discarded here: prices come from the
- * catalog, tax from settings, and each claimed discount is resolved against the
- * discount catalog.
+ * The pricing itself lives in `services/cartPricing` so the card terminal can
+ * price the same cart the same way; this only supplies the two things about the
+ * caller that pricing depends on.
  */
-async function priceCart(
+function priceCart(
   req: AuthRequest,
   items: CartLine[],
   appliedDiscounts: AppliedDiscountRequest[]
 ) {
-  const adapter = db.getAdapter();
-
-  const catalog = new Map<string, PriceableProduct>();
-  for (const productId of new Set(items.map((item) => item.productId))) {
-    const product = await adapter.getProductById(productId);
-    if (product) catalog.set(productId, product as unknown as PriceableProduct);
-  }
-
-  const settings = await adapter.getSettings();
-  const taxRate = Number((settings as { taxRateDefault?: number } | null)?.taxRateDefault ?? 0);
-
-  const lines = items.map((item) => ({
-    productId: item.productId,
-    variantId: item.variantId,
-    quantity: item.quantity,
-    notes: item.notes,
-  }));
-
-  // Priced once without discounts first: a percentage discount needs a subtotal
-  // to apply to, and that subtotal has to come from the catalog too.
-  const undiscounted = repriceOrder(lines, catalog, { taxRate });
-
-  const validated = await validateAppliedDiscounts(appliedDiscounts, adapter, {
-    subtotalCents: toCents(undiscounted.subtotal),
+  return priceCartService(items, appliedDiscounts, {
     actingUserId: req.user?.id,
     mayGrantManualDiscount: grantsManualDiscount(req),
   });
-
-  return {
-    ...repriceOrder(lines, catalog, {
-      taxRate,
-      requestedDiscount: toDollars(validated.totalCents),
-    }),
-    appliedDiscounts: validated.discounts,
-  };
 }
 
 /**
@@ -460,6 +417,35 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     const drawerSession =
       cashPortion(tender.payments) > 0 ? await adapter.getOpenDrawerSession(register.id) : null;
 
+    /**
+     * Check the sale against the money that was actually taken.
+     *
+     * The card has already been charged by the time this runs, so the order
+     * must record the same figure the processor was given. Verified before
+     * `createOrder` rather than after: a sale that disagrees with the charge is
+     * one nobody can reconcile, and refusing to write it leaves the attempt
+     * open and visible instead of producing a wrong record that looks settled.
+     */
+    const attempt = orderData.attemptId
+      ? await adapter.getPaymentAttemptById(orderData.attemptId)
+      : null;
+
+    if (orderData.attemptId) {
+      if (!attempt) {
+        throw new NotFoundError('That card payment could not be found');
+      }
+      if (attempt.orderId) {
+        throw new ConflictError('That card payment has already been recorded against a sale');
+      }
+      const chargedCents = attempt.amountCents;
+      const onCardCents = toCents(cardPortion(tender.payments));
+      if (chargedCents !== onCardCents) {
+        throw new UnprocessableEntityError(
+          `This sale puts $${toDollars(onCardCents).toFixed(2)} on a card, but $${toDollars(chargedCents).toFixed(2)} was charged. Refund the payment and ring the sale again.`
+        );
+      }
+    }
+
     const order = await adapter.createOrder({
       ...orderData,
       ...priced,
@@ -477,6 +463,21 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
       // was needed. Null on every sale that never touched an approval gate.
       overrideByUserId: discountOverrideApproverId,
     });
+
+    // The attempt is settled: this is what moves it out of the reconciliation
+    // list. Failing here would leave a completed sale looking unreconciled,
+    // which is the safe direction to be wrong in — somebody checks and finds
+    // the order, rather than money going unnoticed.
+    if (attempt) {
+      try {
+        await adapter.updatePaymentAttempt(attempt.id, {
+          status: 'completed',
+          orderId: String(order.id),
+        });
+      } catch (error) {
+        logger.error(`Order ${order.id} created but attempt ${attempt.id} not linked:`, error);
+      }
+    }
 
     // If this was a card payment, link the terminal transaction to the order
     if (orderData.cardTransactionId) {

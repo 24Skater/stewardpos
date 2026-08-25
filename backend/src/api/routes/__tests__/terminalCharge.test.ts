@@ -5,13 +5,13 @@ import jwt from 'jsonwebtoken';
 /**
  * Card terminal routes.
  *
- * The live Stripe path is still simulated (P3-T5), so what is worth pinning
- * down is everything around the charge: that the amount is validated as whole
- * cents before any provider is reached, that a transaction is recorded whatever
- * the outcome, and that reading or cancelling a charge is permission-gated.
+ * What is worth pinning down here is everything around the charge: that a
+ * transaction is recorded whatever the outcome, and that starting, reading or
+ * cancelling a charge is permission-gated.
  *
- * Amounts here are **integer cents**, unlike the rest of the API which speaks
- * dollars — that mismatch is the kind of thing a test should hold in place.
+ * The amount is no longer an input — the caller sends a cart and the server
+ * prices it — so the figure that reaches the processor is covered by
+ * `chargeAmount.test.ts` instead.
  */
 const getUserByEmail = vi.fn();
 const createTerminalTransaction = vi.fn();
@@ -20,6 +20,10 @@ const updateTerminalTransactionByChargeId = vi.fn();
 const getSettings = vi.fn();
 const getRegisters = vi.fn();
 const getRegisterById = vi.fn();
+const getProductById = vi.fn();
+const getOpenShiftForRegister = vi.fn();
+const createPaymentAttempt = vi.fn();
+const updatePaymentAttempt = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -31,6 +35,10 @@ vi.mock('../../../services/database', () => ({
       getSettings,
       getRegisters,
       getRegisterById,
+      getProductById,
+      getOpenShiftForRegister,
+      createPaymentAttempt,
+      updatePaymentAttempt,
     }),
   },
 }));
@@ -71,13 +79,25 @@ const UNBOUND_REGISTER = {
   terminalDeviceId: null,
 };
 
+/** A $12.50 basket, which is what the server prices this cart at. */
+const CART = { items: [{ productId: 'p1', variantId: 'v1', quantity: 1 }] };
+
 const charge = (body: Record<string, unknown> = {}) =>
-  request(app).post('/api/terminal/charge').set(auth()).send({ amount: 1250, ...body });
+  request(app).post('/api/terminal/charge').set(auth()).send({ ...CART, ...body });
 
 beforeEach(() => {
   vi.clearAllMocks();
   getUserByEmail.mockResolvedValue(actor({ orders: { read: true, write: true } }));
-  getSettings.mockResolvedValue({ config: {} });
+  getSettings.mockResolvedValue({ taxRateDefault: 0, config: {} });
+  getProductById.mockResolvedValue({
+    id: 'p1',
+    name: 'Candle',
+    basePrice: 12.5,
+    variants: [{ id: 'v1', stock: 5, enabled: true }],
+  });
+  getOpenShiftForRegister.mockResolvedValue(null);
+  createPaymentAttempt.mockImplementation(async (data) => ({ id: 'att-1', ...data }));
+  updatePaymentAttempt.mockResolvedValue({});
   createTerminalTransaction.mockResolvedValue({ id: 't1' });
   updateTerminalTransactionByChargeId.mockResolvedValue(undefined);
   getTerminalTransactionByChargeId.mockResolvedValue({
@@ -110,26 +130,13 @@ describe('POST /api/terminal/charge', () => {
     );
   });
 
-  it('rejects a zero amount', async () => {
-    expect((await charge({ amount: 0 })).status).toBe(400);
-    expect(createTerminalTransaction).not.toHaveBeenCalled();
-  });
-
-  it('rejects a negative amount', async () => {
-    expect((await charge({ amount: -100 })).status).toBe(400);
-  });
-
-  it('rejects fractional cents', async () => {
-    // The unit here is integer cents. Accepting 12.5 would silently truncate or
-    // round somewhere downstream and charge the wrong amount.
-    expect((await charge({ amount: 12.5 })).status).toBe(400);
-    expect(createTerminalTransaction).not.toHaveBeenCalled();
-  });
-
-  it('rejects a missing amount', async () => {
-    const response = await request(app).post('/api/terminal/charge').set(auth()).send({});
+  it('rejects a charge with nothing to sell', async () => {
+    // The cart is the input now, so an empty one is the equivalent of the old
+    // missing amount: there is nothing to price and nothing to charge.
+    const response = await request(app).post('/api/terminal/charge').set(auth()).send({ items: [] });
 
     expect(response.status).toBe(400);
+    expect(createTerminalTransaction).not.toHaveBeenCalled();
   });
 
   it('defaults the currency rather than requiring it', async () => {
@@ -146,7 +153,7 @@ describe('POST /api/terminal/charge', () => {
   });
 
   it('refuses an anonymous caller', async () => {
-    expect((await request(app).post('/api/terminal/charge').send({ amount: 100 })).status).toBe(401);
+    expect((await request(app).post('/api/terminal/charge').send(CART)).status).toBe(401);
   });
 });
 

@@ -309,6 +309,14 @@ export interface CreateOrderRequest {
   customerPhone?: string;
   cardTransactionId?: string;
   cardAuthCode?: string;
+  /**
+   * The payment attempt this sale settles, from `POST /api/terminal/charge`.
+   *
+   * The server checks the card portion of the tender against what it actually
+   * charged before writing the order, so a sale can never quietly disagree with
+   * the money taken.
+   */
+  attemptId?: string;
 }
 
 // ===== Customers =====

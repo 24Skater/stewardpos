@@ -82,7 +82,7 @@ export class StripeTerminalAdapter implements TerminalPort {
         currency: currency.toLowerCase(),
         payment_method_types: ['card_present'],
         capture_method: 'automatic',
-        metadata: { description: meta.description || '' },
+        metadata: { description: meta.description || '', ...(meta.metadata ?? {}) },
       },
       { idempotencyKey }
     );

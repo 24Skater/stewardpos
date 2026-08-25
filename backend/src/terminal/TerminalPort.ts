@@ -18,6 +18,14 @@ export interface ChargeMeta {
    * while a cashier pressing "try again" after a decline is a new one.
    */
   idempotencyKey?: string;
+  /**
+   * Key-value pairs stored against the payment at the processor.
+   *
+   * This is what makes a payout row traceable back to a sale months later, and
+   * it is the only link that survives our own database being unavailable — so
+   * it carries our ids, never anything about the customer.
+   */
+  metadata?: Record<string, string>;
 }
 
 export interface ChargeResult {
