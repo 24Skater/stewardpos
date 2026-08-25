@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { recordChargeOutcome } from '../../services/paymentOutcome';
+import { readTerminalCredentials } from '../../services/terminalGateway';
 import type { ChargeStatus } from '../../terminal/TerminalPort';
 
 /**
@@ -41,9 +42,7 @@ async function signingSecret(): Promise<string | null> {
   if (process.env.STRIPE_WEBHOOK_SECRET) return process.env.STRIPE_WEBHOOK_SECRET;
 
   const settings = await db.getAdapter().getSettings();
-  const config = (settings?.config as Record<string, unknown>) || {};
-  const credentials = (config.terminalCredentials || {}) as Record<string, unknown>;
-  const secret = credentials.stripeWebhookSecret;
+  const secret = readTerminalCredentials(settings).stripeWebhookSecret;
   return typeof secret === 'string' && secret ? secret : null;
 }
 

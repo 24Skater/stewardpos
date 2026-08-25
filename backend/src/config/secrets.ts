@@ -116,6 +116,19 @@ export function productionSecrets(env: NodeJS.ProcessEnv): SecretToCheck[] {
     });
   }
 
+  /**
+   * Only when the install has opted into encrypting payment credentials.
+   *
+   * Deliberately not required. Making it mandatory would refuse to start every
+   * existing production install on upgrade, over a condition they have had
+   * since the day they were set up — the startup warning is what tells them.
+   * But a key set to a placeholder is worse than none, because it looks like
+   * protection, so a value that *is* present has to be a real one.
+   */
+  if (env.CREDENTIALS_KEY !== undefined) {
+    secrets.push({ name: 'CREDENTIALS_KEY', value: env.CREDENTIALS_KEY, minLength: 32 });
+  }
+
   return secrets;
 }
 
