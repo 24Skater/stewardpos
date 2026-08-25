@@ -13,7 +13,6 @@ import { customersApi, ordersApi, quotesApi, returnsApi } from '@/lib/api';
 import type { Order } from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Eye, ShoppingCart, Briefcase, RotateCcw, Archive, AlertTriangle } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, hasRole, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
@@ -347,621 +346,619 @@ export default function AdminCustomers() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Customers</h1>
-              <p className="text-muted-foreground">Manage customer relationships</p>
-            </div>
-            {canWrite && (
-              <Button onClick={handleAddCustomer}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Customer
-              </Button>
-            )}
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Customers</h1>
+            <p className="text-muted-foreground">Manage customer relationships</p>
           </div>
+          {canWrite && (
+            <Button onClick={handleAddCustomer}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Customer
+            </Button>
+          )}
+        </div>
 
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search customers..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search customers..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
+        </div>
 
-          <div className="bg-card rounded-lg border border-border">
-            <Table>
-              <TableHeader>
+        <div className="bg-card rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    Loading customers...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
-                      Loading customers...
+              ) : filteredCustomers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No customers found. {canWrite && 'Click "Add Customer" to create one.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredCustomers.map((customer) => (
+                  <TableRow key={customer.id}>
+                    <TableCell className="font-medium">{customer.name}</TableCell>
+                    <TableCell>{customer.org || '—'}</TableCell>
+                    <TableCell>{customer.email || '—'}</TableCell>
+                    <TableCell>{customer.phone || '—'}</TableCell>
+                    <TableCell>
+                      {customer.city && customer.state 
+                        ? `${customer.city}, ${customer.state}` 
+                        : customer.city || customer.state || '—'}
                     </TableCell>
-                  </TableRow>
-                ) : filteredCustomers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      No customers found. {canWrite && 'Click "Add Customer" to create one.'}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredCustomers.map((customer) => (
-                    <TableRow key={customer.id}>
-                      <TableCell className="font-medium">{customer.name}</TableCell>
-                      <TableCell>{customer.org || '—'}</TableCell>
-                      <TableCell>{customer.email || '—'}</TableCell>
-                      <TableCell>{customer.phone || '—'}</TableCell>
-                      <TableCell>
-                        {customer.city && customer.state 
-                          ? `${customer.city}, ${customer.state}` 
-                          : customer.city || customer.state || '—'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleViewCustomer(customer)}>
-                            <Eye className="w-4 h-4" />
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleViewCustomer(customer)}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        {canWrite && (
+                          <Button variant="ghost" size="icon" onClick={() => handleEditCustomer(customer)}>
+                            <Edit className="w-4 h-4" />
                           </Button>
-                          {canWrite && (
-                            <Button variant="ghost" size="icon" onClick={() => handleEditCustomer(customer)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                          )}
-                          {canDelete && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer)} title="Delete/Archive">
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                        )}
+                        {canDelete && (
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer)} title="Delete/Archive">
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-          {/* Add/Edit Customer Dialog */}
-          <Dialog open={editDialogOpen} onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setEditingCustomer(null);
-              setIsNewCustomer(false);
-            }
-          }}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{isNewCustomer ? 'Add Customer' : 'Edit Customer'}</DialogTitle>
-                <DialogDescription>
-                  {isNewCustomer ? 'Create a new customer record' : 'Update customer information'}
-                </DialogDescription>
-              </DialogHeader>
-              {editingCustomer && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name *</Label>
-                      <Input
-                        id="name"
-                        value={editingCustomer.name || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
-                        placeholder="John Doe"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="org">Organization</Label>
-                      <Input
-                        id="org"
-                        value={editingCustomer.org || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, org: e.target.value })}
-                        placeholder="Company Inc."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={editingCustomer.email || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
-                        placeholder="john@example.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={editingCustomer.phone || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
-                  </div>
-
+        {/* Add/Edit Customer Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setEditingCustomer(null);
+            setIsNewCustomer(false);
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isNewCustomer ? 'Add Customer' : 'Edit Customer'}</DialogTitle>
+              <DialogDescription>
+                {isNewCustomer ? 'Create a new customer record' : 'Update customer information'}
+              </DialogDescription>
+            </DialogHeader>
+            {editingCustomer && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="address">Address</Label>
+                    <Label htmlFor="name">Name *</Label>
                     <Input
-                      id="address"
-                      value={editingCustomer.address || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
-                      placeholder="123 Main St"
+                      id="name"
+                      value={editingCustomer.name || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
+                      placeholder="John Doe"
                     />
                   </div>
-
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input
-                        id="city"
-                        value={editingCustomer.city || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
-                        placeholder="New York"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="state">State</Label>
-                      <Input
-                        id="state"
-                        value={editingCustomer.state || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, state: e.target.value })}
-                        placeholder="NY"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="zip">ZIP</Label>
-                      <Input
-                        id="zip"
-                        value={editingCustomer.zip || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, zip: e.target.value })}
-                        placeholder="10001"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="country">Country</Label>
-                      <Input
-                        id="country"
-                        value={editingCustomer.country || ''}
-                        onChange={(e) => setEditingCustomer({ ...editingCustomer, country: e.target.value })}
-                        placeholder="USA"
-                      />
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      value={editingCustomer.notes || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, notes: e.target.value })}
-                      placeholder="Additional notes about this customer..."
-                      rows={3}
+                    <Label htmlFor="org">Organization</Label>
+                    <Input
+                      id="org"
+                      value={editingCustomer.org || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, org: e.target.value })}
+                      placeholder="Company Inc."
                     />
                   </div>
                 </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveCustomer}>
-                  {isNewCustomer ? 'Create Customer' : 'Save Changes'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
-          {/* View Customer Dialog with Order History */}
-          <Dialog open={viewDialogOpen} onOpenChange={(open) => {
-            setViewDialogOpen(open);
-            if (!open) {
-              setViewingCustomer(null);
-              setCustomerOrders([]);
-              setCustomerQuotes([]);
-            }
-          }}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Customer Details</DialogTitle>
-                <DialogDescription>View customer information and order history</DialogDescription>
-              </DialogHeader>
-              {viewingCustomer && (
-                <Tabs defaultValue="info" className="space-y-4">
-                  <TabsList>
-                    <TabsTrigger value="info">Info</TabsTrigger>
-                    <TabsTrigger value="orders" className="flex items-center gap-2">
-                      <ShoppingCart className="w-4 h-4" />
-                      POS Orders ({customerOrders.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="services" className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4" />
-                      Service Quotes ({customerQuotes.length})
-                    </TabsTrigger>
-                    <TabsTrigger value="returns" className="flex items-center gap-2">
-                      <RotateCcw className="w-4 h-4" />
-                      Returns ({customerReturns.length})
-                    </TabsTrigger>
-                  </TabsList>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={editingCustomer.email || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
+                      placeholder="john@example.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={editingCustomer.phone || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
 
-                  {/* Customer Info Tab */}
-                  <TabsContent value="info" className="space-y-4">
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-4 gap-4">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">POS Sales</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold">${getCustomerStats().totalPOSSales.toFixed(2)}</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">Service Revenue</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold">${getCustomerStats().totalServiceRevenue.toFixed(2)}</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">Returns</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-red-600">-${getCustomerStats().totalReturns.toFixed(2)}</div>
-                          <p className="text-xs text-muted-foreground">{getCustomerStats().returnCount} return(s)</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm text-muted-foreground">Net Value</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold text-green-600">${getCustomerStats().totalValue.toFixed(2)}</div>
-                        </CardContent>
-                      </Card>
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    value={editingCustomer.address || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
+                    placeholder="123 Main St"
+                  />
+                </div>
 
-                    {/* Customer Details */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Name</label>
-                        <p className="font-medium">{viewingCustomer.name}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Organization</label>
-                        <p>{viewingCustomer.org || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Email</label>
-                        <p>{viewingCustomer.email || '—'}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Phone</label>
-                        <p>{viewingCustomer.phone || '—'}</p>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={editingCustomer.city || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
+                      placeholder="New York"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State</Label>
+                    <Input
+                      id="state"
+                      value={editingCustomer.state || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, state: e.target.value })}
+                      placeholder="NY"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="zip">ZIP</Label>
+                    <Input
+                      id="zip"
+                      value={editingCustomer.zip || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, zip: e.target.value })}
+                      placeholder="10001"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      value={editingCustomer.country || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, country: e.target.value })}
+                      placeholder="USA"
+                    />
+                  </div>
+                </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={editingCustomer.notes || ''}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, notes: e.target.value })}
+                    placeholder="Additional notes about this customer..."
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveCustomer}>
+                {isNewCustomer ? 'Create Customer' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Customer Dialog with Order History */}
+        <Dialog open={viewDialogOpen} onOpenChange={(open) => {
+          setViewDialogOpen(open);
+          if (!open) {
+            setViewingCustomer(null);
+            setCustomerOrders([]);
+            setCustomerQuotes([]);
+          }
+        }}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Customer Details</DialogTitle>
+              <DialogDescription>View customer information and order history</DialogDescription>
+            </DialogHeader>
+            {viewingCustomer && (
+              <Tabs defaultValue="info" className="space-y-4">
+                <TabsList>
+                  <TabsTrigger value="info">Info</TabsTrigger>
+                  <TabsTrigger value="orders" className="flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4" />
+                    POS Orders ({customerOrders.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="services" className="flex items-center gap-2">
+                    <Briefcase className="w-4 h-4" />
+                    Service Quotes ({customerQuotes.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="returns" className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4" />
+                    Returns ({customerReturns.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Customer Info Tab */}
+                <TabsContent value="info" className="space-y-4">
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-4 gap-4">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">POS Sales</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">${getCustomerStats().totalPOSSales.toFixed(2)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">Service Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">${getCustomerStats().totalServiceRevenue.toFixed(2)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">Returns</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-red-600">-${getCustomerStats().totalReturns.toFixed(2)}</div>
+                        <p className="text-xs text-muted-foreground">{getCustomerStats().returnCount} return(s)</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-muted-foreground">Net Value</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-green-600">${getCustomerStats().totalValue.toFixed(2)}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Customer Details */}
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Address</label>
-                      <p>
-                        {viewingCustomer.address && <span>{viewingCustomer.address}<br/></span>}
-                        {viewingCustomer.city && viewingCustomer.state 
-                          ? `${viewingCustomer.city}, ${viewingCustomer.state} ${viewingCustomer.zip || ''}`
-                          : viewingCustomer.city || viewingCustomer.state || '—'}
-                        {viewingCustomer.country && <span><br/>{viewingCustomer.country}</span>}
-                      </p>
+                      <label className="text-sm font-medium text-muted-foreground">Name</label>
+                      <p className="font-medium">{viewingCustomer.name}</p>
                     </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Organization</label>
+                      <p>{viewingCustomer.org || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Email</label>
+                      <p>{viewingCustomer.email || '—'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Phone</label>
+                      <p>{viewingCustomer.phone || '—'}</p>
+                    </div>
+                  </div>
 
-                    {viewingCustomer.notes && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                        <p className="text-sm">{viewingCustomer.notes}</p>
-                      </div>
-                    )}
-                  </TabsContent>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Address</label>
+                    <p>
+                      {viewingCustomer.address && <span>{viewingCustomer.address}<br/></span>}
+                      {viewingCustomer.city && viewingCustomer.state 
+                        ? `${viewingCustomer.city}, ${viewingCustomer.state} ${viewingCustomer.zip || ''}`
+                        : viewingCustomer.city || viewingCustomer.state || '—'}
+                      {viewingCustomer.country && <span><br/>{viewingCustomer.country}</span>}
+                    </p>
+                  </div>
 
-                  {/* POS Orders Tab */}
-                  <TabsContent value="orders">
-                    {loadingHistory ? (
-                      <p className="text-center py-8 text-muted-foreground">Loading order history...</p>
-                    ) : customerOrders.length === 0 ? (
-                      <p className="text-center py-8 text-muted-foreground">No POS orders found for this customer</p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Items</TableHead>
-                            <TableHead>Payment</TableHead>
-                            <TableHead>Total</TableHead>
+                  {viewingCustomer.notes && (
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Notes</label>
+                      <p className="text-sm">{viewingCustomer.notes}</p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* POS Orders Tab */}
+                <TabsContent value="orders">
+                  {loadingHistory ? (
+                    <p className="text-center py-8 text-muted-foreground">Loading order history...</p>
+                  ) : customerOrders.length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">No POS orders found for this customer</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Items</TableHead>
+                          <TableHead>Payment</TableHead>
+                          <TableHead>Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {customerOrders.map((order) => (
+                          <TableRow key={order.id}>
+                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              {order.items?.slice(0, 2).map((item, idx) => (
+                                <div key={idx} className="text-sm">
+                                  {item.quantity}x {item.nameSnapshot}
+                                </div>
+                              ))}
+                              {order.items?.length > 2 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{order.items.length - 2} more
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="capitalize">{order.paymentMethod}</TableCell>
+                            <TableCell className="font-bold">${order.total.toFixed(2)}</TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {customerOrders.map((order) => (
-                            <TableRow key={order.id}>
-                              <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                {order.items?.slice(0, 2).map((item, idx) => (
-                                  <div key={idx} className="text-sm">
-                                    {item.quantity}x {item.nameSnapshot}
-                                  </div>
-                                ))}
-                                {order.items?.length > 2 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    +{order.items.length - 2} more
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell className="capitalize">{order.paymentMethod}</TableCell>
-                              <TableCell className="font-bold">${order.total.toFixed(2)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </TabsContent>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
 
-                  {/* Service Quotes Tab */}
-                  <TabsContent value="services">
-                    {loadingHistory ? (
-                      <p className="text-center py-8 text-muted-foreground">Loading service history...</p>
-                    ) : customerQuotes.length === 0 ? (
-                      <p className="text-center py-8 text-muted-foreground">No service quotes found for this customer</p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Services</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Total</TableHead>
+                {/* Service Quotes Tab */}
+                <TabsContent value="services">
+                  {loadingHistory ? (
+                    <p className="text-center py-8 text-muted-foreground">Loading service history...</p>
+                  ) : customerQuotes.length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">No service quotes found for this customer</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Services</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {customerQuotes.map((quote) => (
+                          <TableRow key={quote.id}>
+                            <TableCell>{new Date(quote.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              {quote.items?.slice(0, 2).map((item, idx) => (
+                                <div key={idx} className="text-sm">
+                                  {item.quantity}x {item.description}
+                                </div>
+                              ))}
+                              {quote.items?.length > 2 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{quote.items.length - 2} more
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>{getStatusBadge(quote.status)}</TableCell>
+                            <TableCell className="font-bold">${quote.total.toFixed(2)}</TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {customerQuotes.map((quote) => (
-                            <TableRow key={quote.id}>
-                              <TableCell>{new Date(quote.createdAt).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                {quote.items?.slice(0, 2).map((item, idx) => (
-                                  <div key={idx} className="text-sm">
-                                    {item.quantity}x {item.description}
-                                  </div>
-                                ))}
-                                {quote.items?.length > 2 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    +{quote.items.length - 2} more
-                                  </span>
-                                )}
-                              </TableCell>
-                              <TableCell>{getStatusBadge(quote.status)}</TableCell>
-                              <TableCell className="font-bold">${quote.total.toFixed(2)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </TabsContent>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
 
-                  {/* Returns Tab */}
-                  <TabsContent value="returns">
-                    {loadingHistory ? (
-                      <p className="text-center py-8 text-muted-foreground">Loading return history...</p>
-                    ) : customerReturns.length === 0 ? (
-                      <p className="text-center py-8 text-muted-foreground">No returns found for this customer</p>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Return #</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Refund</TableHead>
-                            <TableHead>Total</TableHead>
+                {/* Returns Tab */}
+                <TabsContent value="returns">
+                  {loadingHistory ? (
+                    <p className="text-center py-8 text-muted-foreground">Loading return history...</p>
+                  ) : customerReturns.length === 0 ? (
+                    <p className="text-center py-8 text-muted-foreground">No returns found for this customer</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Return #</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Refund</TableHead>
+                          <TableHead>Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {customerReturns.map((ret) => (
+                          <TableRow key={ret.id}>
+                            <TableCell>{new Date(ret.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell className="font-mono text-sm">{ret.returnNumber}</TableCell>
+                            <TableCell className="capitalize">{ret.returnType}</TableCell>
+                            <TableCell>
+                              <Badge className={
+                                ret.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                ret.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                ret.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800'
+                              }>
+                                {ret.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={
+                                ret.refundStatus === 'processed' ? 'border-green-500 text-green-700' :
+                                'border-yellow-500 text-yellow-700'
+                              }>
+                                {ret.refundStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-bold text-red-600">-${ret.total.toFixed(2)}</TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {customerReturns.map((ret) => (
-                            <TableRow key={ret.id}>
-                              <TableCell>{new Date(ret.createdAt).toLocaleDateString()}</TableCell>
-                              <TableCell className="font-mono text-sm">{ret.returnNumber}</TableCell>
-                              <TableCell className="capitalize">{ret.returnType}</TableCell>
-                              <TableCell>
-                                <Badge className={
-                                  ret.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                  ret.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                  ret.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                  'bg-blue-100 text-blue-800'
-                                }>
-                                  {ret.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={
-                                  ret.refundStatus === 'processed' ? 'border-green-500 text-green-700' :
-                                  'border-yellow-500 text-yellow-700'
-                                }>
-                                  {ret.refundStatus}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-bold text-red-600">-${ret.total.toFixed(2)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
-                  Close
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
+                Close
+              </Button>
+              {canWrite && viewingCustomer && (
+                <Button onClick={() => {
+                  setViewDialogOpen(false);
+                  handleEditCustomer(viewingCustomer);
+                }}>
+                  Edit Customer
                 </Button>
-                {canWrite && viewingCustomer && (
-                  <Button onClick={() => {
-                    setViewDialogOpen(false);
-                    handleEditCustomer(viewingCustomer);
-                  }}>
-                    Edit Customer
-                  </Button>
-                )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-          {/* Delete/Archive Confirmation Dialog */}
-          <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
-            if (!open) {
-              setDeleteDialogOpen(false);
-              setCustomerToDelete(null);
-              setDeleteAction(null);
-              setArchiveReason('');
-            }
-          }}>
-            <AlertDialogContent className="max-w-lg">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-yellow-500" />
-                  Delete Customer: {customerToDelete?.name}
-                </AlertDialogTitle>
-                <AlertDialogDescription asChild>
-                  <div className="space-y-4">
-                    {!deleteAction ? (
-                      <>
-                        <p>Choose how you want to remove this customer:</p>
-                        
-                        <div className="space-y-3">
-                          {/* Archive Option */}
+        {/* Delete/Archive Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            setDeleteDialogOpen(false);
+            setCustomerToDelete(null);
+            setDeleteAction(null);
+            setArchiveReason('');
+          }
+        }}>
+          <AlertDialogContent className="max-w-lg">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                Delete Customer: {customerToDelete?.name}
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-4">
+                  {!deleteAction ? (
+                    <>
+                      <p>Choose how you want to remove this customer:</p>
+                      
+                      <div className="space-y-3">
+                        {/* Archive Option */}
+                        <div 
+                          className="p-4 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                          onClick={() => setDeleteAction('archive')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Archive className="w-5 h-5 text-blue-500" />
+                            <div>
+                              <p className="font-medium">Archive Customer</p>
+                              <p className="text-sm text-muted-foreground">
+                                Move customer and their records to archive. Data can be restored from the database if needed.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Permanent Delete Option - Admin Only */}
+                        {isAdmin && (
                           <div 
-                            className="p-4 border rounded-lg cursor-pointer hover:bg-muted transition-colors"
-                            onClick={() => setDeleteAction('archive')}
+                            className="p-4 border border-red-200 rounded-lg cursor-pointer hover:bg-red-50 transition-colors"
+                            onClick={() => setDeleteAction('permanent')}
                           >
                             <div className="flex items-center gap-3">
-                              <Archive className="w-5 h-5 text-blue-500" />
+                              <Trash2 className="w-5 h-5 text-red-500" />
                               <div>
-                                <p className="font-medium">Archive Customer</p>
+                                <p className="font-medium text-red-700">Permanent Delete</p>
                                 <p className="text-sm text-muted-foreground">
-                                  Move customer and their records to archive. Data can be restored from the database if needed.
+                                  Permanently delete customer and ALL related records (orders, quotes, returns). 
+                                  <span className="text-red-600 font-medium"> This cannot be undone!</span>
                                 </p>
                               </div>
                             </div>
                           </div>
-
-                          {/* Permanent Delete Option - Admin Only */}
-                          {isAdmin && (
-                            <div 
-                              className="p-4 border border-red-200 rounded-lg cursor-pointer hover:bg-red-50 transition-colors"
-                              onClick={() => setDeleteAction('permanent')}
-                            >
-                              <div className="flex items-center gap-3">
-                                <Trash2 className="w-5 h-5 text-red-500" />
-                                <div>
-                                  <p className="font-medium text-red-700">Permanent Delete</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Permanently delete customer and ALL related records (orders, quotes, returns). 
-                                    <span className="text-red-600 font-medium"> This cannot be undone!</span>
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : deleteAction === 'archive' ? (
-                      <>
-                        <p>
-                          You are about to archive <strong>{customerToDelete?.name}</strong>. 
-                          This will move the customer and all their quotes/orders to an archive table.
+                        )}
+                      </div>
+                    </>
+                  ) : deleteAction === 'archive' ? (
+                    <>
+                      <p>
+                        You are about to archive <strong>{customerToDelete?.name}</strong>. 
+                        This will move the customer and all their quotes/orders to an archive table.
+                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="archiveReason">Reason for archiving (optional)</Label>
+                        <Textarea
+                          id="archiveReason"
+                          value={archiveReason}
+                          onChange={(e) => setArchiveReason(e.target.value)}
+                          placeholder="e.g., Customer requested deletion, Inactive for 2+ years..."
+                          rows={2}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-red-700 font-medium flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          Warning: This action is irreversible!
                         </p>
-                        <div className="space-y-2">
-                          <Label htmlFor="archiveReason">Reason for archiving (optional)</Label>
-                          <Textarea
-                            id="archiveReason"
-                            value={archiveReason}
-                            onChange={(e) => setArchiveReason(e.target.value)}
-                            placeholder="e.g., Customer requested deletion, Inactive for 2+ years..."
-                            rows={2}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-red-700 font-medium flex items-center gap-2">
-                            <AlertTriangle className="w-4 h-4" />
-                            Warning: This action is irreversible!
-                          </p>
-                        </div>
-                        <p>
-                          You are about to <strong className="text-red-600">permanently delete</strong> {customerToDelete?.name} 
-                          and ALL associated records including:
-                        </p>
-                        <ul className="list-disc pl-6 space-y-1 text-sm">
-                          <li>All quotes created for this customer</li>
-                          <li>All orders placed by this customer</li>
-                          <li>All returns associated with this customer</li>
-                        </ul>
-                        <p className="font-medium">This data cannot be recovered!</p>
-                      </>
-                    )}
-                  </div>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={deletingCustomer}>Cancel</AlertDialogCancel>
-                {!deleteAction ? (
-                  <Button variant="outline" onClick={handleSimpleDelete} disabled={deletingCustomer}>
-                    {deletingCustomer ? 'Processing...' : 'Try Simple Delete'}
+                      </div>
+                      <p>
+                        You are about to <strong className="text-red-600">permanently delete</strong> {customerToDelete?.name} 
+                        and ALL associated records including:
+                      </p>
+                      <ul className="list-disc pl-6 space-y-1 text-sm">
+                        <li>All quotes created for this customer</li>
+                        <li>All orders placed by this customer</li>
+                        <li>All returns associated with this customer</li>
+                      </ul>
+                      <p className="font-medium">This data cannot be recovered!</p>
+                    </>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingCustomer}>Cancel</AlertDialogCancel>
+              {!deleteAction ? (
+                <Button variant="outline" onClick={handleSimpleDelete} disabled={deletingCustomer}>
+                  {deletingCustomer ? 'Processing...' : 'Try Simple Delete'}
+                </Button>
+              ) : deleteAction === 'archive' ? (
+                <>
+                  <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
+                    Back
                   </Button>
-                ) : deleteAction === 'archive' ? (
-                  <>
-                    <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
-                      Back
-                    </Button>
-                    <Button onClick={handleArchiveCustomer} disabled={deletingCustomer}>
-                      <Archive className="w-4 h-4 mr-2" />
-                      {deletingCustomer ? 'Archiving...' : 'Archive Customer'}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
-                      Back
-                    </Button>
-                    <AlertDialogAction
-                      onClick={handlePermanentDeleteCustomer}
-                      disabled={deletingCustomer}
-                      className="bg-red-600 hover:bg-red-700"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      {deletingCustomer ? 'Deleting...' : 'Permanently Delete'}
-                    </AlertDialogAction>
-                  </>
-                )}
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+                  <Button onClick={handleArchiveCustomer} disabled={deletingCustomer}>
+                    <Archive className="w-4 h-4 mr-2" />
+                    {deletingCustomer ? 'Archiving...' : 'Archive Customer'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setDeleteAction(null)} disabled={deletingCustomer}>
+                    Back
+                  </Button>
+                  <AlertDialogAction
+                    onClick={handlePermanentDeleteCustomer}
+                    disabled={deletingCustomer}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {deletingCustomer ? 'Deleting...' : 'Permanently Delete'}
+                  </AlertDialogAction>
+                </>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </AdminLayout>
   );
 }

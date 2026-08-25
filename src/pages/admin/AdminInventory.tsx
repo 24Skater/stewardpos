@@ -17,7 +17,6 @@ import type {
 } from '@/lib/api';
 import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
 import ImportInventoryDialog from '@/components/ImportInventoryDialog';
@@ -280,249 +279,247 @@ export default function AdminInventory() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Inventory Management</h1>
-              <p className="text-muted-foreground">Manage products and variants</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleExport}>
-                Export CSV
-              </Button>
-              {canWrite && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleReset}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Reset Demo Data
-                  </Button>
-                  <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Import
-                  </Button>
-                  <Button onClick={handleAddProduct}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Product
-                  </Button>
-                </>
-              )}
-            </div>
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Inventory Management</h1>
+            <p className="text-muted-foreground">Manage products and variants</p>
           </div>
-
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search products..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExport}>
+              Export CSV
+            </Button>
+            {canWrite && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleReset}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Reset Demo Data
+                </Button>
+                <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import
+                </Button>
+                <Button onClick={handleAddProduct}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Product
+                </Button>
+              </>
+            )}
           </div>
-
-          <div className="bg-card rounded-lg border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Base Price</TableHead>
-                  <TableHead>Variants</TableHead>
-                  <TableHead>Total Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProducts.map((product) => {
-                  const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
-                  const activeVariants = product.variants.filter(v => v.enabled).length;
-                  // The server decides what "low" means — it is a store setting
-                  // with a per-variant override, and this screen judging for
-                  // itself is how it and the dashboard came to disagree.
-                  const lowStock = lowStockProductIds.has(product.id);
-
-                  return (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-medium">{product.name}</TableCell>
-                      <TableCell>{product.category}</TableCell>
-                      <TableCell>${product.basePrice.toFixed(2)}</TableCell>
-                      <TableCell>{activeVariants} active</TableCell>
-                      <TableCell>
-                        <span className={lowStock ? 'text-orange-600 font-semibold' : ''}>
-                          {totalStock}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={lowStock ? 'destructive' : 'secondary'}>
-                          {lowStock ? 'Low Stock' : 'In Stock'}
-                        </Badge>
-                      </TableCell>
-                      {(canWrite || canDelete) && (
-                        <TableCell>
-                          <div className="flex gap-2">
-                            {canWrite && (
-                              <Button variant="ghost" size="icon" aria-label={`Edit ${product.name}`} onClick={() => handleEdit(product)}>
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                            )}
-                            {canDelete && (
-                              <Button variant="ghost" size="icon" aria-label={`Delete ${product.name}`} onClick={() => handleDelete(product.id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <ImportInventoryDialog
-            open={importDialogOpen}
-            onOpenChange={setImportDialogOpen}
-            onImportComplete={loadProducts}
-          />
-
-          <Dialog open={editDialogOpen} onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setEditingProduct(null);
-              setIsNewProduct(false);
-              setUploadedImage(null);
-            }
-          }}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{isNewProduct ? 'Add Product' : 'Edit Product'}</DialogTitle>
-              </DialogHeader>
-              {editingProduct && (
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="inventory-name">Name</Label>
-                    <Input id="inventory-name"
-                      value={editingProduct.name}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="inventory-description">Description</Label>
-                    <Input id="inventory-description"
-                      value={editingProduct.description || ''}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Category</Label>
-                    {/*
-                      A free-text box here meant a typo produced a second
-                      category that no other product would ever share, and the
-                      seeded `categories` table went unused because nothing
-                      could read it.
-
-                      A product whose category is not in the list still shows
-                      it, rather than appearing blank — otherwise saving an
-                      unrelated edit would silently move the product.
-                    */}
-                    <Select
-                      value={editingProduct.category || undefined}
-                      onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categoryOptions.map((name) => (
-                          <SelectItem key={name} value={name}>
-                            {name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="inventory-base-price">Base Price</Label>
-                    <Input id="inventory-base-price"
-                      type="number"
-                      step="0.01"
-                      value={editingProduct.basePrice}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, basePrice: parseFloat(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Product Image</Label>
-                    <Tabs defaultValue="upload" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="upload">Upload Image</TabsTrigger>
-                        <TabsTrigger value="url">Image URL</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="upload" className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            disabled={isUploadingImage}
-                            className="cursor-pointer"
-                          />
-                          <Button type="button" variant="outline" size="icon" aria-label="Upload a product image" disabled={isUploadingImage}>
-                            <ImagePlus className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        {isUploadingImage && (
-                          <p className="text-xs text-muted-foreground">Uploading…</p>
-                        )}
-                        {(uploadedImage || editingProduct.image) && (
-                          <div className="mt-2 border rounded p-2">
-                            <img 
-                              src={uploadedImage || editingProduct.image} 
-                              alt="Preview" 
-                              className="max-h-32 object-contain mx-auto"
-                            />
-                          </div>
-                        )}
-                      </TabsContent>
-                      <TabsContent value="url">
-                        <Input
-                          value={editingProduct.image || ''}
-                          onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
-                          placeholder="https://example.com/image.jpg"
-                        />
-                      </TabsContent>
-                    </Tabs>
-                  </div>
-                  <div>
-                    <Label htmlFor="inventory-barcode">Barcode</Label>
-                    <Input id="inventory-barcode"
-                      value={editingProduct.barcode || ''}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => {
-                  setEditDialogOpen(false);
-                  setEditingProduct(null);
-                  setIsNewProduct(false);
-                  setUploadedImage(null);
-                }}>Cancel</Button>
-                <Button onClick={handleSaveEdit}>{isNewProduct ? 'Create Product' : 'Save Changes'}</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
-      </AdminLayout>
-    </ProtectedRoute>
+
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search products..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
+        <div className="bg-card rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Base Price</TableHead>
+                <TableHead>Variants</TableHead>
+                <TableHead>Total Stock</TableHead>
+                <TableHead>Status</TableHead>
+                {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredProducts.map((product) => {
+                const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
+                const activeVariants = product.variants.filter(v => v.enabled).length;
+                // The server decides what "low" means — it is a store setting
+                // with a per-variant override, and this screen judging for
+                // itself is how it and the dashboard came to disagree.
+                const lowStock = lowStockProductIds.has(product.id);
+
+                return (
+                  <TableRow key={product.id}>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell>{product.category}</TableCell>
+                    <TableCell>${product.basePrice.toFixed(2)}</TableCell>
+                    <TableCell>{activeVariants} active</TableCell>
+                    <TableCell>
+                      <span className={lowStock ? 'text-orange-600 font-semibold' : ''}>
+                        {totalStock}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={lowStock ? 'destructive' : 'secondary'}>
+                        {lowStock ? 'Low Stock' : 'In Stock'}
+                      </Badge>
+                    </TableCell>
+                    {(canWrite || canDelete) && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {canWrite && (
+                            <Button variant="ghost" size="icon" aria-label={`Edit ${product.name}`} onClick={() => handleEdit(product)}>
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="ghost" size="icon" aria-label={`Delete ${product.name}`} onClick={() => handleDelete(product.id)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        <ImportInventoryDialog
+          open={importDialogOpen}
+          onOpenChange={setImportDialogOpen}
+          onImportComplete={loadProducts}
+        />
+
+        <Dialog open={editDialogOpen} onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setEditingProduct(null);
+            setIsNewProduct(false);
+            setUploadedImage(null);
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{isNewProduct ? 'Add Product' : 'Edit Product'}</DialogTitle>
+            </DialogHeader>
+            {editingProduct && (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="inventory-name">Name</Label>
+                  <Input id="inventory-name"
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="inventory-description">Description</Label>
+                  <Input id="inventory-description"
+                    value={editingProduct.description || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Category</Label>
+                  {/*
+                    A free-text box here meant a typo produced a second
+                    category that no other product would ever share, and the
+                    seeded `categories` table went unused because nothing
+                    could read it.
+
+                    A product whose category is not in the list still shows
+                    it, rather than appearing blank — otherwise saving an
+                    unrelated edit would silently move the product.
+                  */}
+                  <Select
+                    value={editingProduct.category || undefined}
+                    onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoryOptions.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="inventory-base-price">Base Price</Label>
+                  <Input id="inventory-base-price"
+                    type="number"
+                    step="0.01"
+                    value={editingProduct.basePrice}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, basePrice: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <Label>Product Image</Label>
+                  <Tabs defaultValue="upload" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="upload">Upload Image</TabsTrigger>
+                      <TabsTrigger value="url">Image URL</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="upload" className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={isUploadingImage}
+                          className="cursor-pointer"
+                        />
+                        <Button type="button" variant="outline" size="icon" aria-label="Upload a product image" disabled={isUploadingImage}>
+                          <ImagePlus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      {isUploadingImage && (
+                        <p className="text-xs text-muted-foreground">Uploading…</p>
+                      )}
+                      {(uploadedImage || editingProduct.image) && (
+                        <div className="mt-2 border rounded p-2">
+                          <img 
+                            src={uploadedImage || editingProduct.image} 
+                            alt="Preview" 
+                            className="max-h-32 object-contain mx-auto"
+                          />
+                        </div>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="url">
+                      <Input
+                        value={editingProduct.image || ''}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                        placeholder="https://example.com/image.jpg"
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+                <div>
+                  <Label htmlFor="inventory-barcode">Barcode</Label>
+                  <Input id="inventory-barcode"
+                    value={editingProduct.barcode || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setEditDialogOpen(false);
+                setEditingProduct(null);
+                setIsNewProduct(false);
+                setUploadedImage(null);
+              }}>Cancel</Button>
+              <Button onClick={handleSaveEdit}>{isNewProduct ? 'Create Product' : 'Save Changes'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AdminLayout>
   );
 }

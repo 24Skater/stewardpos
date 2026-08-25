@@ -8,6 +8,10 @@ const mockQuery = vi.fn();
 vi.mock('../../../config', () => ({
   default: {
     database: { adapter: 'postgres' },
+    // The setup router reaches bcrypt through services/hashing, which reads the
+    // cost factor at module load. A stub has to cover what the module tree
+    // touches, not only what the assertions do.
+    security: { bcryptRounds: 10 },
   },
 }));
 

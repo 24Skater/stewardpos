@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { quotesApi, type ReportRangeQuery } from '@/lib/api';
 import { DollarSign, ShoppingCart, Briefcase, FileText, Store, Users, ShieldAlert } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import ReportRangePicker from '@/components/ReportRangePicker';
 import SalesReport, { money } from '@/components/reports/SalesReport';
 import RegisterReport from '@/components/reports/RegisterReport';
@@ -162,264 +161,262 @@ export default function AdminReports() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Reports</h1>
-              <p className="text-muted-foreground">{describeRange(range)}</p>
-            </div>
-            <ReportRangePicker
-              period={period}
-              range={range}
-              onChange={(nextPeriod, nextRange) => {
-                setPeriod(nextPeriod);
-                setRange(nextRange);
-              }}
-            />
+    <AdminLayout>
+      <div className="p-8">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Reports</h1>
+            <p className="text-muted-foreground">{describeRange(range)}</p>
           </div>
-
-          <div className="mb-6 flex flex-wrap items-end gap-3">
-            <div className="grid gap-1">
-              <Label htmlFor="report-register-filter" className="text-xs text-muted-foreground">
-                Register
-              </Label>
-              <Select value={registerFilterId} onValueChange={setRegisterFilterId}>
-                <SelectTrigger
-                  id="report-register-filter"
-                  className="w-48"
-                  aria-label="Filter reports by register"
-                >
-                  <SelectValue placeholder="All registers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All registers</SelectItem>
-                  {(registers ?? []).map((register) => (
-                    <SelectItem key={register.id} value={register.id}>
-                      {register.displayCode} — {register.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1">
-              <Label htmlFor="report-location-filter" className="text-xs text-muted-foreground">
-                Location
-              </Label>
-              <Select value={locationFilterId} onValueChange={setLocationFilterId}>
-                <SelectTrigger
-                  id="report-location-filter"
-                  className="w-48"
-                  aria-label="Filter reports by location"
-                >
-                  <SelectValue placeholder="All locations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All locations</SelectItem>
-                  {(locations ?? []).map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <Tabs defaultValue="sales" className="space-y-6">
-            <TabsList className="h-auto flex-wrap">
-              <TabsTrigger value="sales" className="flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4" />
-                Product Sales
-              </TabsTrigger>
-              <TabsTrigger value="registers" className="flex items-center gap-2">
-                <Store className="w-4 h-4" />
-                Registers
-              </TabsTrigger>
-              <TabsTrigger value="cashiers" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                Cashiers
-              </TabsTrigger>
-              <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4" />
-                Loss Prevention
-              </TabsTrigger>
-              <TabsTrigger value="services" className="flex items-center gap-2">
-                <Briefcase className="w-4 h-4" />
-                Services
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Product Sales Tab */}
-            <TabsContent value="sales" className="space-y-6">
-              <SalesReport
-                data={data ?? null}
-                loading={isLoading}
-                error={error ? getErrorMessage(error, 'The report could not be loaded') : null}
-              />
-            </TabsContent>
-
-            {/* Registers Tab — the headline answer: how many sales went
-                through each till, and the web-vs-drawer split. */}
-            <TabsContent value="registers" className="space-y-6">
-              <RegisterReport
-                data={registerReport.data ?? null}
-                loading={registerReport.isLoading}
-                error={
-                  registerReport.error
-                    ? getErrorMessage(registerReport.error, 'The report could not be loaded')
-                    : null
-                }
-              />
-            </TabsContent>
-
-            {/* Cashiers Tab */}
-            <TabsContent value="cashiers" className="space-y-6">
-              <CashierReport
-                data={cashierReport.data ?? null}
-                loading={cashierReport.isLoading}
-                error={
-                  cashierReport.error
-                    ? getErrorMessage(cashierReport.error, 'The report could not be loaded')
-                    : null
-                }
-              />
-            </TabsContent>
-
-            {/* Loss Prevention Tab — drawer variance and no-sale counts, the
-                reports that catch problems. */}
-            <TabsContent value="loss-prevention" className="space-y-6">
-              <LossPreventionReport
-                data={lossPreventionReport.data ?? null}
-                loading={lossPreventionReport.isLoading}
-                error={
-                  lossPreventionReport.error
-                    ? getErrorMessage(lossPreventionReport.error, 'The report could not be loaded')
-                    : null
-                }
-              />
-            </TabsContent>
-
-            {/* Services Tab */}
-            <TabsContent value="services" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Completed Revenue</CardTitle>
-                    <DollarSign className="w-4 h-4 text-green-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{money(serviceStats.grossRevenue)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Total Quotes</CardTitle>
-                    <FileText className="w-4 h-4 text-blue-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{serviceStats.quoteCount}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Completed</CardTitle>
-                    <Briefcase className="w-4 h-4 text-purple-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{serviceStats.completedCount}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm text-muted-foreground">Avg Quote Value</CardTitle>
-                    <DollarSign className="w-4 h-4 text-orange-600" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{money(serviceStats.avgQuoteValue)}</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Top Services</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Service</TableHead>
-                          <TableHead>Qty</TableHead>
-                          <TableHead>Revenue</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {topServices.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                              No completed quotes for this period
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          topServices.map((item, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell className="font-medium">{item.name}</TableCell>
-                              <TableCell>{item.qty}</TableCell>
-                              <TableCell>{money(item.gross)}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Quotes</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Date</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {recentQuotes.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                              No quotes yet
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          recentQuotes.map((quote) => (
-                            <TableRow key={quote.id}>
-                              <TableCell className="font-medium">{quote.customerName || '—'}</TableCell>
-                              <TableCell>{getStatusBadge(quote.status)}</TableCell>
-                              <TableCell>{money(quote.total)}</TableCell>
-                              <TableCell>{new Date(quote.createdAt).toLocaleDateString()}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <ReportRangePicker
+            period={period}
+            range={range}
+            onChange={(nextPeriod, nextRange) => {
+              setPeriod(nextPeriod);
+              setRange(nextRange);
+            }}
+          />
         </div>
-      </AdminLayout>
-    </ProtectedRoute>
+
+        <div className="mb-6 flex flex-wrap items-end gap-3">
+          <div className="grid gap-1">
+            <Label htmlFor="report-register-filter" className="text-xs text-muted-foreground">
+              Register
+            </Label>
+            <Select value={registerFilterId} onValueChange={setRegisterFilterId}>
+              <SelectTrigger
+                id="report-register-filter"
+                className="w-48"
+                aria-label="Filter reports by register"
+              >
+                <SelectValue placeholder="All registers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All registers</SelectItem>
+                {(registers ?? []).map((register) => (
+                  <SelectItem key={register.id} value={register.id}>
+                    {register.displayCode} — {register.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="report-location-filter" className="text-xs text-muted-foreground">
+              Location
+            </Label>
+            <Select value={locationFilterId} onValueChange={setLocationFilterId}>
+              <SelectTrigger
+                id="report-location-filter"
+                className="w-48"
+                aria-label="Filter reports by location"
+              >
+                <SelectValue placeholder="All locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations</SelectItem>
+                {(locations ?? []).map((location) => (
+                  <SelectItem key={location.id} value={location.id}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <Tabs defaultValue="sales" className="space-y-6">
+          <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="sales" className="flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              Product Sales
+            </TabsTrigger>
+            <TabsTrigger value="registers" className="flex items-center gap-2">
+              <Store className="w-4 h-4" />
+              Registers
+            </TabsTrigger>
+            <TabsTrigger value="cashiers" className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Cashiers
+            </TabsTrigger>
+            <TabsTrigger value="loss-prevention" className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4" />
+              Loss Prevention
+            </TabsTrigger>
+            <TabsTrigger value="services" className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4" />
+              Services
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Product Sales Tab */}
+          <TabsContent value="sales" className="space-y-6">
+            <SalesReport
+              data={data ?? null}
+              loading={isLoading}
+              error={error ? getErrorMessage(error, 'The report could not be loaded') : null}
+            />
+          </TabsContent>
+
+          {/* Registers Tab — the headline answer: how many sales went
+              through each till, and the web-vs-drawer split. */}
+          <TabsContent value="registers" className="space-y-6">
+            <RegisterReport
+              data={registerReport.data ?? null}
+              loading={registerReport.isLoading}
+              error={
+                registerReport.error
+                  ? getErrorMessage(registerReport.error, 'The report could not be loaded')
+                  : null
+              }
+            />
+          </TabsContent>
+
+          {/* Cashiers Tab */}
+          <TabsContent value="cashiers" className="space-y-6">
+            <CashierReport
+              data={cashierReport.data ?? null}
+              loading={cashierReport.isLoading}
+              error={
+                cashierReport.error
+                  ? getErrorMessage(cashierReport.error, 'The report could not be loaded')
+                  : null
+              }
+            />
+          </TabsContent>
+
+          {/* Loss Prevention Tab — drawer variance and no-sale counts, the
+              reports that catch problems. */}
+          <TabsContent value="loss-prevention" className="space-y-6">
+            <LossPreventionReport
+              data={lossPreventionReport.data ?? null}
+              loading={lossPreventionReport.isLoading}
+              error={
+                lossPreventionReport.error
+                  ? getErrorMessage(lossPreventionReport.error, 'The report could not be loaded')
+                  : null
+              }
+            />
+          </TabsContent>
+
+          {/* Services Tab */}
+          <TabsContent value="services" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Completed Revenue</CardTitle>
+                  <DollarSign className="w-4 h-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{money(serviceStats.grossRevenue)}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Quotes</CardTitle>
+                  <FileText className="w-4 h-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{serviceStats.quoteCount}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Completed</CardTitle>
+                  <Briefcase className="w-4 h-4 text-purple-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{serviceStats.completedCount}</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Avg Quote Value</CardTitle>
+                  <DollarSign className="w-4 h-4 text-orange-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{money(serviceStats.avgQuoteValue)}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Services</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Service</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>Revenue</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topServices.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                            No completed quotes for this period
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        topServices.map((item, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.qty}</TableCell>
+                            <TableCell>{money(item.gross)}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Quotes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Total</TableHead>
+                        <TableHead>Date</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentQuotes.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                            No quotes yet
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        recentQuotes.map((quote) => (
+                          <TableRow key={quote.id}>
+                            <TableCell className="font-medium">{quote.customerName || '—'}</TableCell>
+                            <TableCell>{getStatusBadge(quote.status)}</TableCell>
+                            <TableCell>{money(quote.total)}</TableCell>
+                            <TableCell>{new Date(quote.createdAt).toLocaleDateString()}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </AdminLayout>
   );
 }

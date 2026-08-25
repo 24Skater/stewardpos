@@ -14,8 +14,8 @@ if (Test-Path .env.dev) {
 }
 
 # Build and start services
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml build
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml build
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml up -d
 
 Write-Host "`n✅ Development environment deployed!" -ForegroundColor Green
 Write-Host "`nServices:" -ForegroundColor Cyan

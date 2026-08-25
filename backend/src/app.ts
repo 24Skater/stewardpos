@@ -2,11 +2,11 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import path from 'path';
 import config from './config';
 import { errorHandler } from './api/middleware/errorHandler';
 import { requestLogger } from './api/middleware/requestLogger';
 import logger from './utils/logger';
+import { storage } from './storage';
 
 // Import routes
 import authRoutes from './api/routes/auth';
@@ -155,8 +155,43 @@ app.use('/api/registers/pair', pairLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+/**
+ * Serve uploaded images from whichever store is configured.
+ *
+ * This was `express.static`, which is only correct while uploads are files on
+ * this machine. Routing reads through the storage port instead means the same
+ * `/uploads/logos/x.png` resolves under either adapter, so a shop can move to a
+ * bucket without rewriting the URLs already saved against its settings and
+ * products — and the bucket never has to be public.
+ *
+ * Deliberately before `requestLogger` and outside `/api`, matching where the
+ * static mount sat: an image request is not an API call and does not need a log
+ * line each.
+ */
+app.get('/uploads/:prefix/:filename', async (req, res, next) => {
+  try {
+    const { prefix, filename } = req.params;
+    const found = await storage().get(prefix, filename);
+    if (!found) {
+      res.status(404).json({ success: false, message: 'Not found' });
+      return;
+    }
+    res.setHeader('Content-Type', found.contentType);
+    if (found.contentLength !== undefined) {
+      res.setHeader('Content-Length', String(found.contentLength));
+    }
+    // A logo changes rarely and its filename is a uuid, so a new one is a new
+    // URL. Long-lived immutable caching costs nothing and keeps the API out of
+    // the path for every page view.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    found.body.on('error', next);
+    found.body.pipe(res);
+  } catch (error) {
+    // An invalid key is a bad request, not a missing file — but either way the
+    // caller learns nothing about the store's layout.
+    next(error);
+  }
+});
 
 // Request logging
 app.use(requestLogger);

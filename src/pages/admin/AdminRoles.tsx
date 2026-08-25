@@ -15,7 +15,6 @@ import {
 } from '@/lib/permissions';
 import { Search, Plus, Edit, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { getCurrentSession, hasAnyRole, hasPermission, type AuthSession } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
@@ -220,215 +219,213 @@ export default function AdminRoles() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Roles & Permissions</h1>
-              <p className="text-muted-foreground">Manage user roles and access permissions</p>
-            </div>
-            {isAdmin && (
-              <Button onClick={handleAddRole}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Role
-              </Button>
-            )}
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Roles & Permissions</h1>
+            <p className="text-muted-foreground">Manage user roles and access permissions</p>
           </div>
+          {isAdmin && (
+            <Button onClick={handleAddRole}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Role
+            </Button>
+          )}
+        </div>
 
-          <div className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search roles..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search roles..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
+        </div>
 
-          <div className="bg-card rounded-lg border border-border">
-            <Table>
-              <TableHeader>
+        <div className="bg-card rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Role Name</TableHead>
+                <TableHead>System Role</TableHead>
+                <TableHead>Permissions</TableHead>
+                {isAdmin && <TableHead>Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
                 <TableRow>
-                  <TableHead>Role Name</TableHead>
-                  <TableHead>System Role</TableHead>
-                  <TableHead>Permissions</TableHead>
-                  {isAdmin && <TableHead>Actions</TableHead>}
+                  <TableCell colSpan={4} className="text-center py-8">
+                    Loading roles...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8">
-                      Loading roles...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredRoles.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      No roles found. {isAdmin && 'Click "Add Role" to create one.'}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredRoles.map((role) => (
-                    <TableRow key={role.id}>
-                      <TableCell className="font-medium">{role.name}</TableCell>
-                      <TableCell>
-                        {role.systemRole ? (
-                          <Badge variant="outline" className="capitalize">
-                            {role.systemRole}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-muted-foreground">
-                          {getPermissionCount(role)} permissions
-                        </span>
-                      </TableCell>
-                      {isAdmin && (
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleEditRole(role)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            {role.systemRole !== 'admin' && (
-                              <Button variant="ghost" size="icon" onClick={() => handleDeleteRole(role.id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
+              ) : filteredRoles.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    No roles found. {isAdmin && 'Click "Add Role" to create one.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredRoles.map((role) => (
+                  <TableRow key={role.id}>
+                    <TableCell className="font-medium">{role.name}</TableCell>
+                    <TableCell>
+                      {role.systemRole ? (
+                        <Badge variant="outline" className="capitalize">
+                          {role.systemRole}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground">
+                        {getPermissionCount(role)} permissions
+                      </span>
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditRole(role)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          {role.systemRole !== 'admin' && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDeleteRole(role.id)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-          {/* Edit/Create Role Dialog */}
-          <Dialog open={editDialogOpen} onOpenChange={(open) => {
-            setEditDialogOpen(open);
-            if (!open) {
-              setEditingRole(null);
-              setIsNewRole(false);
-            }
-          }}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{isNewRole ? 'Add Role' : 'Edit Role'}</DialogTitle>
-                <DialogDescription>
-                  {isNewRole ? 'Create a new role with specific permissions' : 'Update role permissions'}
-                </DialogDescription>
-              </DialogHeader>
-              {editingRole && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Role Name *</Label>
-                      <Input
-                        id="name"
-                        value={editingRole.name}
-                        onChange={(e) => setEditingRole({ ...editingRole, name: e.target.value })}
-                        placeholder="e.g., Sales Manager"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="systemRole">System Role (Optional)</Label>
-                      <Select
-                        value={editingRole.systemRole || 'none'}
-                        onValueChange={(value) => setEditingRole({ 
-                          ...editingRole, 
-                          systemRole: value === 'none' ? undefined : (value as SystemRoleName) 
-                        })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select system role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="supervisor">Supervisor</SelectItem>
-                          <SelectItem value="reporter">Reporter</SelectItem>
-                          <SelectItem value="standard">Standard</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+        {/* Edit/Create Role Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setEditingRole(null);
+            setIsNewRole(false);
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isNewRole ? 'Add Role' : 'Edit Role'}</DialogTitle>
+              <DialogDescription>
+                {isNewRole ? 'Create a new role with specific permissions' : 'Update role permissions'}
+              </DialogDescription>
+            </DialogHeader>
+            {editingRole && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Role Name *</Label>
+                    <Input
+                      id="name"
+                      value={editingRole.name}
+                      onChange={(e) => setEditingRole({ ...editingRole, name: e.target.value })}
+                      placeholder="e.g., Sales Manager"
+                    />
                   </div>
-
-                  <div className="space-y-4">
-                    <Label>Permissions</Label>
-                    <div className="border rounded-lg">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Module</TableHead>
-                            <TableHead className="text-center w-24">Read</TableHead>
-                            <TableHead className="text-center w-24">Write</TableHead>
-                            <TableHead className="text-center w-24">Delete</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {permissionModules.map((module) => (
-                            <TableRow key={module}>
-                              <TableCell className="font-medium">
-                                <span className="capitalize">{module}</span>
-                                {MODULE_HINTS[module] && (
-                                  <p className="text-xs font-normal text-muted-foreground">
-                                    {MODULE_HINTS[module]}
-                                  </p>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Checkbox
-                                  checked={editingRole.permissions[module]?.read || false}
-                                  onCheckedChange={(checked) => 
-                                    updatePermission(module, 'read', checked === true)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Checkbox
-                                  checked={editingRole.permissions[module]?.write || false}
-                                  onCheckedChange={(checked) => 
-                                    updatePermission(module, 'write', checked === true)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Checkbox
-                                  checked={editingRole.permissions[module]?.delete || false}
-                                  onCheckedChange={(checked) => 
-                                    updatePermission(module, 'delete', checked === true)
-                                  }
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="systemRole">System Role (Optional)</Label>
+                    <Select
+                      value={editingRole.systemRole || 'none'}
+                      onValueChange={(value) => setEditingRole({ 
+                        ...editingRole, 
+                        systemRole: value === 'none' ? undefined : (value as SystemRoleName) 
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select system role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="reporter">Reporter</SelectItem>
+                        <SelectItem value="standard">Standard</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveRole}>
-                  {isNewRole ? 'Create Role' : 'Save Changes'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
-          {canManagePins && <CashierPinManager />}
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+                <div className="space-y-4">
+                  <Label>Permissions</Label>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Module</TableHead>
+                          <TableHead className="text-center w-24">Read</TableHead>
+                          <TableHead className="text-center w-24">Write</TableHead>
+                          <TableHead className="text-center w-24">Delete</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {permissionModules.map((module) => (
+                          <TableRow key={module}>
+                            <TableCell className="font-medium">
+                              <span className="capitalize">{module}</span>
+                              {MODULE_HINTS[module] && (
+                                <p className="text-xs font-normal text-muted-foreground">
+                                  {MODULE_HINTS[module]}
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Checkbox
+                                checked={editingRole.permissions[module]?.read || false}
+                                onCheckedChange={(checked) => 
+                                  updatePermission(module, 'read', checked === true)
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Checkbox
+                                checked={editingRole.permissions[module]?.write || false}
+                                onCheckedChange={(checked) => 
+                                  updatePermission(module, 'write', checked === true)
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Checkbox
+                                checked={editingRole.permissions[module]?.delete || false}
+                                onCheckedChange={(checked) => 
+                                  updatePermission(module, 'delete', checked === true)
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveRole}>
+                {isNewRole ? 'Create Role' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {canManagePins && <CashierPinManager />}
+      </div>
+    </AdminLayout>
   );
 }

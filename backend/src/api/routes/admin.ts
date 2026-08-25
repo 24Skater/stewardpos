@@ -16,6 +16,7 @@ import logger from '../../utils/logger';
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import componentsRoutes from './components';
+import { BCRYPT_ROUNDS } from '../../services/hashing';
 
 const router = Router();
 router.use(authenticate);
@@ -77,7 +78,7 @@ router.post('/users', requirePermission('users', 'write'), async (req: AuthReque
     const adapter = db.getAdapter();
 
     // Hash password
-    const passwordHash = await bcrypt.hash(userData.password, 10);
+    const passwordHash = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
 
     const user = await adapter.createUser({
       name: userData.name,
@@ -117,7 +118,7 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     
     // Hash password if provided
     if (userData.password) {
-      updateData.passwordHash = await bcrypt.hash(userData.password, 10);
+      updateData.passwordHash = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
       delete updateData.password;
     }
 

@@ -97,12 +97,12 @@ If you prefer manual deployment:
 
 ### Development
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml up -d
 ```
 
 ### QA
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml up -d
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml up -d
 ```
 
 ### Production
@@ -196,10 +196,10 @@ Each environment has its own `.env` file:
 ### Check Service Status
 ```bash
 # Development
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml ps
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml ps
 
 # QA
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml ps
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml ps
 
 # Production
 docker compose -f docker-compose.prod.yml ps
@@ -208,10 +208,10 @@ docker compose -f docker-compose.prod.yml ps
 ### View Logs
 ```bash
 # Development
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
+docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml logs -f
 
 # QA
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml logs -f
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml logs -f
 
 # Production
 docker compose -f docker-compose.prod.yml logs -f

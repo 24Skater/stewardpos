@@ -7,7 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { useRegisterShiftLog, useRegisters } from '@/hooks/queries';
 import { adminApi } from '@/lib/api';
 import type { RegisterShift, ShiftEndReason } from '@/lib/api';
@@ -119,194 +118,192 @@ export default function AdminShifts() {
   const openCount = rows.filter((row) => row.endedAt === null).length;
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-foreground">Shifts</h1>
-            <p className="text-muted-foreground">
-              Who was signed on to each till, when, and how the shift ended. A shift starts when a
-              cashier enters their PIN at a register and ends when they sign out there.
-            </p>
-          </div>
-
-          <div className="mb-6 flex flex-wrap items-end gap-4">
-            <div className="grid gap-1">
-              <Label htmlFor="shift-register" className="text-xs text-muted-foreground">
-                Register
-              </Label>
-              <Select
-                value={registerId}
-                onValueChange={(value) => changeFilter(() => setRegisterId(value))}
-              >
-                <SelectTrigger id="shift-register" className="w-56">
-                  <SelectValue placeholder="Any register" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>Any register</SelectItem>
-                  {(registers ?? []).map((register) => (
-                    <SelectItem key={register.id} value={register.id}>
-                      {register.displayCode} — {register.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-1">
-              <Label htmlFor="shift-cashier" className="text-xs text-muted-foreground">
-                Cashier
-              </Label>
-              <Select value={userId} onValueChange={(value) => changeFilter(() => setUserId(value))}>
-                <SelectTrigger id="shift-cashier" className="w-56">
-                  <SelectValue placeholder="Any cashier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>Any cashier</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-1">
-              <Label htmlFor="shift-from" className="text-xs text-muted-foreground">
-                From
-              </Label>
-              <Input
-                id="shift-from"
-                type="date"
-                value={from}
-                onChange={(event) => changeFilter(() => setFrom(event.target.value))}
-              />
-            </div>
-
-            <div className="grid gap-1">
-              <Label htmlFor="shift-to" className="text-xs text-muted-foreground">
-                To
-              </Label>
-              <Input
-                id="shift-to"
-                type="date"
-                value={to}
-                onChange={(event) => changeFilter(() => setTo(event.target.value))}
-              />
-            </div>
-
-            <Button
-              variant={openOnly ? 'default' : 'outline'}
-              aria-pressed={openOnly}
-              onClick={() => changeFilter(() => setOpenOnly((previous) => !previous))}
-            >
-              On the floor now
-            </Button>
-          </div>
-
-          {isError ? (
-            <p className="text-destructive">The shift log could not be loaded.</p>
-          ) : isLoading ? (
-            <p className="text-muted-foreground">Loading shifts…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-muted-foreground">
-              {openOnly
-                ? 'Nobody is signed on to a till right now.'
-                : 'No shifts match these filters.'}
-            </p>
-          ) : (
-            <>
-              <p className="mb-2 text-sm text-muted-foreground" role="status">
-                {total} shift{total === 1 ? '' : 's'}
-                {openCount > 0 && ` · ${openCount} open on this page`}
-              </p>
-
-              <div className="overflow-x-auto rounded-md border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead scope="col">Started</TableHead>
-                      <TableHead scope="col">Cashier</TableHead>
-                      <TableHead scope="col">Register</TableHead>
-                      <TableHead scope="col">Location</TableHead>
-                      <TableHead scope="col">Duration</TableHead>
-                      <TableHead scope="col">Ended</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.map((row) => {
-                      const reason = row.endReason ? END_REASONS[row.endReason] : null;
-                      return (
-                        <TableRow key={row.id}>
-                          <TableCell className="whitespace-nowrap">
-                            {formatWhen(row.startedAt)}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <span className="font-medium">{row.cashierName ?? row.userId}</span>
-                              {/* Migration 020: an admin covering a till is
-                                  attributed to themselves, never to the person
-                                  they stood in for. Saying so on the row stops
-                                  that reading as a mis-attribution. */}
-                              {row.emulatedUserName && (
-                                <p className="text-xs text-muted-foreground">
-                                  covering for {row.emulatedUserName}
-                                </p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{row.registerDisplayCode ?? row.registerId}</TableCell>
-                          <TableCell>{row.locationName ?? '—'}</TableCell>
-                          <TableCell className="whitespace-nowrap">{formatDuration(row)}</TableCell>
-                          <TableCell>
-                            {/* Text, not colour alone — an open shift is the
-                                one state a reader must not miss. */}
-                            {row.endedAt === null ? (
-                              <Badge>On the floor</Badge>
-                            ) : (
-                              <div>
-                                <Badge variant="outline" title={reason?.hint}>
-                                  {reason?.label ?? row.endReason}
-                                </Badge>
-                                <p className="text-xs text-muted-foreground">
-                                  {formatWhen(row.endedAt)}
-                                </p>
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Showing {offset + 1}–{offset + rows.length} of {total}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={offset === 0}
-                    onClick={() => setOffset((previous) => Math.max(0, previous - PAGE_SIZE))}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={!data?.meta?.hasMore}
-                    onClick={() => setOffset((previous) => previous + PAGE_SIZE)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
+    <AdminLayout>
+      <div className="p-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-foreground">Shifts</h1>
+          <p className="text-muted-foreground">
+            Who was signed on to each till, when, and how the shift ended. A shift starts when a
+            cashier enters their PIN at a register and ends when they sign out there.
+          </p>
         </div>
-      </AdminLayout>
-    </ProtectedRoute>
+
+        <div className="mb-6 flex flex-wrap items-end gap-4">
+          <div className="grid gap-1">
+            <Label htmlFor="shift-register" className="text-xs text-muted-foreground">
+              Register
+            </Label>
+            <Select
+              value={registerId}
+              onValueChange={(value) => changeFilter(() => setRegisterId(value))}
+            >
+              <SelectTrigger id="shift-register" className="w-56">
+                <SelectValue placeholder="Any register" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>Any register</SelectItem>
+                {(registers ?? []).map((register) => (
+                  <SelectItem key={register.id} value={register.id}>
+                    {register.displayCode} — {register.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-1">
+            <Label htmlFor="shift-cashier" className="text-xs text-muted-foreground">
+              Cashier
+            </Label>
+            <Select value={userId} onValueChange={(value) => changeFilter(() => setUserId(value))}>
+              <SelectTrigger id="shift-cashier" className="w-56">
+                <SelectValue placeholder="Any cashier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>Any cashier</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-1">
+            <Label htmlFor="shift-from" className="text-xs text-muted-foreground">
+              From
+            </Label>
+            <Input
+              id="shift-from"
+              type="date"
+              value={from}
+              onChange={(event) => changeFilter(() => setFrom(event.target.value))}
+            />
+          </div>
+
+          <div className="grid gap-1">
+            <Label htmlFor="shift-to" className="text-xs text-muted-foreground">
+              To
+            </Label>
+            <Input
+              id="shift-to"
+              type="date"
+              value={to}
+              onChange={(event) => changeFilter(() => setTo(event.target.value))}
+            />
+          </div>
+
+          <Button
+            variant={openOnly ? 'default' : 'outline'}
+            aria-pressed={openOnly}
+            onClick={() => changeFilter(() => setOpenOnly((previous) => !previous))}
+          >
+            On the floor now
+          </Button>
+        </div>
+
+        {isError ? (
+          <p className="text-destructive">The shift log could not be loaded.</p>
+        ) : isLoading ? (
+          <p className="text-muted-foreground">Loading shifts…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground">
+            {openOnly
+              ? 'Nobody is signed on to a till right now.'
+              : 'No shifts match these filters.'}
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-sm text-muted-foreground" role="status">
+              {total} shift{total === 1 ? '' : 's'}
+              {openCount > 0 && ` · ${openCount} open on this page`}
+            </p>
+
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Started</TableHead>
+                    <TableHead scope="col">Cashier</TableHead>
+                    <TableHead scope="col">Register</TableHead>
+                    <TableHead scope="col">Location</TableHead>
+                    <TableHead scope="col">Duration</TableHead>
+                    <TableHead scope="col">Ended</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => {
+                    const reason = row.endReason ? END_REASONS[row.endReason] : null;
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {formatWhen(row.startedAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{row.cashierName ?? row.userId}</span>
+                            {/* Migration 020: an admin covering a till is
+                                attributed to themselves, never to the person
+                                they stood in for. Saying so on the row stops
+                                that reading as a mis-attribution. */}
+                            {row.emulatedUserName && (
+                              <p className="text-xs text-muted-foreground">
+                                covering for {row.emulatedUserName}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{row.registerDisplayCode ?? row.registerId}</TableCell>
+                        <TableCell>{row.locationName ?? '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatDuration(row)}</TableCell>
+                        <TableCell>
+                          {/* Text, not colour alone — an open shift is the
+                              one state a reader must not miss. */}
+                          {row.endedAt === null ? (
+                            <Badge>On the floor</Badge>
+                          ) : (
+                            <div>
+                              <Badge variant="outline" title={reason?.hint}>
+                                {reason?.label ?? row.endReason}
+                              </Badge>
+                              <p className="text-xs text-muted-foreground">
+                                {formatWhen(row.endedAt)}
+                              </p>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Showing {offset + 1}–{offset + rows.length} of {total}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={offset === 0}
+                  onClick={() => setOffset((previous) => Math.max(0, previous - PAGE_SIZE))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!data?.meta?.hasMore}
+                  onClick={() => setOffset((previous) => previous + PAGE_SIZE)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </AdminLayout>
   );
 }
