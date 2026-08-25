@@ -4702,6 +4702,39 @@ export class PostgresAdapter {
     }
   }
 
+  /**
+   * Charges that took money and never became a sale.
+   *
+   * The question the payment_attempts table exists to answer. `authorized`
+   * means the processor approved it and no order followed; `pending` past the
+   * grace period means a charge was started and we never learned how it ended,
+   * which needs checking against the processor rather than assuming either way.
+   *
+   * The grace period keeps sales that are merely *in progress* out of the list —
+   * a cashier mid-transaction is not an incident.
+   */
+  async listUnreconciledAttempts(options: {
+    olderThanMs?: number;
+    limit?: number;
+  } = {}): Promise<PaymentAttempt[]> {
+    try {
+      const cutoff = new Date(Date.now() - (options.olderThanMs ?? 0));
+      const result = await this.pool.query(
+        `SELECT * FROM payment_attempts
+          WHERE order_id IS NULL
+            AND status IN ('authorized', 'pending')
+            AND created_at <= $1
+          ORDER BY created_at ASC
+          LIMIT $2`,
+        [cutoff, options.limit ?? 200]
+      );
+      return asRows(result.rows).map(mapPaymentAttempt);
+    } catch (error) {
+      logger.error('Error listing unreconciled attempts:', error);
+      throw new DatabaseError('Failed to load unreconciled payments');
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const result = await this.pool.query(

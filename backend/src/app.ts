@@ -11,6 +11,7 @@ import { storage } from './storage';
 // Import routes
 import authRoutes from './api/routes/auth';
 import webhookRoutes from './api/routes/webhooks';
+import reconciliationRoutes from './api/routes/reconciliation';
 import productsRoutes from './api/routes/products';
 import categoriesRoutes from './api/routes/categories';
 import ordersRoutes from './api/routes/orders';
@@ -229,6 +230,7 @@ app.use('/api/receipts', receiptsRoutes);
 app.use('/api/discounts', discountsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/admin/reconciliation', reconciliationRoutes);
 app.use('/api/admin/api-keys', apiKeysRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/terminal', terminalRoutes);

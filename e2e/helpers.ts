@@ -5,8 +5,15 @@ import path from 'path';
 
 export async function navigateToPaymentSettings(page: Page) {
   await page.goto('/admin/settings');
-  await page.waitForSelector('text=Payments', { timeout: 10_000 });
-  await page.click('text=Payments');
+
+  // Aimed at the tab rather than at the word. `text=Payments` matches any
+  // element *containing* it, so a nav label elsewhere on the page that happens
+  // to include "Payments" silently retargets every spec using this helper —
+  // which is exactly what happened when the reconciliation screen was added.
+  const paymentsTab = page.getByRole('tab', { name: 'Payments', exact: true });
+  await paymentsTab.waitFor({ timeout: 10_000 });
+  await paymentsTab.click();
+
   await page.waitForSelector('[data-testid="cash-toggle"]', { timeout: 5_000 });
 }
 
