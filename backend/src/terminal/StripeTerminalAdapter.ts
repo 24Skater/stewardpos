@@ -9,6 +9,7 @@ import type {
   RefundRequest,
   RefundResult,
   RefundStatus,
+  EmvReceipt,
 } from './TerminalPort';
 import { TerminalUnavailableError } from './errors';
 
@@ -137,8 +138,8 @@ export class StripeTerminalAdapter implements TerminalPort {
     };
 
     const charge = pi.latest_charge as Stripe.Charge | null;
-    const authCode =
-      charge?.payment_method_details?.card_present?.receipt?.authorization_code ?? undefined;
+    const cardPresent = charge?.payment_method_details?.card_present;
+    const authCode = cardPresent?.receipt?.authorization_code ?? undefined;
     const failure = pi.last_payment_error;
 
     /**
@@ -161,6 +162,9 @@ export class StripeTerminalAdapter implements TerminalPort {
       // Stripe's own and covers failures the issuer never saw.
       declineCode: failure?.decline_code ?? failure?.code,
       errorMessage: failure?.message,
+      // Only once there is a charge: before the card is presented there is
+      // nothing negotiated to print.
+      ...(cardPresent?.receipt ? { receipt: toEmvReceipt(cardPresent.receipt) } : {}),
     };
   }
 
@@ -220,4 +224,26 @@ export class StripeTerminalAdapter implements TerminalPort {
       return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
+}
+
+
+/**
+ * Stripe's receipt block in our own naming.
+ *
+ * Renamed rather than passed through so the shape a receipt renders from is
+ * the port's, not one vendor's — the next provider's fields will differ in
+ * spelling and not in meaning.
+ */
+function toEmvReceipt(receipt: Stripe.Charge.PaymentMethodDetails.CardPresent.Receipt): EmvReceipt {
+  return {
+    accountType: receipt.account_type ?? null,
+    applicationPreferredName: receipt.application_preferred_name,
+    dedicatedFileName: receipt.dedicated_file_name,
+    authorizationCode: receipt.authorization_code,
+    authorizationResponseCode: receipt.authorization_response_code,
+    applicationCryptogram: receipt.application_cryptogram,
+    terminalVerificationResults: receipt.terminal_verification_results,
+    transactionStatusInformation: receipt.transaction_status_information,
+    cardholderVerificationMethod: receipt.cardholder_verification_method,
+  };
 }

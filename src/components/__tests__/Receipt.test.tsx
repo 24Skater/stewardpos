@@ -79,3 +79,79 @@ describe('Receipt', () => {
     expect(screen.queryByText(/Served by:/)).not.toBeInTheDocument();
   });
 });
+
+describe('EMV receipt fields', () => {
+  /**
+   * Card networks require certain fields on the receipt for a chip payment.
+   * The application name and the AID are required everywhere; the account type
+   * is required outside the US. Leaving them off is a compliance failure that
+   * shows up as nothing at all — the receipt simply prints without them.
+   */
+  it('prints the fields the card networks require', () => {
+    render(
+      <Receipt
+        order={order({
+          paymentMethod: 'Card',
+          cardReceipt: {
+            applicationPreferredName: 'Visa Credit',
+            dedicatedFileName: 'A0000000031010',
+            accountType: 'credit',
+          },
+        })}
+        orderItems={ITEMS}
+        settings={SETTINGS}
+      />
+    );
+
+    expect(screen.getByText(/Visa Credit/)).toBeInTheDocument();
+    expect(screen.getByText(/A0000000031010/)).toBeInTheDocument();
+    expect(screen.getByText(/credit/)).toBeInTheDocument();
+  });
+
+  it('prints the dispute fields when the processor supplied them', () => {
+    render(
+      <Receipt
+        order={order({
+          paymentMethod: 'Card',
+          cardReceipt: {
+            applicationPreferredName: 'Visa Credit',
+            dedicatedFileName: 'A0000000031010',
+            authorizationResponseCode: '00',
+            terminalVerificationResults: '0000008000',
+            transactionStatusInformation: 'E800',
+          },
+        })}
+        orderItems={ITEMS}
+        settings={SETTINGS}
+      />
+    );
+
+    expect(screen.getByText(/ARC: 00/)).toBeInTheDocument();
+    expect(screen.getByText(/TVR: 0000008000/)).toBeInTheDocument();
+    expect(screen.getByText(/TSI: E800/)).toBeInTheDocument();
+  });
+
+  it('omits a field the processor did not report rather than printing a blank', () => {
+    // A contactless tap does not negotiate the same set as an inserted chip, so
+    // a missing field is ordinary. "AID:" with nothing after it reads as a bug.
+    render(
+      <Receipt
+        order={order({
+          paymentMethod: 'Card',
+          cardReceipt: { applicationPreferredName: 'Visa Credit', dedicatedFileName: null },
+        })}
+        orderItems={ITEMS}
+        settings={SETTINGS}
+      />
+    );
+
+    expect(screen.queryByText(/AID:/)).not.toBeInTheDocument();
+  });
+
+  it('prints nothing extra on a cash sale', () => {
+    render(<Receipt order={order()} orderItems={ITEMS} settings={SETTINGS} />);
+
+    expect(screen.queryByText(/AID:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/App:/)).not.toBeInTheDocument();
+  });
+});

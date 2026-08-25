@@ -28,12 +28,38 @@ export interface ChargeMeta {
   metadata?: Record<string, string>;
 }
 
+/**
+ * What a chip payment has to put on the customer's receipt.
+ *
+ * Accepting EMV cards obliges the merchant to print certain fields.
+ * `applicationPreferredName` and `dedicatedFileName` (the AID) are required
+ * everywhere; `accountType` is required outside the US. The rest are optional
+ * on the receipt and are what an issuer asks for when a payment is disputed.
+ *
+ * Every field is nullable because the processor fills in what the card and
+ * reader actually negotiated — a contactless wallet does not produce the same
+ * set as an inserted chip.
+ */
+export interface EmvReceipt {
+  accountType?: string | null;
+  applicationPreferredName?: string | null;
+  dedicatedFileName?: string | null;
+  authorizationCode?: string | null;
+  authorizationResponseCode?: string | null;
+  applicationCryptogram?: string | null;
+  terminalVerificationResults?: string | null;
+  transactionStatusInformation?: string | null;
+  cardholderVerificationMethod?: string | null;
+}
+
 export interface ChargeResult {
   chargeId: string;
   status: ChargeStatus;
   authCode?: string;
   /** The issuer's reason on a decline — `insufficient_funds`, `lost_card`. */
   declineCode?: string;
+  /** Card-network required fields, present once a chip payment is confirmed. */
+  receipt?: EmvReceipt;
   errorMessage?: string;
 }
 

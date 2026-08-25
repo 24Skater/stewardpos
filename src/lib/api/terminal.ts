@@ -1,4 +1,5 @@
 import { apiClient } from '../api-client';
+import type { EmvReceipt } from './types';
 
 /** Mirrors `ChargeStatus` in `backend/src/terminal/TerminalPort.ts`. */
 export type ChargeStatus = 'pending' | 'approved' | 'declined' | 'cancelled' | 'error';
@@ -17,6 +18,8 @@ export interface TerminalCharge {
   attemptId?: string;
   /** What the server actually charged, in minor units. */
   amount?: number;
+  /** Card-network required receipt fields, once the payment is confirmed. */
+  receipt?: EmvReceipt;
 }
 
 export type ReaderStatus = 'online' | 'offline' | 'ready' | 'initializing' | 'error';
