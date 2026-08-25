@@ -147,3 +147,60 @@ describe('POST /api/receipts/:id/resend', () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('EMV fields on an emailed receipt', () => {
+  /**
+   * The obligation to show the application name and the AID for a chip payment
+   * is about the receipt the customer receives, not about paper. A receipt that
+   * arrives by email without them falls short of the same requirement.
+   */
+  function resend() {
+    return request(app)
+      .post('/api/receipts/ord-12345678/resend')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ email: 'buyer@example.com' });
+  }
+
+  it('includes the required fields when the sale was paid by chip', async () => {
+    getOrderById.mockResolvedValue({
+      ...ORDER,
+      paymentMethod: 'Card',
+      cardReceipt: {
+        applicationPreferredName: 'Visa Credit',
+        dedicatedFileName: 'A0000000031010',
+        accountType: 'credit',
+      },
+    });
+
+    await resend();
+
+    const { text } = sendEmail.mock.calls[0][0];
+    expect(text).toContain('App  Visa Credit');
+    expect(text).toContain('AID  A0000000031010');
+    expect(text).toContain('Account  credit');
+  });
+
+  it('leaves out a field the processor did not report', async () => {
+    getOrderById.mockResolvedValue({
+      ...ORDER,
+      paymentMethod: 'Card',
+      cardReceipt: { applicationPreferredName: 'Visa Credit', dedicatedFileName: null },
+    });
+
+    await resend();
+
+    const { text } = sendEmail.mock.calls[0][0];
+    expect(text).toContain('App  Visa Credit');
+    expect(text).not.toContain('AID');
+  });
+
+  it('adds nothing to a cash receipt', async () => {
+    getOrderById.mockResolvedValue({ ...ORDER, cardReceipt: null });
+
+    await resend();
+
+    const { text } = sendEmail.mock.calls[0][0];
+    expect(text).not.toContain('AID');
+    expect(text).not.toContain('App  ');
+  });
+});
