@@ -17,11 +17,14 @@ const retrieve = vi.fn();
 const create = vi.fn();
 const cancel = vi.fn();
 const listReaders = vi.fn();
+const cancelAction = vi.fn();
 
 vi.mock('stripe', () => ({
   default: class {
     paymentIntents = { retrieve, create, cancel };
-    terminal = { readers: { list: listReaders, processPaymentIntent: vi.fn() } };
+    terminal = {
+      readers: { list: listReaders, processPaymentIntent: vi.fn(), cancelAction },
+    };
   },
 }));
 
@@ -33,6 +36,9 @@ function adapter() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Cancelling now resets the reader as well as the intent, so the SDK double
+  // needs the call the adapter makes first.
+  cancelAction.mockResolvedValue({});
 });
 
 describe('Stripe payment intent statuses', () => {

@@ -3,9 +3,14 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { resolveCallerRegister } from '../middleware/registerContext';
-import { ValidationError, UnauthorizedError } from '../../utils/errors';
+import {
+  ValidationError,
+  UnauthorizedError,
+  ServiceUnavailableError,
+} from '../../utils/errors';
 import db from '../../services/database';
 import { resolveTerminal } from '../../services/terminalGateway';
+import { TerminalUnavailableError } from '../../terminal/errors';
 import logger from '../../utils/logger';
 
 const router = Router();
@@ -16,6 +21,15 @@ const chargeSchema = z.object({
   currency: z.string().default('USD'),
   readerId: z.string().optional(),
   description: z.string().optional(),
+  /**
+   * The till's id for this checkout attempt.
+   *
+   * Sent by the client because only the client knows where one attempt ends:
+   * a retried request is the same attempt and must not charge twice, while a
+   * cashier pressing "try again" after a decline is a new one. Capped at
+   * Stripe's own 255-character limit for idempotency keys.
+   */
+  idempotencyKey: z.string().min(1).max(255).optional(),
 });
 
 router.post('/charge', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -23,13 +37,17 @@ router.post('/charge', requirePermission('orders', 'write'), async (req: AuthReq
     const parsed = chargeSchema.safeParse(req.body);
     if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
 
-    const { amount, currency, readerId, description } = parsed.data;
+    const { amount, currency, readerId, description, idempotencyKey } = parsed.data;
     const dbAdapter = db.getAdapter();
     const register = await resolveCallerRegister(req);
     const { terminal, provider } = await resolveTerminal(dbAdapter, register);
 
     const startedAt = Date.now();
-    const result = await terminal.createCharge(amount, currency, { readerId, description });
+    const result = await terminal.createCharge(amount, currency, {
+      readerId,
+      description,
+      idempotencyKey,
+    });
 
     await dbAdapter.createTerminalTransaction({
       amount,
@@ -44,6 +62,13 @@ router.post('/charge', requirePermission('orders', 'write'), async (req: AuthReq
     logger.info(`Terminal charge initiated: ${result.chargeId}`);
     res.status(202).json({ success: true, data: result });
   } catch (error) {
+    // A reader that is busy, unplugged or unreachable is a shop-floor problem
+    // with a shop-floor answer, not a server fault. 503 with the reason keeps
+    // the cashier looking at the reader instead of at the till.
+    if (error instanceof TerminalUnavailableError) {
+      logger.warn(`Terminal unavailable (${error.code}): ${error.message}`);
+      return next(new ServiceUnavailableError(error.message));
+    }
     next(error);
   }
 });

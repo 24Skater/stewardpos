@@ -9,12 +9,23 @@ export interface ChargeMeta {
   orderId?: string;
   readerId?: string;
   description?: string;
+  /**
+   * A stable key for this checkout attempt, so a retried request re-reads the
+   * first result instead of starting a second payment.
+   *
+   * Supplied by the caller because only the caller knows what "the same
+   * attempt" means: a network retry is the same attempt and must reuse the key,
+   * while a cashier pressing "try again" after a decline is a new one.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ChargeResult {
   chargeId: string;
   status: ChargeStatus;
   authCode?: string;
+  /** The issuer's reason on a decline — `insufficient_funds`, `lost_card`. */
+  declineCode?: string;
   errorMessage?: string;
 }
 
