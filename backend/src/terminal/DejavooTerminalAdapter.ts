@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult } from './TerminalPort';
+import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult, RefundRequest, RefundResult } from './TerminalPort';
+import { RefundNotSupportedError } from './errors';
 
 interface DejavooConfig {
   apiKey: string;
@@ -76,6 +77,11 @@ export class DejavooTerminalAdapter implements TerminalPort {
 
   async cancelCharge(chargeId: string): Promise<void> {
     await this.dejavooFetch(`/payment/void/${chargeId}`, { method: 'POST', body: '{}' });
+  }
+
+  /** Not implemented for Dejavoo — see {@link RefundNotSupportedError}. */
+  async refundCharge(_request: RefundRequest): Promise<RefundResult> {
+    throw new RefundNotSupportedError('Dejavoo');
   }
 
   async listReaders(): Promise<TerminalReader[]> {

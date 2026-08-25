@@ -16,6 +16,10 @@ import {
   type OriginalOrder,
   type PriorReturn,
 } from '../../services/returnPricing';
+import { resolveTerminal } from '../../services/terminalGateway';
+import { RefundNotSupportedError } from '../../terminal/errors';
+import type { RefundResult } from '../../terminal/TerminalPort';
+import { toCents } from '../../services/pricing';
 
 const router = Router();
 
@@ -428,6 +432,52 @@ router.post('/:id/process-refund', requirePermission('returns', 'write'), async 
       );
     }
     const refundAmount = data.amount ?? returnTotal;
+    const isPartial = data.amount !== undefined && data.amount < returnTotal;
+
+    /**
+     * Send the money back before writing down that we did.
+     *
+     * This route used to record every refund method as `completed` and call no
+     * processor at all, so a card refund was a row in our database and nothing
+     * else — the customer was told they had been refunded and the money never
+     * moved. Anything that fails here throws, which leaves the return
+     * unrefunded and re-attemptable rather than falsely settled.
+     */
+    let processorRefund: RefundResult | null = null;
+    if (data.refundMethod === 'card' || data.refundMethod === 'original_payment') {
+      const originalOrder = returnData.originalOrderId
+        ? await adapter.getOrderById(returnData.originalOrderId as string)
+        : null;
+      const chargeId = originalOrder?.cardTransactionId as string | undefined | null;
+
+      if (!chargeId) {
+        throw new ValidationError(
+          'The original sale has no card payment to refund. Refund this return as cash or store credit instead.'
+        );
+      }
+
+      const { terminal } = await resolveTerminal(adapter);
+
+      try {
+        processorRefund = await terminal.refundCharge({
+          chargeId,
+          // Omitted on a full refund so the processor returns everything it
+          // took, rather than a total we recomputed from our own rounding.
+          ...(isPartial ? { amount: toCents(refundAmount) } : {}),
+          // Stable across retries: the same return refunded for the same amount
+          // is the same refund, so a double-click cannot pay out twice.
+          idempotencyKey: `refund:${id}:${toCents(refundAmount)}`,
+        });
+      } catch (error) {
+        if (error instanceof RefundNotSupportedError) {
+          throw new UnprocessableEntityError(error.message);
+        }
+        logger.error(`Card refund failed for return ${id}:`, error);
+        throw new UnprocessableEntityError(
+          error instanceof Error ? error.message : 'The card refund was not accepted'
+        );
+      }
+    }
 
     // Process based on refund method
     let storeCreditCode = null;
@@ -446,16 +496,36 @@ router.post('/:id/process-refund', requirePermission('returns', 'write'), async 
       });
     }
 
-    // Create refund transaction record
+    // Create refund transaction record.
+    //
+    // The status is what the processor said, not an assumption. A card refund
+    // that Stripe accepted but has not settled is `pending`, and one it later
+    // reverses stays wrong here until the `refund.failed` webhook lands — that
+    // arrives with the webhook work, and until then a pending refund needs
+    // checking against the processor.
     const refundTransaction = await adapter.createRefundTransaction({
       returnId: id,
       orderId: returnData.originalOrderId,
-      transactionType: data.amount && data.amount < returnData.total ? 'partial_refund' : 'full_refund',
+      transactionType: isPartial ? 'partial_refund' : 'full_refund',
       amount: refundAmount,
       paymentMethod: data.refundMethod,
-      status: 'completed',
+      status: processorRefund ? processorRefund.status : 'completed',
+      processorTransactionId: processorRefund?.refundId,
+      failureReason: processorRefund?.failureReason,
       processedBy: req.user?.id,
     });
+
+    // A refund the processor rejected outright is recorded — the attempt is
+    // worth keeping — but the return stays unrefunded so somebody can settle it
+    // another way rather than it looking done.
+    if (processorRefund?.status === 'failed') {
+      logger.error(
+        `Card refund for return ${id} failed at the processor: ${processorRefund.failureReason ?? 'no reason given'}`
+      );
+      throw new UnprocessableEntityError(
+        `The card refund was declined${processorRefund.failureReason ? ` (${processorRefund.failureReason})` : ''}. Refund this return as cash or store credit instead.`
+      );
+    }
 
     // Update return refund status
     await adapter.updateReturnRefundStatus(id, {
