@@ -103,7 +103,7 @@ services:
   backend:
     # Pull a published image when IMAGE_TAG is set, build from source otherwise.
     #
-    #   IMAGE_TAG=1.0.0-rc.1 docker compose -f docker-compose.prod.yml up -d
+    #   IMAGE_TAG=1.0.0 docker compose -f docker-compose.prod.yml up -d
     #
     # Compose uses `image:` as the pull target and `build:` as the fallback, so
     # both can be declared: with a real tag it pulls, and with the default

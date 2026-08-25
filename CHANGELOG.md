@@ -9,8 +9,32 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Two feature plans and a cleanup pass, none of it released. The version is still
-`1.0.0-rc.1`; nothing here has been tagged.
+Nothing yet.
+
+---
+
+## [1.0.0] — 2026-08-25
+
+Two feature plans and a cleanup pass on top of the release candidate.
+
+**What 1.0.0 does not mean.** Two items on the go-live checklist in
+[`docs/masterplan/phase-9-golive.md`](docs/masterplan/phase-9-golive.md) have
+still never been verified, and neither can be verified without hardware:
+
+- **A card sale has never been run against a real reader.** The Stripe Terminal
+  path is written end to end — a real PaymentIntent, the reader driven through
+  `processPaymentIntent`, every status mapped, and an order created only on
+  approval, so a decline provably creates none. What has not happened is a run
+  against real credentials with a reader attached. Card is off by default. Cash
+  is the tender to rely on.
+- **No install has been done on a clean VPS.** The
+  [guide](docs/guides/install-vps.md) is complete and the stack validates, but
+  nobody has followed it start to finish on a fresh server.
+
+Everything else on that checklist passes and is covered by tests. Treat this as
+a first stable release of the parts a shop uses every day — the money path,
+inventory, returns, registers, reporting — with card payments and the install
+path still wanting a real-world run.
 
 ### Added
 
