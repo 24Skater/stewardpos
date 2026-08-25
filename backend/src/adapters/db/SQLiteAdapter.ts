@@ -4556,6 +4556,28 @@ export class SQLiteAdapter {
     }
   }
 
+  /** Counterpart to the Postgres implementation; see that file for the reasoning. */
+  async listUnreconciledAttempts(options: {
+    olderThanMs?: number;
+    limit?: number;
+  } = {}): Promise<PaymentAttempt[]> {
+    try {
+      const cutoff = Date.now() - (options.olderThanMs ?? 0);
+      const rows = this.db.prepare(
+        `SELECT * FROM payment_attempts
+          WHERE order_id IS NULL
+            AND status IN ('authorized', 'pending')
+            AND created_at <= ?
+          ORDER BY created_at ASC
+          LIMIT ?`
+      ).all(cutoff, options.limit ?? 200) as DbRow[];
+      return rows.map(mapPaymentAttempt);
+    } catch (error) {
+      logger.error('Error listing unreconciled attempts:', error);
+      throw new DatabaseError('Failed to load unreconciled payments');
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const id = crypto.randomUUID();
