@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License"/></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Status-1.0.0--rc.1-f59e0b?style=for-the-badge&logo=semver&logoColor=white" alt="Status: 1.0.0-rc.1"/></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Release-1.0.0-1b6e51?style=for-the-badge&logo=semver&logoColor=white" alt="Release: 1.0.0"/></a>
   <a href="docker-compose.yml"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/></a>
   <a href="#"><img src="https://img.shields.io/badge/PRs-Welcome-ec4899?style=for-the-badge&logo=github&logoColor=white" alt="PRs Welcome"/></a>
 </p>

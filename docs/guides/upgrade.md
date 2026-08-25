@@ -93,14 +93,14 @@ Two ways, and the second is better once releases exist.
 **Building from source** — `git pull` moves you between versions:
 
 ```bash
-git checkout v1.0.0-rc.1
+git checkout v1.0.0
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 **Running published images** — set `IMAGE_TAG` in `.env`:
 
 ```bash
-IMAGE_TAG=1.0.0-rc.1
+IMAGE_TAG=1.0.0
 ```
 
 ```bash

@@ -4,11 +4,11 @@
 # stays supported, but it needs the source, a toolchain and several minutes of
 # CPU on a machine that is often the shop's only server.
 #
-#   git tag -a v1.0.0-rc.1 -m "Release candidate 1"
-#   git push origin v1.0.0-rc.1
+#   git tag -a v1.0.0 -m "StewardPOS 1.0.0"
+#   git push origin v1.0.0
 #
 # Then, on the server:
-#   IMAGE_TAG=1.0.0-rc.1 docker compose -f docker-compose.prod.yml up -d
+#   IMAGE_TAG=1.0.0 docker compose -f docker-compose.prod.yml up -d
 #
 # Nothing here fires on a branch push. Publishing is a deliberate act.
 
