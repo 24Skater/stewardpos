@@ -140,3 +140,78 @@ async function stockNow(): Promise<number> {
   const { rows } = await h.query('SELECT stock FROM product_variants WHERE id = $1', [variantId]);
   return Number(rows[0].stock);
 }
+
+describe('EMV receipt fields', () => {
+  /**
+   * Card networks require certain fields on the receipt for a chip payment, so
+   * losing them is a compliance failure rather than a cosmetic one — and the
+   * failure mode is silent: the receipt simply prints without them.
+   *
+   * Exercised against real SQL because the risk here is arity. Adding a column
+   * to a positional INSERT without adding its placeholder shifts every
+   * parameter after it, and the row still writes.
+   */
+  // The file shares one variant and earlier cases spend its stock, so this
+  // block tops it up rather than failing on an unrelated shortage.
+  beforeAll(async () => {
+    await h.query('UPDATE product_variants SET stock = 100 WHERE id = $1', [variantId]);
+  });
+
+  const receipt = {
+    accountType: 'credit',
+    applicationPreferredName: 'Visa Credit',
+    dedicatedFileName: 'A0000000031010',
+    authorizationCode: '123456',
+    authorizationResponseCode: '00',
+    applicationCryptogram: 'A1B2C3D4E5F60708',
+    terminalVerificationResults: '0000008000',
+    transactionStatusInformation: 'E800',
+    cardholderVerificationMethod: 'online_pin',
+  };
+
+  it('keeps the whole block through a round trip', async () => {
+    const order = await h.adapter.createOrder({
+      ...sale(1),
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 5 }],
+      cardTransactionId: 'pi_emv',
+      cardAuthCode: '123456',
+      cardReceipt: receipt,
+    });
+
+    const reloaded = await h.adapter.getOrderById(String(order.id));
+
+    expect(reloaded!.cardReceipt).toEqual(receipt);
+  });
+
+  it('does not disturb the columns around it', async () => {
+    // The arity check. If the placeholder were missing, these would take each
+    // other's values rather than failing outright.
+    const order = await h.adapter.createOrder({
+      ...sale(1),
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: 5 }],
+      cardTransactionId: 'pi_arity',
+      cardAuthCode: 'AUTH99',
+      cardReceipt: receipt,
+      amountTendered: 5,
+      changeGiven: 0,
+    });
+
+    const reloaded = await h.adapter.getOrderById(String(order.id));
+
+    expect(reloaded).toMatchObject({
+      cardTransactionId: 'pi_arity',
+      cardAuthCode: 'AUTH99',
+      total: 5,
+    });
+  });
+
+  it('leaves a cash sale with no receipt block at all', async () => {
+    const order = await h.adapter.createOrder(sale(1));
+
+    const reloaded = await h.adapter.getOrderById(String(order.id));
+
+    expect(reloaded!.cardReceipt).toBeNull();
+  });
+});

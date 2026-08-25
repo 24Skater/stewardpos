@@ -28,6 +28,49 @@ export default function Receipt({ order, orderItems, settings }: ReceiptProps) {
         <p>Payment: {order.paymentMethod}</p>
       </div>
 
+      {/*
+        Card-network required fields for a chip payment.
+
+        Accepting EMV cards obliges the merchant to print the application name
+        and the AID; outside the US the account type is required too. The
+        remaining fields are what an issuer asks for when a payment is
+        disputed, so they are printed when the processor supplied them.
+
+        Rendered only when the sale actually carries a receipt block: a cash
+        sale has none, and neither does any card sale rung before this existed.
+      */}
+      {order.cardReceipt ? (
+        <div className="mb-4 text-xs border border-black p-2">
+          {order.cardReceipt.applicationPreferredName ? (
+            <p>App: {order.cardReceipt.applicationPreferredName}</p>
+          ) : null}
+          {order.cardReceipt.dedicatedFileName ? (
+            <p>AID: {order.cardReceipt.dedicatedFileName}</p>
+          ) : null}
+          {order.cardReceipt.accountType ? (
+            <p>Account: {order.cardReceipt.accountType}</p>
+          ) : null}
+          {order.cardReceipt.authorizationCode ? (
+            <p>Auth: {order.cardReceipt.authorizationCode}</p>
+          ) : null}
+          {order.cardReceipt.authorizationResponseCode ? (
+            <p>ARC: {order.cardReceipt.authorizationResponseCode}</p>
+          ) : null}
+          {order.cardReceipt.applicationCryptogram ? (
+            <p>AC: {order.cardReceipt.applicationCryptogram}</p>
+          ) : null}
+          {order.cardReceipt.terminalVerificationResults ? (
+            <p>TVR: {order.cardReceipt.terminalVerificationResults}</p>
+          ) : null}
+          {order.cardReceipt.transactionStatusInformation ? (
+            <p>TSI: {order.cardReceipt.transactionStatusInformation}</p>
+          ) : null}
+          {order.cardReceipt.cardholderVerificationMethod ? (
+            <p>CVM: {order.cardReceipt.cardholderVerificationMethod}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Items */}
       <div className="border-t border-b border-black py-2 mb-2">
         {orderItems.map((item) => (

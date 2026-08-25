@@ -151,6 +151,13 @@ const createOrderSchema = z.object({
   cardTransactionId: z.string().optional(),
   cardAuthCode: z.string().optional(),
   /**
+   * The card-network fields a chip receipt has to carry, as the processor
+   * reported them. Stored verbatim: they are printed as a block and never read
+   * field by field, and inventing or reformatting any of them would defeat the
+   * point of printing them.
+   */
+  cardReceipt: z.record(z.unknown()).optional(),
+  /**
    * The payment attempt this sale is settling, from `POST /api/terminal/charge`.
    *
    * Present on any card sale rung through a reader. It is what turns "a card
