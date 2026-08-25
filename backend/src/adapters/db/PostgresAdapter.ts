@@ -97,6 +97,7 @@ export function mapOrderRow(order: DbRow): DbRow {
     customerEmail: order.customer_email,
     customerPhone: order.customer_phone,
     cardTransactionId: order.card_transaction_id ?? null,
+    cardReceipt: parseCartSnapshot(order.card_receipt),
     cardAuthCode: order.card_auth_code ?? null,
     // Null on card and other tenders, and on orders predating the columns.
     amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
@@ -835,8 +836,8 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, card_receipt, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           order.subtotal,
@@ -848,6 +849,9 @@ export class PostgresAdapter {
           order.customerPhone,
           order.cardTransactionId ?? null,
           order.cardAuthCode ?? null,
+          order.cardReceipt === undefined || order.cardReceipt === null
+            ? null
+            : JSON.stringify(order.cardReceipt),
           order.amountTendered ?? null,
           order.changeGiven ?? null,
           order.registerId ?? null,

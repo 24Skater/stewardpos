@@ -26,7 +26,7 @@ import OverridePrompt, { type OverrideGrant } from "@/components/register/Overri
 import { getDeviceToken, getSelectedRegisterId, subscribeToSelectedRegisterId } from "@/lib/register-device";
 import { ApiClientError } from "@/lib/api-client";
 import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from "@/lib/register-error-codes";
-import type { OverrideAction } from "@/lib/api";
+import type { OverrideAction, EmvReceipt } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import type { AppliedDiscount } from "@/lib/register-math";
 import {
@@ -919,12 +919,15 @@ export default function POS() {
 
       terminalPollRef.current = setInterval(async () => {
         try {
-          const { status, authCode, errorMessage } = await terminalApi.status(chargeId);
+          const { status, authCode, errorMessage, receipt } = await terminalApi.status(chargeId);
 
           if (status === 'approved') {
             stopTerminalPolling();
             setTerminalState({ phase: 'approved', chargeId, authCode });
-            await completeCardOrder(chargeId, authCode);
+            // The processor only fills the receipt block in once the card has
+            // been read, so this poll is the first point it exists — and the
+            // order is the only place it will be printed from.
+            await completeCardOrder(chargeId, authCode, undefined, receipt);
           } else if (status === 'declined') {
             stopTerminalPolling();
             setTerminalState({ phase: 'declined', errorMessage: errorMessage || 'Card declined' });
@@ -960,7 +963,12 @@ export default function POS() {
     setTerminalState({ phase: 'idle' });
   };
 
-  const completeCardOrder = async (chargeId: string, authCode?: string, overrideToken?: string) => {
+  const completeCardOrder = async (
+    chargeId: string,
+    authCode?: string,
+    overrideToken?: string,
+    cardReceipt?: EmvReceipt
+  ) => {
     try {
       const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
@@ -991,6 +999,7 @@ export default function POS() {
         ...(buildPayments('Card') ? { payments: buildPayments('Card') } : {}),
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
         cardTransactionId: chargeId,
+        ...(cardReceipt ? { cardReceipt } : {}),
         ...(chargeAttemptRef.current ? { attemptId: chargeAttemptRef.current } : {}),
         cardAuthCode: authCode,
       };
