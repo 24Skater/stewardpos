@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cashPortion, singleTender, validateTender } from '../tender';
+import { cardPortion, cashPortion, singleTender, validateTender } from '../tender';
 
 describe('singleTender', () => {
   it('turns one method into one payment covering the sale', () => {
@@ -135,5 +135,29 @@ describe('cashPortion', () => {
   it('is zero when nothing was paid in cash', () => {
     // Which is what stops change being given against a card payment.
     expect(cashPortion([{ method: 'card', amount: 40 }])).toBe(0);
+  });
+});
+
+describe('cardPortion', () => {
+  it('sums only the card payments', () => {
+    // This is the figure checked against what the processor was actually given,
+    // so a split sale must contribute its card leg and nothing else.
+    expect(
+      cardPortion([
+        { method: 'cash', amount: 20 },
+        { method: 'card', amount: 15 },
+        { method: 'card', amount: 5.5 },
+      ])
+    ).toBe(20.5);
+  });
+
+  it('is zero when nothing was paid by card', () => {
+    // A cash-only sale has no charge to reconcile against, so binding it to a
+    // payment attempt must compare against nothing rather than against the total.
+    expect(cardPortion([{ method: 'cash', amount: 40 }])).toBe(0);
+  });
+
+  it('is zero for an empty tender', () => {
+    expect(cardPortion([])).toBe(0);
   });
 });

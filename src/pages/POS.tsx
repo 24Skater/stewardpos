@@ -334,6 +334,14 @@ export default function POS() {
   const [terminalState, setTerminalState] = useState<TerminalState>({ phase: 'idle' });
   const terminalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const terminalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * The server's id for the payment now in flight.
+   *
+   * Handed back when the order is created so the money taken and the sale
+   * recorded are one fact. Held in a ref rather than state because the polling
+   * callback reads it, and it must not depend on a re-render having happened.
+   */
+  const chargeAttemptRef = useRef<string | null>(null);
   const [lastOrderAuthCode, setLastOrderAuthCode] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -872,56 +880,35 @@ export default function POS() {
   const handleChargeCard = async () => {
     setTerminalState({ phase: 'charging' });
 
-    // One key per attempt, minted here so that "try again" after a decline is
-    // a genuinely new payment while anything that retries this same request —
-    // a proxy, a flaky connection — settles on the first result instead of
-    // authorising the card a second time.
-    const attemptKey = crypto.randomUUID();
-
     try {
-      // Ask the server what this cart costs before authorising anything. The
-      // register's own arithmetic is a preview; the server reprices, and if the
-      // two disagree - a price edited since the catalog was cached, a discount
-      // that has since expired - charging the client's figure would take one
-      // amount off the card and record another against the order.
-      //
-      // A rejected discount surfaces here as a thrown error, while the customer's
-      // card is still in their hand.
-      const quote = await ordersApi.quote({
+      // The credit covering the whole sale is the one case with nothing to put
+      // on a card, and the register can tell locally. Everything else goes to
+      // the server, which prices the cart and decides the amount itself — the
+      // till no longer computes a figure and asks for it to be charged.
+      if (appliedCredit && amountDue <= 0) {
+        setTerminalState({ phase: 'idle' });
+        await completeCardOrder('', undefined);
+        return;
+      }
+
+      // Send what is being sold, not what we think it costs. A price edited
+      // since the catalog was cached or a discount that has since expired now
+      // changes the charge rather than desynchronising it from the order, and a
+      // rejected discount surfaces here while the card is still in hand.
+      const { chargeId, attemptId } = await terminalApi.charge({
         items: cart.map(item => ({
           productId: item.productId,
           variantId: item.variantId || undefined,
           quantity: item.quantity,
           notes: item.notes,
         })),
-        appliedDiscounts: toDiscountRequests(appliedDiscounts),
-      });
-
-      // The card covers what a store credit has not. Charging the full total
-      // here would take the credit's share twice - once off the credit and once
-      // off the card - and the server would then reject the order for
-      // overpayment, after the customer's card was already authorised.
-      const creditShare = appliedCredit
-        ? Math.min(Math.round(appliedCredit.remainingAmount * 100), Math.round(quote.total * 100))
-        : 0;
-
-      // Card processors bill in minor units, so this is the one figure sent in cents.
-      const amountCents = Math.round(quote.total * 100) - creditShare;
-
-      if (amountCents <= 0) {
-        // The credit covers everything; there is nothing to put on a card.
-        setTerminalState({ phase: 'idle' });
-        await completeCardOrder('', undefined);
-        return;
-      }
-
-      const { chargeId } = await terminalApi.charge({
-        amount: amountCents,
+        appliedDiscounts: toDiscountRequests(appliedDiscounts) as unknown as Array<Record<string, unknown>>,
+        storeCreditCode: appliedCredit?.code,
         currency: 'USD',
         description: 'POS Checkout',
-        idempotencyKey: attemptKey,
       });
 
+      chargeAttemptRef.current = attemptId ?? null;
       setTerminalState({ phase: 'waiting', chargeId });
 
       terminalTimeoutRef.current = setTimeout(async () => {
@@ -977,7 +964,7 @@ export default function POS() {
     try {
       const { subtotal, discountTotal, taxTotal, total } = calculateTotals();
 
-      const orderData: CreateOrderRequest & { cardTransactionId?: string; cardAuthCode?: string } = {
+      const orderData: CreateOrderRequest = {
         items: cart.map(item => {
           const orderItem: CreateOrderRequest['items'][number] = {
             productId: item.productId,
@@ -1004,6 +991,7 @@ export default function POS() {
         ...(buildPayments('Card') ? { payments: buildPayments('Card') } : {}),
         ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
         cardTransactionId: chargeId,
+        ...(chargeAttemptRef.current ? { attemptId: chargeAttemptRef.current } : {}),
         cardAuthCode: authCode,
       };
 
