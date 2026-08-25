@@ -23,6 +23,7 @@ const getRegisterById = vi.fn();
 const getProductById = vi.fn();
 const getOpenShiftForRegister = vi.fn();
 const createPaymentAttempt = vi.fn();
+const getPaymentAttemptByChargeId = vi.fn();
 const updatePaymentAttempt = vi.fn();
 
 vi.mock('../../../services/database', () => ({
@@ -38,6 +39,7 @@ vi.mock('../../../services/database', () => ({
       getProductById,
       getOpenShiftForRegister,
       createPaymentAttempt,
+      getPaymentAttemptByChargeId,
       updatePaymentAttempt,
     }),
   },
@@ -97,6 +99,7 @@ beforeEach(() => {
   });
   getOpenShiftForRegister.mockResolvedValue(null);
   createPaymentAttempt.mockImplementation(async (data) => ({ id: 'att-1', ...data }));
+  getPaymentAttemptByChargeId.mockResolvedValue({ id: 'att-1', status: 'pending' });
   updatePaymentAttempt.mockResolvedValue({});
   createTerminalTransaction.mockResolvedValue({ id: 't1' });
   updateTerminalTransactionByChargeId.mockResolvedValue(undefined);

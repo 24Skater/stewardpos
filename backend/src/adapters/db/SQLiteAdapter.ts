@@ -4504,6 +4504,58 @@ export class SQLiteAdapter {
     }
   }
 
+  /** Counterpart to the Postgres implementation; see that file for the reasoning. */
+  async claimWebhookEvent(event: {
+    id: string;
+    type: string;
+    chargeId?: string;
+  }): Promise<boolean> {
+    try {
+      const result = this.db.prepare(
+        `INSERT OR IGNORE INTO webhook_events (id, type, received_at, charge_id)
+         VALUES (?, ?, ?, ?)`
+      ).run(event.id, event.type, Date.now(), event.chargeId ?? null);
+      return result.changes > 0;
+    } catch (error) {
+      logger.error('Error claiming webhook event:', error);
+      throw new DatabaseError('Failed to record the webhook event');
+    }
+  }
+
+  async markWebhookEventHandled(id: string, handlerError?: string): Promise<void> {
+    try {
+      this.db.prepare(
+        'UPDATE webhook_events SET handled_at = ?, handler_error = ? WHERE id = ?'
+      ).run(Date.now(), handlerError ?? null, id);
+    } catch (error) {
+      logger.error('Error marking webhook event handled:', error);
+    }
+  }
+
+  async getPaymentAttemptByChargeId(chargeId: string): Promise<PaymentAttempt | null> {
+    try {
+      const row = this.db.prepare(
+        'SELECT * FROM payment_attempts WHERE charge_id = ? ORDER BY created_at DESC LIMIT 1'
+      ).get(chargeId) as DbRow | undefined;
+      return row ? mapPaymentAttempt(row) : null;
+    } catch (error) {
+      logger.error('Error loading payment attempt by charge:', error);
+      throw new DatabaseError('Failed to load the payment attempt');
+    }
+  }
+
+  async markRefundFailed(processorRefundId: string, failureReason: string | null): Promise<void> {
+    try {
+      this.db.prepare(
+        `UPDATE refund_transactions
+            SET status = 'failed', failure_reason = ?, completed_at = NULL
+          WHERE processor_transaction_id = ?`
+      ).run(failureReason, processorRefundId);
+    } catch (error) {
+      logger.error('Error marking refund failed:', error);
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const id = crypto.randomUUID();
