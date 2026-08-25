@@ -872,6 +872,12 @@ export default function POS() {
   const handleChargeCard = async () => {
     setTerminalState({ phase: 'charging' });
 
+    // One key per attempt, minted here so that "try again" after a decline is
+    // a genuinely new payment while anything that retries this same request —
+    // a proxy, a flaky connection — settles on the first result instead of
+    // authorising the card a second time.
+    const attemptKey = crypto.randomUUID();
+
     try {
       // Ask the server what this cart costs before authorising anything. The
       // register's own arithmetic is a preview; the server reprices, and if the
@@ -913,6 +919,7 @@ export default function POS() {
         amount: amountCents,
         currency: 'USD',
         description: 'POS Checkout',
+        idempotencyKey: attemptKey,
       });
 
       setTerminalState({ phase: 'waiting', chargeId });
