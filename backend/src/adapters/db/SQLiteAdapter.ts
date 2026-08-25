@@ -5,7 +5,13 @@ import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { escapeLike } from './like';
-import { DbRow, asRows } from './types';
+import {
+  DbRow,
+  asRows,
+  type PaymentAttempt,
+  type PaymentAttemptCreate,
+  type PaymentAttemptUpdate,
+} from './types';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
 import type {
   AuditLogQuery,
@@ -4432,6 +4438,72 @@ export class SQLiteAdapter {
   }
 
   // ===== Terminal Transaction Operations =====
+  /** Counterpart to the Postgres implementation; see that file for the reasoning. */
+  async createPaymentAttempt(data: PaymentAttemptCreate): Promise<PaymentAttempt> {
+    try {
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      this.db.prepare(
+        `INSERT INTO payment_attempts
+           (id, created_at, updated_at, org_id, register_id, cashier_user_id, shift_id,
+            amount_cents, currency, provider, cart_snapshot, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+      ).run(
+        id,
+        now,
+        now,
+        data.orgId ?? null,
+        data.registerId ?? null,
+        data.cashierUserId ?? null,
+        data.shiftId ?? null,
+        data.amountCents,
+        data.currency,
+        data.provider,
+        data.cartSnapshot === undefined ? null : JSON.stringify(data.cartSnapshot)
+      );
+      return mapPaymentAttempt(
+        this.db.prepare('SELECT * FROM payment_attempts WHERE id = ?').get(id) as DbRow
+      );
+    } catch (error) {
+      logger.error('Error creating payment attempt:', error);
+      throw new DatabaseError('Failed to record the payment attempt');
+    }
+  }
+
+  async getPaymentAttemptById(id: string): Promise<PaymentAttempt | null> {
+    try {
+      const row = this.db.prepare('SELECT * FROM payment_attempts WHERE id = ?').get(id) as DbRow | undefined;
+      return row ? mapPaymentAttempt(row) : null;
+    } catch (error) {
+      logger.error('Error loading payment attempt:', error);
+      throw new DatabaseError('Failed to load the payment attempt');
+    }
+  }
+
+  async updatePaymentAttempt(id: string, patch: PaymentAttemptUpdate): Promise<PaymentAttempt | null> {
+    const columns: Record<string, unknown> = {
+      status: patch.status,
+      charge_id: patch.chargeId,
+      order_id: patch.orderId,
+      failure_reason: patch.failureReason,
+    };
+    const present = Object.entries(columns).filter(([, value]) => value !== undefined);
+    if (present.length === 0) return this.getPaymentAttemptById(id);
+
+    try {
+      const assignments = present.map(([column]) => `${column} = ?`);
+      this.db.prepare(
+        `UPDATE payment_attempts
+            SET ${assignments.join(', ')}, updated_at = ?
+          WHERE id = ?`
+      ).run(...present.map(([, value]) => value), Date.now(), id);
+      return this.getPaymentAttemptById(id);
+    } catch (error) {
+      logger.error('Error updating payment attempt:', error);
+      throw new DatabaseError('Failed to update the payment attempt');
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const id = crypto.randomUUID();
@@ -6033,4 +6105,35 @@ export class SQLiteAdapter {
     }
   }
 
+}
+
+
+/** Counterpart to the Postgres mapper; `cart_snapshot` arrives as text here. */
+function mapPaymentAttempt(row: DbRow): PaymentAttempt {
+  return {
+    id: String(row.id),
+    orgId: row.org_id ?? null,
+    registerId: row.register_id ?? null,
+    cashierUserId: row.cashier_user_id ?? null,
+    shiftId: row.shift_id ?? null,
+    amountCents: Number(row.amount_cents),
+    currency: String(row.currency),
+    provider: String(row.provider),
+    chargeId: row.charge_id ?? null,
+    status: row.status,
+    failureReason: row.failure_reason ?? null,
+    orderId: row.order_id ?? null,
+    cartSnapshot: parseCartSnapshot(row.cart_snapshot),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+function parseCartSnapshot(value: unknown): unknown {
+  if (typeof value !== 'string') return value ?? null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }

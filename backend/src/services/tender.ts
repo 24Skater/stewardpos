@@ -128,3 +128,12 @@ export function cashPortion(payments: ValidatedPayment[]): number {
       .reduce((sum, payment) => sum + toCents(payment.amount), 0)
   );
 }
+
+/** The card share of a tender, for checking it against what was actually charged. */
+export function cardPortion(payments: ValidatedPayment[]): number {
+  return toDollars(
+    payments
+      .filter((payment) => payment.method === 'card')
+      .reduce((sum, payment) => sum + toCents(payment.amount), 0)
+  );
+}

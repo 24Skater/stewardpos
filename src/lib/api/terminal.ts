@@ -10,6 +10,13 @@ export interface TerminalCharge {
   /** The issuer's reason on a decline — `insufficient_funds`, `lost_card`. */
   declineCode?: string;
   errorMessage?: string;
+  /**
+   * The server's record of this payment, to hand back when creating the order.
+   * It is what ties the money taken to the sale written down.
+   */
+  attemptId?: string;
+  /** What the server actually charged, in minor units. */
+  amount?: number;
 }
 
 export type ReaderStatus = 'online' | 'offline' | 'ready' | 'initializing' | 'error';
@@ -27,22 +34,22 @@ export interface ConnectionTestResult {
 
 export interface CreateChargeRequest {
   /**
-   * Amount in the currency's **minor unit** (cents) — the one place in the
-   * client that is not dollars, because card processors bill in integers.
+   * What is being sold. Deliberately not an amount: the server prices the cart
+   * and derives the figure that reaches the card, so the till cannot name a
+   * price for its own sale.
    */
-  amount: number;
+  items: Array<{
+    productId: string;
+    variantId?: string;
+    quantity: number;
+    notes?: string;
+  }>;
+  appliedDiscounts?: Array<Record<string, unknown>>;
+  /** The server takes the credit's share off the card, and checks it is usable. */
+  storeCreditCode?: string;
   currency?: string;
   readerId?: string;
   description?: string;
-  /**
-   * One id per checkout attempt, so a retried request re-reads the first
-   * result rather than starting a second payment.
-   *
-   * The till owns this because only the till knows where an attempt ends: a
-   * network retry is the same attempt and must reuse the key, while a cashier
-   * pressing "try again" after a decline is a new attempt and needs a new one.
-   */
-  idempotencyKey?: string;
 }
 
 /** Card-terminal endpoints (`backend/src/api/routes/terminal.ts`). All require auth. */

@@ -26,6 +26,10 @@ const getSettings = vi.fn();
 const getRegisters = vi.fn();
 const getRegisterById = vi.fn();
 const createTerminalAdapter = vi.fn();
+const getProductById = vi.fn();
+const getOpenShiftForRegister = vi.fn();
+const createPaymentAttempt = vi.fn();
+const updatePaymentAttempt = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -37,6 +41,10 @@ vi.mock('../../../services/database', () => ({
       getSettings,
       getRegisters,
       getRegisterById,
+      getProductById,
+      getOpenShiftForRegister,
+      createPaymentAttempt,
+      updatePaymentAttempt,
     }),
   },
 }));
@@ -117,6 +125,15 @@ function primeDefaults() {
   updateTerminalTransactionByChargeId.mockResolvedValue(undefined);
   getRegisters.mockResolvedValue([REGISTER]);
   getRegisterById.mockResolvedValue(REGISTER);
+  getProductById.mockResolvedValue({
+    id: 'p1',
+    name: 'Candle',
+    basePrice: 12.5,
+    variants: [{ id: 'v1', stock: 5, enabled: true }],
+  });
+  getOpenShiftForRegister.mockResolvedValue(null);
+  createPaymentAttempt.mockImplementation(async (data) => ({ id: 'att-1', ...data }));
+  updatePaymentAttempt.mockResolvedValue({});
   createTerminalAdapter.mockReturnValue({
     charge: vi.fn(async () => ({ chargeId: 'ch_1', status: 'pending' })),
     status: vi.fn(async () => ({ chargeId: 'ch_1', status: 'approved' })),
@@ -129,7 +146,13 @@ beforeEach(() => {
   primeDefaults();
 });
 
-const charge = () => request(app).post('/api/terminal/charge').set(auth()).send({ amount: 1250 });
+// The cart is the input; the server prices it. What this file cares about is
+// which reader and credentials the charge is routed through, not the figure.
+const charge = () =>
+  request(app)
+    .post('/api/terminal/charge')
+    .set(auth())
+    .send({ items: [{ productId: 'p1', variantId: 'v1', quantity: 1 }] });
 
 describe('per-register card reader binding', () => {
   it('uses the store reader when the register has no binding', async () => {
