@@ -1,5 +1,14 @@
 # Terminal Payment Integration — Implementation Plan
 
+> ## ⏸ Partly delivered — the live path is not wired
+>
+> The adapters, the factory and the port exist; `ManualTerminalAdapter` is the
+> one in use and card payments are simulated. `P3-T5` — the live Stripe Terminal
+> charge path — was deliberately not written blind, and needs real credentials
+> and a reader to verify. Unlike the two register plans, the unticked boxes here
+> are accurate.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add semi-integrated card terminal support (Stripe, Square, Clover, Verifone, Dejavoo) so the POS can send a charge to a physical reader and receive an approved/declined result before creating an order.

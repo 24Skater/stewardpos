@@ -3,10 +3,21 @@
 StewardPOS is **pre-1.0 and in active development**. Where documents disagree, the
 order of authority is:
 
-1. [`masterplan/ASSESSMENT-2026-08-04.md`](./masterplan/ASSESSMENT-2026-08-04.md) — verified current state
-2. [`masterplan/`](./masterplan/README.md) — the plan and its locked decisions
+1. [`../CHANGELOG.md`](../CHANGELOG.md) — what has actually landed, newest first
+2. [`masterplan/`](./masterplan/README.md) — the plan, its locked decisions, and each
+   phase's completion notes recording what it found
 3. [`guides/`](./guides/) and [`reference/`](./reference/) — how to run and configure things
-4. [`archive/`](./archive/) — **historical only**, every file carries a banner saying so
+4. [`masterplan/ASSESSMENT-2026-08-04.md`](./masterplan/ASSESSMENT-2026-08-04.md) —
+   the August audit that set the plan going. **Historical.** It predates register
+   management and PIN till sign-on, so several gaps it names are closed and
+   several features it does not mention exist
+5. [`archive/`](./archive/) — **historical only**, every file carries a banner saying so
+
+> The assessment used to sit at the top of this list. It was written on
+> 2026-08-04 and was accurate then; two feature plans have landed since, so a
+> reader trusting it first would be reading the second-oldest document in the
+> repository as the newest. Ordering docs by authority only works if the order
+> is maintained.
 
 ---
 
@@ -14,7 +25,8 @@ order of authority is:
 
 | If you want to | Read |
 |---|---|
-| Know what actually works today | [Readiness assessment](./masterplan/ASSESSMENT-2026-08-04.md) |
+| Know what actually works today | [The changelog](../CHANGELOG.md) |
+| Understand how it got here | [Readiness assessment](./masterplan/ASSESSMENT-2026-08-04.md) (historical) |
 | Understand the road to v1.0 | [Master plan](./masterplan/README.md) |
 | Deploy it | [Deployment guide](./guides/deployment.md) |
 | Try it locally, fast | [Demo quick start](./guides/demo.md) |

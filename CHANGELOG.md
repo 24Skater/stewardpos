@@ -9,7 +9,96 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+Two feature plans and a cleanup pass, none of it released. The version is still
+`1.0.0-rc.1`; nothing here has been tagged.
+
+### Added
+
+**Registers, locations and the estate** (`docs/superpowers/plans/2026-08-17-register-management.md`)
+
+- Locations are a real entity, not a text field on an order. Registers belong to
+  one, are numbered per location, and carry a type and a `has_cash_drawer` flag
+  as two independent axes rather than one conflated "is it a till".
+- Every sale, return, drawer session and no-sale is stamped with the register it
+  happened on and the cashier who was on shift at the time — not whoever is
+  signed in when a report is run later.
+- A register is a paired device. An admin issues a pairing code, the terminal
+  redeems it once at `/pair` for a device token, and heartbeats every 60s so the
+  estate view can show online, idle or offline. Revoking a register destroys the
+  credential, ends any open shift, and refuses to leave a drawer open without an
+  explicit force.
+- A register can be retired but never deleted once it has sales.
+- Per-register card reader binding, replacing a single store-wide device id.
+- Reporting by register, cashier and location; drawer variance per register,
+  no-sale counts, hourly breakdowns, and a web-versus-drawer split derived from
+  the register's own capabilities. All of it filterable, and present in exports.
+- Admin → Registers, Admin → Overrides and Admin → Shifts.
+
+**PIN sign-on and till sessions** (`docs/superpowers/plans/2026-08-21-pin-till-auth.md`)
+
+- A cashier signs on to a till with a six-digit PIN, which opens a *shift* and a
+  scoped till session — never a password form and never a full JWT. PINs are
+  stored bcrypt-hashed, are unique per org among active users, lock after five
+  failures, and are redacted from every audit snapshot and every user endpoint.
+- The register is gated on the terminal being enrolled rather than on somebody
+  being logged in, with a non-dismissible lock screen and an idle timeout that
+  ends the shift.
+- Manager override: a supervisor PIN authorises one named action for ninety
+  seconds without disturbing the cashier's shift. Single-use, action-matched,
+  logged with approver and both values. Discount approvals route through the
+  `requires_approval` / `approval_threshold` columns that had been dormant since
+  migration 004 rather than through a second approval concept.
+- An admin can assume a register from Admin → Registers without a device
+  credential, with a banner naming whose till they are acting on, and can clear
+  a PIN lockout from the cashier's row instead of waiting it out.
+
+**Object storage**
+
+- `STORAGE_ADAPTER=s3` now works, against Amazon S3 or the MinIO container in
+  the Compose stack. Uploads keep their `/uploads/...` paths under either
+  adapter, so switching does not invalidate URLs already stored against settings
+  and products, and the bucket need not be public.
+
+### Fixed
+
+- **The audit trail silently discarded every action a till ever took.**
+  `audit_logs.user_id` was `NOT NULL`, so any write without a user — every till
+  session, every API key — was dropped. A mocked adapter had hidden it.
+- **Revoking a register did not end its shift**, so the old token kept working.
+- **A rejected PIN, an ending shift, and an ended assumed session** each sent the
+  operator to `/login` — a screen a till-only user cannot use.
+- **PIN attempts were throttled shop-wide rather than per register**, so one
+  terminal's fat-fingering locked out every other till in the building.
+- **The pairing screen asked for a code and linked nowhere.**
+- Exports reported success over a file that was never written.
+- CORS refused the register headers the client attaches to every request, which
+  broke sign-in itself for any origin not proxied alongside the API.
+- Timestamps are pinned to UTC end to end; `node-postgres` was parsing bare
+  `TIMESTAMP` values in the process timezone.
+- Product variants had no `ORDER BY`, so they reshuffled between reads.
+
+### Changed
+
+- **One auth gate in front of the admin console, not two.** Every admin page had
+  wrapped itself in a second, role-based guard on top of the route's
+  permission-based one. On the API Keys page the two disagreed, and the page was
+  unreachable for exactly the role that had been granted it.
+- **Invalidating the session now reaches every cache.** A permission or role
+  change mid-session had kept gating the UI on whatever was loaded at sign-in.
+- `GET /api/health/db` checks the database and the upload store instead of
+  answering `healthy` unconditionally. It answers 503 naming which is down, and
+  keeps the reason in the log — it is unauthenticated so a load balancer can
+  poll it.
+- `BCRYPT_ROUNDS` is honoured. It was documented and ignored, hardcoded in five
+  places.
+
+### Removed
+
+- Fifty files nothing imported: twenty-two shadcn components, dead config,
+  duplicate deploy scripts, two orphan password-reset scripts, and two of the
+  three lockfiles. Twenty-seven packages went with them.
+- `STORAGE_ADAPTER=azure` and the entire SMS configuration block. Neither had an
+  implementation; both validated and then did nothing.
 
 ---
 
