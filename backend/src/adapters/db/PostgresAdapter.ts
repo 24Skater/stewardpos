@@ -4636,6 +4636,72 @@ export class PostgresAdapter {
     }
   }
 
+  /**
+   * Take ownership of an event, or report that someone already has.
+   *
+   * `ON CONFLICT DO NOTHING` makes the insert itself the deduplication check:
+   * a redelivery arriving at the same moment as the original collides on the
+   * primary key rather than both passing a separate read.
+   */
+  async claimWebhookEvent(event: {
+    id: string;
+    type: string;
+    chargeId?: string;
+  }): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO webhook_events (id, type, charge_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (id) DO NOTHING`,
+        [event.id, event.type, event.chargeId ?? null]
+      );
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      logger.error('Error claiming webhook event:', error);
+      throw new DatabaseError('Failed to record the webhook event');
+    }
+  }
+
+  async markWebhookEventHandled(id: string, handlerError?: string): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE webhook_events SET handled_at = NOW(), handler_error = $2 WHERE id = $1`,
+        [id, handlerError ?? null]
+      );
+    } catch (error) {
+      logger.error('Error marking webhook event handled:', error);
+    }
+  }
+
+  async getPaymentAttemptByChargeId(chargeId: string): Promise<PaymentAttempt | null> {
+    try {
+      const result = await this.pool.query(
+        // Newest first: a charge id is unique in practice, but ordering makes
+        // the result deterministic rather than relying on that.
+        'SELECT * FROM payment_attempts WHERE charge_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [chargeId]
+      );
+      return result.rows[0] ? mapPaymentAttempt(result.rows[0]) : null;
+    } catch (error) {
+      logger.error('Error loading payment attempt by charge:', error);
+      throw new DatabaseError('Failed to load the payment attempt');
+    }
+  }
+
+  /** A refund Stripe accepted and later reversed; see the refund.failed webhook. */
+  async markRefundFailed(processorRefundId: string, failureReason: string | null): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE refund_transactions
+            SET status = 'failed', failure_reason = $2, completed_at = NULL
+          WHERE processor_transaction_id = $1`,
+        [processorRefundId, failureReason]
+      );
+    } catch (error) {
+      logger.error('Error marking refund failed:', error);
+    }
+  }
+
   async createTerminalTransaction(data: TerminalTransactionCreate): Promise<{ id: string }> {
     try {
       const result = await this.pool.query(

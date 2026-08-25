@@ -10,6 +10,7 @@ import {
 } from '../../utils/errors';
 import db from '../../services/database';
 import { resolveTerminal } from '../../services/terminalGateway';
+import { recordChargeOutcome } from '../../services/paymentOutcome';
 import { priceCart, pricingActor } from '../../services/cartPricing';
 import { toCents } from '../../services/pricing';
 import { getOpenShift } from '../../services/registerShifts';
@@ -188,6 +189,25 @@ router.get('/status/:chargeId', requirePermission('orders', 'read'), async (req:
       authCode: result.authCode,
       errorMessage: result.errorMessage,
     });
+
+    // The other feed into the same handler. An install Stripe cannot reach —
+    // a shop self-hosting behind a home router — never receives a webhook, so
+    // this poll is not a fallback there but the only way an outcome arrives.
+    // Both paths settle the attempt through one function so they cannot drift.
+    //
+    // Bookkeeping must not break the answer: the till is asking whether the
+    // customer's card went through, and failing that question because a row
+    // could not be updated would strand a cashier mid-sale over something they
+    // cannot see or fix.
+    try {
+      await recordChargeOutcome(dbAdapter, {
+        chargeId,
+        status: result.status,
+        failureReason: result.declineCode ?? result.errorMessage,
+      });
+    } catch (error) {
+      logger.error(`Could not settle the attempt for charge ${chargeId}:`, error);
+    }
 
     res.json({ success: true, data: result });
   } catch (error) {
