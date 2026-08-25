@@ -3048,11 +3048,17 @@ export class PostgresAdapter {
 
   async createRefundTransaction(data: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
+      const status = (data.status as string) || 'completed';
+      // Only a real completion time. Stamping this on a pending or failed
+      // refund would make the column useless for telling settled money from
+      // merely attempted money — which is the question it exists to answer.
+      const completedAt = status === 'completed' || status === 'succeeded' ? new Date() : null;
       const result = await this.pool.query(
         `INSERT INTO refund_transactions (
           return_id, order_id, transaction_type, amount, currency,
-          payment_method, processor_transaction_id, status, processed_by, completed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+          payment_method, processor_transaction_id, processor_response,
+          status, failure_reason, processed_by, completed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *`,
         [
           data.returnId,
@@ -3062,8 +3068,11 @@ export class PostgresAdapter {
           data.currency || 'USD',
           data.paymentMethod,
           data.processorTransactionId,
-          data.status || 'completed',
+          data.processorResponse ?? null,
+          status,
+          data.failureReason ?? null,
           data.processedBy,
+          completedAt,
         ]
       );
 

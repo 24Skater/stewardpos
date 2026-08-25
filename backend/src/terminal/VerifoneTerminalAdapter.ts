@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult } from './TerminalPort';
+import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult, RefundRequest, RefundResult } from './TerminalPort';
+import { RefundNotSupportedError } from './errors';
 
 interface VerifoneConfig {
   apiKey: string;
@@ -81,6 +82,11 @@ export class VerifoneTerminalAdapter implements TerminalPort {
       method: 'POST',
       body: '{}',
     });
+  }
+
+  /** Not implemented for Verifone — see {@link RefundNotSupportedError}. */
+  async refundCharge(_request: RefundRequest): Promise<RefundResult> {
+    throw new RefundNotSupportedError('Verifone');
   }
 
   async listReaders(): Promise<TerminalReader[]> {

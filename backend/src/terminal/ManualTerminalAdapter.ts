@@ -1,5 +1,12 @@
 import { randomUUID } from 'crypto';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader } from './TerminalPort';
+import type {
+  TerminalPort,
+  ChargeResult,
+  ChargeMeta,
+  TerminalReader,
+  RefundRequest,
+  RefundResult,
+} from './TerminalPort';
 
 type StoredStatus = 'pending' | 'approved' | 'cancelled';
 
@@ -35,6 +42,22 @@ export class ManualTerminalAdapter implements TerminalPort {
 
   async cancelCharge(chargeId: string): Promise<void> {
     chargeStore.set(chargeId, 'cancelled');
+  }
+
+  /**
+   * Acknowledge the refund, because there is no processor to ask.
+   *
+   * A manual tender means the card was run somewhere else entirely — a
+   * standalone terminal, or nothing at all in development. Whoever refunds it
+   * does so there; recording it here is the whole job.
+   */
+  async refundCharge(request: RefundRequest): Promise<RefundResult> {
+    await delay(100);
+    return {
+      refundId: `manual_refund_${randomUUID()}`,
+      status: 'succeeded',
+      amount: request.amount ?? 0,
+    };
   }
 
   async listReaders(): Promise<TerminalReader[]> {

@@ -1,5 +1,29 @@
 import Stripe from 'stripe';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult } from './TerminalPort';
+import type {
+  TerminalPort,
+  ChargeResult,
+  ChargeMeta,
+  TerminalReader,
+  ConnectionTestResult,
+  RefundRequest,
+  RefundResult,
+  RefundStatus,
+} from './TerminalPort';
+
+/**
+ * Stripe's refund states, in our vocabulary.
+ *
+ * `pending` and `requires_action` both mean "not yet money"; a refund can also
+ * fail asynchronously well after the API call returned success, which is what
+ * the `refund.failed` webhook exists for.
+ */
+const STRIPE_TO_REFUND_STATUS: Record<string, RefundStatus> = {
+  succeeded: 'succeeded',
+  pending: 'pending',
+  requires_action: 'pending',
+  failed: 'failed',
+  canceled: 'cancelled',
+};
 
 interface StripeConfig {
   secretKey: string;
@@ -63,6 +87,26 @@ export class StripeTerminalAdapter implements TerminalPort {
 
   async cancelCharge(chargeId: string): Promise<void> {
     await this.stripe.paymentIntents.cancel(chargeId);
+  }
+
+  async refundCharge(request: RefundRequest): Promise<RefundResult> {
+    const refund = await this.stripe.refunds.create(
+      {
+        payment_intent: request.chargeId,
+        // Only sent for a partial refund. Stripe refunds the full charge when
+        // `amount` is absent, which is more accurate than any total we compute.
+        ...(request.amount !== undefined ? { amount: request.amount } : {}),
+        reason: request.reason ?? 'requested_by_customer',
+      },
+      request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}
+    );
+
+    return {
+      refundId: refund.id,
+      status: STRIPE_TO_REFUND_STATUS[refund.status ?? ''] ?? 'pending',
+      amount: refund.amount,
+      ...(refund.failure_reason ? { failureReason: refund.failure_reason } : {}),
+    };
   }
 
   async listReaders(): Promise<TerminalReader[]> {
