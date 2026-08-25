@@ -14,7 +14,7 @@ Two feature plans and a cleanup pass, none of it released. The version is still
 
 ### Added
 
-**Registers, locations and the estate** (`docs/superpowers/plans/2026-08-17-register-management.md`)
+**Registers, locations and the estate**
 
 - Locations are a real entity, not a text field on an order. Registers belong to
   one, are numbered per location, and carry a type and a `has_cash_drawer` flag
@@ -34,7 +34,7 @@ Two feature plans and a cleanup pass, none of it released. The version is still
   the register's own capabilities. All of it filterable, and present in exports.
 - Admin → Registers, Admin → Overrides and Admin → Shifts.
 
-**PIN sign-on and till sessions** (`docs/superpowers/plans/2026-08-21-pin-till-auth.md`)
+**PIN sign-on and till sessions**
 
 - A cashier signs on to a till with a six-digit PIN, which opens a *shift* and a
   scoped till session — never a password form and never a full JWT. PINs are

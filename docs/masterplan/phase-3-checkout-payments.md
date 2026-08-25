@@ -162,7 +162,7 @@ Against the phase's stated exit criteria:
 | Criterion | Result |
 |---|---|
 | `POST /api/orders` ignores client prices, reprices in cents, applies tax + discounts, one transaction, rejects on insufficient stock | ✅ |
-| Cash (with change) and split tender both complete a sale | ✅ card *terminal* is simulated — the live Stripe path (P3-T5) is not wired |
+| Cash (with change) and split tender both complete a sale | ✅ the card path is written but never run against hardware — see the correction below |
 | A cash-drawer session exists (open/close, expected vs counted) | ✅ |
 | A branded receipt can be printed and emailed | ⚠️ printing works; **no email is sent by anything yet** |
 | ≥80% coverage on checkout modules | ✅ pricing 100%, tender 100%, returnPricing 98%, storeCredits 100%, orders 91%, drawer 85% |
@@ -185,7 +185,26 @@ Every outcome is written to the history, failures included — a resend that did
 not arrive is exactly what someone reads that history to find out.
 
 **Still open:** the live Stripe Terminal path (P3-T5). It needs real credentials
-and hardware to verify, so it stays simulated rather than being written blind.
+and hardware to verify.
+
+> **Correction, 2026-08-24.** "Not wired" and "simulated" overstated this, and
+> the note above understated what exists. `StripeTerminalAdapter` is a real
+> implementation: it creates a PaymentIntent with `payment_method_types:
+> ['card_present']`, calls `terminal.readers.processPaymentIntent`, maps every
+> Stripe status onto `ChargeResult`, and lifts the authorization code off the
+> charge. `TerminalAdapterFactory` selects it whenever a store picks `stripe`
+> and a key is present, raising `TerminalNotConfiguredError` — a 4xx, not a 500
+> — when it is not. The POS drives the whole flow: charge, poll every two
+> seconds, a 90-second timeout that cancels, and `completeCardOrder` called
+> **only** on `approved`, so a decline creates no order. That is P3-T5 steps 2
+> through 4.
+>
+> What is actually missing is step 1's boot-time validation, and the
+> verification: nobody has run it against Stripe test mode with the Terminal
+> simulator. The acceptance criterion still cannot be signed off — but because
+> it is untested, not because it is unwritten. `STRIPE_TERMINAL_LOCATION` never
+> appeared because the location became a per-store setting instead of an
+> environment variable.
 
 ## Progress notes (2026-08-06)
 
