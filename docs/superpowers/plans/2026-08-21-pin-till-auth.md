@@ -1,5 +1,22 @@
 # PIN Till Auth Implementation Plan
 
+> ## ✅ Delivered — merged 2026-08-22 (PRs #27, #28)
+>
+> All seventeen tasks are in `main`. The checkboxes below were never ticked as
+> the work went in; rather than back-fill 106 of them now and imply a
+> step-by-step record that nobody kept, this states the outcome. Read the boxes
+> as the original plan, not as progress.
+>
+> Verified by what exists: `services/tillSessions.ts`, `routes/till.ts`,
+> `RequireTill`, `LockScreen`, `PinPad`, `ActingAsBanner`, the unlock control in
+> `CashierPinManager`, and the assume-a-till flow in `AdminRegisters`.
+>
+> Three follow-ups landed on top of it: #29 gave the E2E suite its own register,
+> #30 fixed a pairing screen that asked for a code and linked nowhere, and #31
+> closed an audit hole where `audit_logs.user_id` being `NOT NULL` silently
+> discarded every write a till ever made.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the password screen the back-office door and a paired terminal the till door, so a cashier signs on with a PIN instead of an email and password.

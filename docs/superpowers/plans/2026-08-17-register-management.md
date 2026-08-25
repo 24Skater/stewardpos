@@ -1,5 +1,16 @@
 # Register Management Implementation Plan
 
+> ## ✅ Delivered — phases 1-7 merged 2026-08-17 to 08-19 (PRs #19-#25)
+>
+> All seven phases are in `main`: locations and registers, attribution, device
+> enrolment and revocation, PIN shifts, manager override, reporting, and estate
+> polish. The five checkboxes below belong to Phase 1 and were never ticked;
+> read them as the original plan rather than as progress.
+>
+> Phase 7's per-register terminal binding and the `docs/guides/register-management.md`
+> guide both landed with it.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
 > **Status:** Design, phasing and all five open decisions (§7) **locked 2026-08-17**. Task-level TDD
