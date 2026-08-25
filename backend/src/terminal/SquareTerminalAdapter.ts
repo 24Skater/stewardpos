@@ -1,7 +1,8 @@
 import { SquareClient, SquareEnvironment } from 'square';
 import type { Currency } from 'square';
 import { randomUUID } from 'crypto';
-import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult } from './TerminalPort';
+import type { TerminalPort, ChargeResult, ChargeMeta, TerminalReader, ConnectionTestResult, RefundRequest, RefundResult } from './TerminalPort';
+import { RefundNotSupportedError } from './errors';
 
 interface SquareConfig {
   accessToken: string;
@@ -71,6 +72,11 @@ export class SquareTerminalAdapter implements TerminalPort {
 
   async cancelCharge(chargeId: string): Promise<void> {
     await this.client.terminal.checkouts.cancel({ checkoutId: chargeId });
+  }
+
+  /** Not implemented for Square — see {@link RefundNotSupportedError}. */
+  async refundCharge(_request: RefundRequest): Promise<RefundResult> {
+    throw new RefundNotSupportedError('Square');
   }
 
   async listReaders(): Promise<TerminalReader[]> {

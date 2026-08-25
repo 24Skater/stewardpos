@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/lib/errors';
 import {
   ordersApi,
   returnsApi,
@@ -220,6 +221,9 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     }
 
     setProcessing(true);
+    // Set once the return exists, so the catch can tell "nothing happened" from
+    // "the return is recorded but the money did not move".
+    let createdReturnId: string | null = null;
     try {
       const subtotal = calculateRefundTotal();
       const taxRate = 0; // Could get from settings
@@ -256,8 +260,9 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
       };
 
       const createResponse = await returnsApi.create(returnData);
-      
+
       const returnId = createResponse.id;
+      createdReturnId = returnId;
 
       // Auto-approve if under threshold for cash, or any amount for card/store credit
       const shouldAutoApprove = refundMethod !== 'cash' || total <= APPROVAL_THRESHOLD;
@@ -288,7 +293,17 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
       onComplete();
       onClose();
     } catch (error: unknown) {
-      toast({ title: 'Failed to process return', description: (error as Error).message, variant: 'destructive' });
+      // A card refund can be declined by the processor, and that happens after
+      // the return has already been created and approved. Saying "failed to
+      // process return" there would send the clerk back to raise a second one
+      // for goods that are already recorded as coming back.
+      toast({
+        title: createdReturnId ? 'Return saved, but the refund did not go through' : 'Failed to process return',
+        description: createdReturnId
+          ? `${getErrorMessage(error)} Settle it from Returns in the admin area.`
+          : getErrorMessage(error),
+        variant: 'destructive',
+      });
     } finally {
       setProcessing(false);
     }
