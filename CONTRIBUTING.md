@@ -237,6 +237,28 @@ npm run test:watch
 npm run test:coverage
 ```
 
+### Coverage thresholds
+
+`test:coverage` enforces floors, and CI runs it — a change that drops coverage
+fails the build rather than quietly lowering the average.
+
+They are **floors, not targets**, set just under what the suite achieves today.
+If yours is the change that raises a number, raise the floor with it; that is
+the ratchet doing its job. If a floor blocks you and the drop is justified,
+say why in the PR and move it deliberately rather than deleting it.
+
+A handful of files carry their own, much higher floors: the pricing, tender and
+refund maths on the server, and change-due, permissions, barcode encoding and
+report windows on the client. Each of those being wrong is a wrong number on a
+receipt or a door opened to the wrong person, so they do not get to hide inside
+a directory average.
+
+One thing that looks odd and is not: the backend's *global* floors are low,
+because CI measures coverage on the unit run, which excludes the integration
+suites — and `src/adapters/db` is covered almost entirely by those. Four
+thousand lines of adapter therefore report near zero in that job by
+construction. The per-directory floors are where the real signal is.
+
 ### Writing Tests
 
 - Place tests next to the code they test or in `__tests__` directories
