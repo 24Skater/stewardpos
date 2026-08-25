@@ -21,6 +21,11 @@ vi.mock('stripe', () => ({
 }));
 
 const { StripeTerminalAdapter } = await import('../StripeTerminalAdapter');
+const { ManualTerminalAdapter } = await import('../ManualTerminalAdapter');
+// Imported here rather than inside the test: pulling in the Square SDK takes
+// seconds under a loaded test run, and paying that inside a case makes it fail
+// on timing rather than on behaviour.
+const { SquareTerminalAdapter } = await import('../SquareTerminalAdapter');
 const { RefundNotSupportedError } = await import('../errors');
 
 function adapter() {
@@ -110,8 +115,6 @@ describe('StripeTerminalAdapter.refundCharge', () => {
 
 describe('adapters with no API-driven refund', () => {
   it('the manual adapter acknowledges the refund, because there is no processor', async () => {
-    const { ManualTerminalAdapter } = await import('../ManualTerminalAdapter');
-
     const result = await new ManualTerminalAdapter().refundCharge({ chargeId: 'manual_1' });
 
     expect(result.status).toBe('succeeded');
@@ -120,7 +123,6 @@ describe('adapters with no API-driven refund', () => {
   it('a provider we have not implemented refuses instead of pretending', async () => {
     // Silently returning success here is the exact bug this whole change exists
     // to remove; a clerk needs to be told to refund in the provider's dashboard.
-    const { SquareTerminalAdapter } = await import('../SquareTerminalAdapter');
     const square = new SquareTerminalAdapter({
       accessToken: 't',
       locationId: 'l',
