@@ -7,6 +7,8 @@ export interface TerminalCharge {
   chargeId: string;
   status: ChargeStatus;
   authCode?: string;
+  /** The issuer's reason on a decline — `insufficient_funds`, `lost_card`. */
+  declineCode?: string;
   errorMessage?: string;
 }
 
@@ -32,6 +34,15 @@ export interface CreateChargeRequest {
   currency?: string;
   readerId?: string;
   description?: string;
+  /**
+   * One id per checkout attempt, so a retried request re-reads the first
+   * result rather than starting a second payment.
+   *
+   * The till owns this because only the till knows where an attempt ends: a
+   * network retry is the same attempt and must reuse the key, while a cashier
+   * pressing "try again" after a decline is a new attempt and needs a new one.
+   */
+  idempotencyKey?: string;
 }
 
 /** Card-terminal endpoints (`backend/src/api/routes/terminal.ts`). All require auth. */
