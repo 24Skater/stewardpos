@@ -1,3 +1,24 @@
+
+/**
+ * The card-network fields a receipt for a chip payment has to carry.
+ *
+ * `applicationPreferredName` and `dedicatedFileName` (the AID) are required
+ * everywhere; `accountType` is required outside the US. Every field is nullable
+ * because the processor reports what the card and reader actually negotiated,
+ * and a contactless tap does not produce the same set as an inserted chip.
+ */
+export interface EmvReceipt {
+  accountType?: string | null;
+  applicationPreferredName?: string | null;
+  dedicatedFileName?: string | null;
+  authorizationCode?: string | null;
+  authorizationResponseCode?: string | null;
+  applicationCryptogram?: string | null;
+  terminalVerificationResults?: string | null;
+  transactionStatusInformation?: string | null;
+  cardholderVerificationMethod?: string | null;
+}
+
 /**
  * Shared DTO types — the single source of truth for the shapes the REST API
  * exchanges with this client.
@@ -184,6 +205,8 @@ export interface Order {
   customerPhone?: string;
   cardTransactionId?: string;
   cardAuthCode?: string;
+  /** Card-network required fields, on a sale paid by chip card. */
+  cardReceipt?: EmvReceipt | null;
   /**
    * Which till rang this sale and who was on it, in human-readable form.
    *
@@ -309,6 +332,8 @@ export interface CreateOrderRequest {
   customerPhone?: string;
   cardTransactionId?: string;
   cardAuthCode?: string;
+  /** Card-network required fields, as the processor reported them. */
+  cardReceipt?: EmvReceipt;
   /**
    * The payment attempt this sale settles, from `POST /api/terminal/charge`.
    *
