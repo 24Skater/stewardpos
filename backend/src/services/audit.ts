@@ -26,7 +26,11 @@ export type AuditEntity =
   | 'register'
   | 'register_credential'
   | 'register_shift'
-  | 'register_override';
+  | 'register_override'
+  // A card payment that took money without becoming a sale. Refunding or
+  // dismissing one is money moving on somebody's authority, so it is attributed
+  // like every other such action.
+  | 'payment_attempt';
 
 /**
  * Stand-in id for singleton entities.

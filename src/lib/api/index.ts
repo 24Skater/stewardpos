@@ -22,6 +22,7 @@ export { categoriesApi } from './categories';
 export { registersApi, locationsApi } from './registers';
 export { quotesApi } from './quotes';
 export { receiptsApi } from './receipts';
+export { reconciliationApi } from './reconciliation';
 export { reportsApi } from './reports';
 export { returnsApi } from './returns';
 export { servicesApi } from './services';
