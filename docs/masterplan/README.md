@@ -127,6 +127,27 @@ StewardPOS is a **full‑stack TypeScript monorepo‑ish layout** (frontend at r
 
 Deferred items are catalogued in [`phase-9-golive.md` §Backlog](./phase-9-golive.md), not deleted.
 
+### Registers and till sign-on
+
+Locked when those features were built, after the master plan's own phases. They
+lived in two implementation plans that were deleted once delivered; the plans
+were step-by-step instructions with no life after execution, but these outlive
+them, so they were moved here rather than lost with them. Behaviour is described
+in [`guides/register-management.md`](../guides/register-management.md); this is
+the part a future change has to honour.
+
+| ID | Decision | Detail and why |
+|----|----------|----------------|
+| **D8** | **A location is a real entity** | Not free text on a register. Registers carry `location_id` plus a free-text `placement`, and each site's `timezone` is what decides a report's day boundary — a chain whose sites span zones cannot share one. |
+| **D9** | **A register is an enrolled device** | Not a label the browser picks. Pairing codes, `register_credentials`, `registerAuth` middleware, heartbeat, and revocation that actually destroys the credential. Rejected: a selected label, which makes attribution a claim rather than a fact. |
+| **D10** | **`register_number` is unique per location, not globally** | "Register 1" may exist at two sites, because that is what staff say out loud. `display_code` resolves cross-site ambiguity. |
+| **D11** | **`pin_length` is a floor of six, never a fixed width** | An org may raise it to eight; it may never go below six. Validated on write in `services/pins.ts` as a field error, so the admin UI can render it against the input. |
+| **D12** | **The register cap counts `pending`, `active` and `disabled` — never `retired`** | A disabled device is expected back and still holds its slot; a retired one is gone. This is what stops "we swapped a broken till" consuming a licence slot forever. A register with sales is retired, never deleted. |
+| **D13** | **A till session is a server-minted JWT, bound to its shift** | `POST /api/auth/till` issues it and `authenticate` rejects it the moment the shift closes. Rejected: making `X-Register-Token` itself the credential — a stolen terminal would then hold a standing one, and every route's `req.user` would have to be derived from the shift. |
+| **D14** | **Pairing is required to sign on with a PIN** | So a six-digit PIN is never the only thing in front of the shop's data, and guessing is impossible from an unenrolled browser. Assuming a till (D15) is the one deliberate, audited exception. |
+| **D15** | **An assumed till attributes to the admin, never to the emulated cashier** | `POST /api/auth/till/assume` lets an admin work a register without its device token, optionally naming a cashier to emulate for display. The sales are the admin's. Gated on `registers:write`, audited, time-boxed to 30 minutes. |
+| **D16** | **The password form refuses cashiers** | A user whose roles are all `standard` is turned away from `/login` and sent to the till. Admin, Supervisor and Reporter keep it. Whether a till asks for a PIN at all stays `requireSignIn`, a per-register setting an admin already owns.
+
 ---
 
 ## 4. Phase map

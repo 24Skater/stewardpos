@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -497,639 +496,637 @@ export default function AdminRegisters() {
   };
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Registers</h1>
-              <p className="text-muted-foreground">
-                {locations.length} location{locations.length === 1 ? '' : 's'} · {registers.length} register
-                {registers.length === 1 ? '' : 's'}
-              </p>
-            </div>
-            {canWrite && (
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setLocationDialogOpen(true)}>
-                  <MapPin className="w-4 h-4 mr-2" aria-hidden="true" />
-                  Add Location
-                </Button>
-                <Button onClick={() => openCreateRegister()} disabled={activeLocations.length === 0}>
-                  <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
-                  Add Register
-                </Button>
-              </div>
-            )}
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Registers</h1>
+            <p className="text-muted-foreground">
+              {locations.length} location{locations.length === 1 ? '' : 's'} · {registers.length} register
+              {registers.length === 1 ? '' : 's'}
+            </p>
           </div>
-
-          <div className="mb-6 max-w-xs">
-            <Label htmlFor="registers-status-filter">Filter by status</Label>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as RegisterStatus | 'all')}>
-              <SelectTrigger id="registers-status-filter">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_FILTERS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {loadError ? (
-            <Card>
-              <CardContent className="py-10 text-center space-y-3">
-                <p className="text-muted-foreground">
-                  {getErrorMessage(loadError, 'Could not load the register estate')}
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    locationsQuery.refetch();
-                    registersQuery.refetch();
-                  }}
-                >
-                  Retry
-                </Button>
-              </CardContent>
-            </Card>
-          ) : isLoading ? (
-            <div className="flex justify-center py-16" role="status">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="sr-only">Loading registers…</span>
-            </div>
-          ) : locations.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-muted-foreground">
-                No locations yet. {canWrite && 'Add one to start enrolling registers.'}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {locations.map((location) => {
-                const locationRegisters = registersByLocation.get(location.id) ?? [];
-
-                return (
-                  <Card key={location.id}>
-                    <CardHeader>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex items-start gap-3">
-                          <Store className="h-5 w-5 mt-1 text-muted-foreground" aria-hidden="true" />
-                          <div>
-                            <h2 className="text-2xl font-semibold leading-none tracking-tight">{location.name}</h2>
-                            <p className="text-sm text-muted-foreground mt-1">{addressLine(location)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">
-                            {location.registerCount ?? 0} register{(location.registerCount ?? 0) === 1 ? '' : 's'}
-                          </Badge>
-                          {canWrite && location.status === 'active' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              aria-label={`Add Register at ${location.name}`}
-                              onClick={() => openCreateRegister(location.id)}
-                            >
-                              <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
-                              Add Register
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {locationRegisters.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-4">
-                          {statusFilter === 'all'
-                            ? 'No registers at this location yet.'
-                            : `No ${STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase()} registers at this location.`}
-                        </p>
-                      ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Code</TableHead>
-                              <TableHead>Name</TableHead>
-                              <TableHead>#</TableHead>
-                              <TableHead>Type</TableHead>
-                              <TableHead>Capabilities</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Liveness</TableHead>
-                              <TableHead>Last seen</TableHead>
-                              {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {locationRegisters.map((register) => {
-                              const statusBadge = STATUS_BADGE[register.status];
-                              return (
-                                <TableRow key={register.id}>
-                                  <TableCell className="font-mono text-sm">{register.displayCode}</TableCell>
-                                  <TableCell className="font-medium">{register.name}</TableCell>
-                                  <TableCell>{register.registerNumber}</TableCell>
-                                  <TableCell>{REGISTER_TYPE_LABELS[register.type]}</TableCell>
-                                  <TableCell>
-                                    <RegisterCapabilities register={register} />
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    {(() => {
-                                      const liveness = LIVENESS_BADGE[register.liveness ?? 'never'];
-                                      return <Badge variant={liveness.variant}>{liveness.label}</Badge>;
-                                    })()}
-                                  </TableCell>
-                                  <TableCell className="text-sm text-muted-foreground">
-                                    {formatLastSeen(register.lastSeenAt)}
-                                  </TableCell>
-                                  {(canWrite || canDelete) && (
-                                    <TableCell>
-                                      <div className="flex gap-1">
-                                        {canWrite && register.status !== 'retired' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            aria-label={`Edit ${register.displayCode}`}
-                                            onClick={() => openEditRegister(register)}
-                                          >
-                                            <Pencil className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                        {canWrite && register.status === 'active' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            aria-label={`Disable ${register.displayCode}`}
-                                            onClick={() => handleDisable(register)}
-                                          >
-                                            <PowerOff className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                        {canWrite &&
-                                          (register.status === 'disabled' || register.status === 'pending') && (
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              aria-label={`Activate ${register.displayCode}`}
-                                              onClick={() => handleActivate(register)}
-                                            >
-                                              <Power className="w-4 h-4" aria-hidden="true" />
-                                            </Button>
-                                          )}
-                                        {canWrite && register.status === 'active' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            aria-label={`Open ${register.displayCode}`}
-                                            title="Open this register from here"
-                                            onClick={() => handleAssume(register)}
-                                            disabled={assumingId === register.id}
-                                          >
-                                            <LogIn className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                        {canWrite && register.status !== 'retired' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            aria-label={`Generate pairing code for ${register.displayCode}`}
-                                            onClick={() => handleGeneratePairingCode(register)}
-                                            disabled={generatePairingCode.isPending}
-                                          >
-                                            <KeyRound className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                        {canDelete && register.status !== 'retired' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-destructive"
-                                            aria-label={`Revoke ${register.displayCode}`}
-                                            onClick={() => setRevokeTarget(register)}
-                                          >
-                                            <Unlink className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                        {canDelete && register.status !== 'retired' && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-destructive"
-                                            aria-label={`Retire ${register.displayCode}`}
-                                            onClick={() => setRetireTarget(register)}
-                                          >
-                                            <Trash2 className="w-4 h-4" aria-hidden="true" />
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </TableCell>
-                                  )}
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+          {canWrite && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setLocationDialogOpen(true)}>
+                <MapPin className="w-4 h-4 mr-2" aria-hidden="true" />
+                Add Location
+              </Button>
+              <Button onClick={() => openCreateRegister()} disabled={activeLocations.length === 0}>
+                <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+                Add Register
+              </Button>
             </div>
           )}
+        </div>
 
-          {/* Add Location Dialog */}
-          <Dialog
-            open={locationDialogOpen}
-            onOpenChange={(open) => {
-              setLocationDialogOpen(open);
-              if (!open) setLocationForm(emptyLocationForm);
-            }}
-          >
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add Location</DialogTitle>
-                <DialogDescription>Create a new site to enroll registers at.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
+        <div className="mb-6 max-w-xs">
+          <Label htmlFor="registers-status-filter">Filter by status</Label>
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as RegisterStatus | 'all')}>
+            <SelectTrigger id="registers-status-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTERS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {loadError ? (
+          <Card>
+            <CardContent className="py-10 text-center space-y-3">
+              <p className="text-muted-foreground">
+                {getErrorMessage(loadError, 'Could not load the register estate')}
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  locationsQuery.refetch();
+                  registersQuery.refetch();
+                }}
+              >
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : isLoading ? (
+          <div className="flex justify-center py-16" role="status">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <span className="sr-only">Loading registers…</span>
+          </div>
+        ) : locations.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              No locations yet. {canWrite && 'Add one to start enrolling registers.'}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {locations.map((location) => {
+              const locationRegisters = registersByLocation.get(location.id) ?? [];
+
+              return (
+                <Card key={location.id}>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <Store className="h-5 w-5 mt-1 text-muted-foreground" aria-hidden="true" />
+                        <div>
+                          <h2 className="text-2xl font-semibold leading-none tracking-tight">{location.name}</h2>
+                          <p className="text-sm text-muted-foreground mt-1">{addressLine(location)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">
+                          {location.registerCount ?? 0} register{(location.registerCount ?? 0) === 1 ? '' : 's'}
+                        </Badge>
+                        {canWrite && location.status === 'active' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Add Register at ${location.name}`}
+                            onClick={() => openCreateRegister(location.id)}
+                          >
+                            <Plus className="w-4 h-4 mr-1" aria-hidden="true" />
+                            Add Register
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {locationRegisters.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        {statusFilter === 'all'
+                          ? 'No registers at this location yet.'
+                          : `No ${STATUS_FILTERS.find((f) => f.value === statusFilter)?.label.toLowerCase()} registers at this location.`}
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Code</TableHead>
+                            <TableHead>Name</TableHead>
+                            <TableHead>#</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Capabilities</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Liveness</TableHead>
+                            <TableHead>Last seen</TableHead>
+                            {(canWrite || canDelete) && <TableHead>Actions</TableHead>}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {locationRegisters.map((register) => {
+                            const statusBadge = STATUS_BADGE[register.status];
+                            return (
+                              <TableRow key={register.id}>
+                                <TableCell className="font-mono text-sm">{register.displayCode}</TableCell>
+                                <TableCell className="font-medium">{register.name}</TableCell>
+                                <TableCell>{register.registerNumber}</TableCell>
+                                <TableCell>{REGISTER_TYPE_LABELS[register.type]}</TableCell>
+                                <TableCell>
+                                  <RegisterCapabilities register={register} />
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    const liveness = LIVENESS_BADGE[register.liveness ?? 'never'];
+                                    return <Badge variant={liveness.variant}>{liveness.label}</Badge>;
+                                  })()}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {formatLastSeen(register.lastSeenAt)}
+                                </TableCell>
+                                {(canWrite || canDelete) && (
+                                  <TableCell>
+                                    <div className="flex gap-1">
+                                      {canWrite && register.status !== 'retired' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          aria-label={`Edit ${register.displayCode}`}
+                                          onClick={() => openEditRegister(register)}
+                                        >
+                                          <Pencil className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                      {canWrite && register.status === 'active' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          aria-label={`Disable ${register.displayCode}`}
+                                          onClick={() => handleDisable(register)}
+                                        >
+                                          <PowerOff className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                      {canWrite &&
+                                        (register.status === 'disabled' || register.status === 'pending') && (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label={`Activate ${register.displayCode}`}
+                                            onClick={() => handleActivate(register)}
+                                          >
+                                            <Power className="w-4 h-4" aria-hidden="true" />
+                                          </Button>
+                                        )}
+                                      {canWrite && register.status === 'active' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          aria-label={`Open ${register.displayCode}`}
+                                          title="Open this register from here"
+                                          onClick={() => handleAssume(register)}
+                                          disabled={assumingId === register.id}
+                                        >
+                                          <LogIn className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                      {canWrite && register.status !== 'retired' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          aria-label={`Generate pairing code for ${register.displayCode}`}
+                                          onClick={() => handleGeneratePairingCode(register)}
+                                          disabled={generatePairingCode.isPending}
+                                        >
+                                          <KeyRound className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                      {canDelete && register.status !== 'retired' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-destructive"
+                                          aria-label={`Revoke ${register.displayCode}`}
+                                          onClick={() => setRevokeTarget(register)}
+                                        >
+                                          <Unlink className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                      {canDelete && register.status !== 'retired' && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-destructive"
+                                          aria-label={`Retire ${register.displayCode}`}
+                                          onClick={() => setRetireTarget(register)}
+                                        >
+                                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add Location Dialog */}
+        <Dialog
+          open={locationDialogOpen}
+          onOpenChange={(open) => {
+            setLocationDialogOpen(open);
+            if (!open) setLocationForm(emptyLocationForm);
+          }}
+        >
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add Location</DialogTitle>
+              <DialogDescription>Create a new site to enroll registers at.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="registers-location-name">Name *</Label>
+                <Input
+                  id="registers-location-name"
+                  value={locationForm.name}
+                  onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+                  placeholder="e.g., Downtown Store"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="registers-location-address">Address</Label>
+                <Input
+                  id="registers-location-address"
+                  value={locationForm.address}
+                  onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="registers-location-name">Name *</Label>
+                  <Label htmlFor="registers-location-city">City</Label>
                   <Input
-                    id="registers-location-name"
-                    value={locationForm.name}
-                    onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
-                    placeholder="e.g., Downtown Store"
+                    id="registers-location-city"
+                    value={locationForm.city}
+                    onChange={(e) => setLocationForm({ ...locationForm, city: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="registers-location-address">Address</Label>
+                  <Label htmlFor="registers-location-state">State</Label>
                   <Input
-                    id="registers-location-address"
-                    value={locationForm.address}
-                    onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+                    id="registers-location-state"
+                    value={locationForm.state}
+                    onChange={(e) => setLocationForm({ ...locationForm, state: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-location-city">City</Label>
-                    <Input
-                      id="registers-location-city"
-                      value={locationForm.city}
-                      onChange={(e) => setLocationForm({ ...locationForm, city: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-location-state">State</Label>
-                    <Input
-                      id="registers-location-state"
-                      value={locationForm.state}
-                      onChange={(e) => setLocationForm({ ...locationForm, state: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-location-zip">ZIP</Label>
-                    <Input
-                      id="registers-location-zip"
-                      value={locationForm.zip}
-                      onChange={(e) => setLocationForm({ ...locationForm, zip: e.target.value })}
-                    />
-                  </div>
-                </div>
                 <div className="space-y-2">
-                  <Label htmlFor="registers-location-timezone">Timezone</Label>
+                  <Label htmlFor="registers-location-zip">ZIP</Label>
                   <Input
-                    id="registers-location-timezone"
-                    value={locationForm.timezone}
-                    onChange={(e) => setLocationForm({ ...locationForm, timezone: e.target.value })}
-                    placeholder="UTC"
+                    id="registers-location-zip"
+                    value={locationForm.zip}
+                    onChange={(e) => setLocationForm({ ...locationForm, zip: e.target.value })}
                   />
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setLocationDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveLocation} disabled={createLocation.isPending}>
-                  {createLocation.isPending ? 'Creating…' : 'Create Location'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Add/Edit Register Dialog */}
-          <Dialog
-            open={registerDialogOpen}
-            onOpenChange={(open) => {
-              setRegisterDialogOpen(open);
-              if (!open) {
-                setEditingRegister(null);
-                setRegisterForm(emptyRegisterForm());
-              }
-            }}
-          >
-            <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingRegister ? 'Edit Register' : 'Add Register'}</DialogTitle>
-                <DialogDescription>
-                  {editingRegister
-                    ? `Update ${editingRegister.displayCode}'s details and capabilities.`
-                    : 'Enroll a new till at a location.'}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                {!editingRegister && (
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-register-location">Location *</Label>
-                    <Select
-                      value={registerForm.locationId}
-                      onValueChange={(v) => setRegisterForm({ ...registerForm, locationId: v })}
-                    >
-                      <SelectTrigger id="registers-register-location">
-                        <SelectValue placeholder="Select a location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {activeLocations.map((location) => (
-                          <SelectItem key={location.id} value={location.id}>
-                            {location.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="registers-register-name">Name *</Label>
-                  <Input
-                    id="registers-register-name"
-                    value={registerForm.name}
-                    onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })}
-                    placeholder="e.g., Front Counter"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="registers-register-placement">Placement</Label>
-                  <Input
-                    id="registers-register-placement"
-                    value={registerForm.placement}
-                    onChange={(e) => setRegisterForm({ ...registerForm, placement: e.target.value })}
-                    placeholder="e.g., 1st floor coffee shop"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select
-                      value={registerForm.type}
-                      onValueChange={(v: RegisterType) => setRegisterForm({ ...registerForm, type: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(REGISTER_TYPE_LABELS).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-register-idle">Idle lock (seconds)</Label>
-                    <Input
-                      id="registers-register-idle"
-                      type="number"
-                      min="1"
-                      value={registerForm.idleLockSeconds}
-                      onChange={(e) =>
-                        setRegisterForm({ ...registerForm, idleLockSeconds: parseInt(e.target.value, 10) || 1 })
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Register number and display code are server-generated — see
-                    services/registers.ts. Shown here so the form isn't silent
-                    about them, but never as an editable field. */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-register-number">Register number</Label>
-                    <Input
-                      id="registers-register-number"
-                      value={editingRegister ? String(editingRegister.registerNumber) : ''}
-                      placeholder="Assigned automatically"
-                      disabled
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="registers-register-code">Display code</Label>
-                    <Input
-                      id="registers-register-code"
-                      value={editingRegister ? editingRegister.displayCode : ''}
-                      placeholder="Assigned automatically"
-                      disabled
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  The register number and display code are assigned automatically from the location and the next
-                  available number when the register is created. They can't be edited here.
-                </p>
-
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Has cash drawer</Label>
-                      <p className="text-xs text-muted-foreground">Off for a web or app-only register</p>
-                    </div>
-                    <Switch
-                      checked={registerForm.hasCashDrawer}
-                      onCheckedChange={(v) => setRegisterForm({ ...registerForm, hasCashDrawer: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Accepts cash</Label>
-                    <Switch
-                      checked={registerForm.acceptsCash}
-                      onCheckedChange={(v) => setRegisterForm({ ...registerForm, acceptsCash: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Can refund</Label>
-                    <Switch
-                      checked={registerForm.canRefund}
-                      onCheckedChange={(v) => setRegisterForm({ ...registerForm, canRefund: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Can open drawer without a sale</Label>
-                      <p className="text-xs text-muted-foreground">For making change or paid-outs</p>
-                    </div>
-                    <Switch
-                      checked={registerForm.canOpenDrawerNoSale}
-                      onCheckedChange={(v) => setRegisterForm({ ...registerForm, canOpenDrawerNoSale: v })}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Require sign-in</Label>
-                    <Switch
-                      checked={registerForm.requireSignIn}
-                      onCheckedChange={(v) => setRegisterForm({ ...registerForm, requireSignIn: v })}
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="registers-location-timezone">Timezone</Label>
+                <Input
+                  id="registers-location-timezone"
+                  value={locationForm.timezone}
+                  onChange={(e) => setLocationForm({ ...locationForm, timezone: e.target.value })}
+                  placeholder="UTC"
+                />
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setRegisterDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveRegister}
-                  disabled={createRegister.isPending || updateRegister.isPending}
-                >
-                  {createRegister.isPending || updateRegister.isPending
-                    ? 'Saving…'
-                    : editingRegister
-                      ? 'Save Changes'
-                      : 'Create Register'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLocationDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveLocation} disabled={createLocation.isPending}>
+                {createLocation.isPending ? 'Creating…' : 'Create Location'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-          {/* Retire confirmation */}
-          <AlertDialog open={retireTarget != null} onOpenChange={(open) => !open && setRetireTarget(null)}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Retire {retireTarget?.displayCode}?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Retiring this register is permanent. Its register number and display code will never be reused —
-                  even by a replacement till — so an old receipt always resolves back to the till that printed it.
-                  This can't be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleConfirmRetire}
-                >
-                  Retire register
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-
-          {/* Pairing code display */}
-          <Dialog
-            open={pairingCodeResult != null}
-            onOpenChange={(open) => {
-              if (!open) {
-                setPairingCodeResult(null);
-                setPairingCodeTarget(null);
-              }
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Pairing code for {pairingCodeTarget?.displayCode}</DialogTitle>
-                <DialogDescription>
-                  Enter this code on the till's own screen at <span className="font-mono">/pair</span> to enrol it.
-                  This code is shown once — it won't be shown again.
-                </DialogDescription>
-              </DialogHeader>
-              {pairingCodeResult && (
-                <div className="space-y-4">
-                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
-                    <strong>Important:</strong> This is the only time you'll see this code. If you lose it, generate
-                    a new one — the old code stops working the moment a new one is issued.
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="font-mono text-3xl font-bold tracking-[0.2em] text-foreground">
-                      {pairingCodeResult.formattedCode}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="Copy pairing code"
-                      onClick={copyPairingCode}
-                    >
-                      <Copy className="w-4 h-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                  <p className="text-center text-sm text-muted-foreground">
-                    Expires {formatExpiresAt(pairingCodeResult.expiresAt)}
-                  </p>
+        {/* Add/Edit Register Dialog */}
+        <Dialog
+          open={registerDialogOpen}
+          onOpenChange={(open) => {
+            setRegisterDialogOpen(open);
+            if (!open) {
+              setEditingRegister(null);
+              setRegisterForm(emptyRegisterForm());
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingRegister ? 'Edit Register' : 'Add Register'}</DialogTitle>
+              <DialogDescription>
+                {editingRegister
+                  ? `Update ${editingRegister.displayCode}'s details and capabilities.`
+                  : 'Enroll a new till at a location.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {!editingRegister && (
+                <div className="space-y-2">
+                  <Label htmlFor="registers-register-location">Location *</Label>
+                  <Select
+                    value={registerForm.locationId}
+                    onValueChange={(v) => setRegisterForm({ ...registerForm, locationId: v })}
+                  >
+                    <SelectTrigger id="registers-register-location">
+                      <SelectValue placeholder="Select a location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeLocations.map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
-              <DialogFooter>
-                <Button
-                  onClick={() => {
-                    setPairingCodeResult(null);
-                    setPairingCodeTarget(null);
-                  }}
-                >
-                  Done
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              <div className="space-y-2">
+                <Label htmlFor="registers-register-name">Name *</Label>
+                <Input
+                  id="registers-register-name"
+                  value={registerForm.name}
+                  onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })}
+                  placeholder="e.g., Front Counter"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="registers-register-placement">Placement</Label>
+                <Input
+                  id="registers-register-placement"
+                  value={registerForm.placement}
+                  onChange={(e) => setRegisterForm({ ...registerForm, placement: e.target.value })}
+                  placeholder="e.g., 1st floor coffee shop"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select
+                    value={registerForm.type}
+                    onValueChange={(v: RegisterType) => setRegisterForm({ ...registerForm, type: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(REGISTER_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="registers-register-idle">Idle lock (seconds)</Label>
+                  <Input
+                    id="registers-register-idle"
+                    type="number"
+                    min="1"
+                    value={registerForm.idleLockSeconds}
+                    onChange={(e) =>
+                      setRegisterForm({ ...registerForm, idleLockSeconds: parseInt(e.target.value, 10) || 1 })
+                    }
+                  />
+                </div>
+              </div>
 
-          {/* Revoke confirmation */}
-          <AlertDialog open={revokeTarget != null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Revoke {revokeTarget?.displayCode}?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This immediately stops the device from authenticating as {revokeTarget?.displayCode} — its very
-                  next request is rejected. The register returns to pending, and it must be paired again with a new
-                  code before it can take a sale. This is not the same as disabling it: disabling can be undone
-                  instantly, this cannot — the device has to be re-paired from the till itself.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleConfirmRevoke}
-                >
-                  Revoke register
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+              {/* Register number and display code are server-generated — see
+                  services/registers.ts. Shown here so the form isn't silent
+                  about them, but never as an editable field. */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="registers-register-number">Register number</Label>
+                  <Input
+                    id="registers-register-number"
+                    value={editingRegister ? String(editingRegister.registerNumber) : ''}
+                    placeholder="Assigned automatically"
+                    disabled
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="registers-register-code">Display code</Label>
+                  <Input
+                    id="registers-register-code"
+                    value={editingRegister ? editingRegister.displayCode : ''}
+                    placeholder="Assigned automatically"
+                    disabled
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The register number and display code are assigned automatically from the location and the next
+                available number when the register is created. They can't be edited here.
+              </p>
 
-          {/* Force-revoke confirmation: reached only after a 409 for an open drawer. */}
-          <AlertDialog
-            open={forceRevokeTarget != null}
-            onOpenChange={(open) => !open && setForceRevokeTarget(null)}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{forceRevokeTarget?.register.displayCode} has an open cash drawer</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {forceRevokeTarget?.message} Forcing this revoke will close that drawer at its expected cash and
-                  flag it for review — nobody counts it first, so this will likely create a cash variance that has
-                  to be investigated later. Do this only if the till is gone or unreachable.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={handleConfirmForceRevoke}
-                >
-                  Close drawer and revoke
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Has cash drawer</Label>
+                    <p className="text-xs text-muted-foreground">Off for a web or app-only register</p>
+                  </div>
+                  <Switch
+                    checked={registerForm.hasCashDrawer}
+                    onCheckedChange={(v) => setRegisterForm({ ...registerForm, hasCashDrawer: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Accepts cash</Label>
+                  <Switch
+                    checked={registerForm.acceptsCash}
+                    onCheckedChange={(v) => setRegisterForm({ ...registerForm, acceptsCash: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Can refund</Label>
+                  <Switch
+                    checked={registerForm.canRefund}
+                    onCheckedChange={(v) => setRegisterForm({ ...registerForm, canRefund: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Can open drawer without a sale</Label>
+                    <p className="text-xs text-muted-foreground">For making change or paid-outs</p>
+                  </div>
+                  <Switch
+                    checked={registerForm.canOpenDrawerNoSale}
+                    onCheckedChange={(v) => setRegisterForm({ ...registerForm, canOpenDrawerNoSale: v })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Require sign-in</Label>
+                  <Switch
+                    checked={registerForm.requireSignIn}
+                    onCheckedChange={(v) => setRegisterForm({ ...registerForm, requireSignIn: v })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRegisterDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveRegister}
+                disabled={createRegister.isPending || updateRegister.isPending}
+              >
+                {createRegister.isPending || updateRegister.isPending
+                  ? 'Saving…'
+                  : editingRegister
+                    ? 'Save Changes'
+                    : 'Create Register'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Retire confirmation */}
+        <AlertDialog open={retireTarget != null} onOpenChange={(open) => !open && setRetireTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Retire {retireTarget?.displayCode}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Retiring this register is permanent. Its register number and display code will never be reused —
+                even by a replacement till — so an old receipt always resolves back to the till that printed it.
+                This can't be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleConfirmRetire}
+              >
+                Retire register
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Pairing code display */}
+        <Dialog
+          open={pairingCodeResult != null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPairingCodeResult(null);
+              setPairingCodeTarget(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Pairing code for {pairingCodeTarget?.displayCode}</DialogTitle>
+              <DialogDescription>
+                Enter this code on the till's own screen at <span className="font-mono">/pair</span> to enrol it.
+                This code is shown once — it won't be shown again.
+              </DialogDescription>
+            </DialogHeader>
+            {pairingCodeResult && (
+              <div className="space-y-4">
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-sm">
+                  <strong>Important:</strong> This is the only time you'll see this code. If you lose it, generate
+                  a new one — the old code stops working the moment a new one is issued.
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="font-mono text-3xl font-bold tracking-[0.2em] text-foreground">
+                    {pairingCodeResult.formattedCode}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Copy pairing code"
+                    onClick={copyPairingCode}
+                  >
+                    <Copy className="w-4 h-4" aria-hidden="true" />
+                  </Button>
+                </div>
+                <p className="text-center text-sm text-muted-foreground">
+                  Expires {formatExpiresAt(pairingCodeResult.expiresAt)}
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  setPairingCodeResult(null);
+                  setPairingCodeTarget(null);
+                }}
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Revoke confirmation */}
+        <AlertDialog open={revokeTarget != null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke {revokeTarget?.displayCode}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This immediately stops the device from authenticating as {revokeTarget?.displayCode} — its very
+                next request is rejected. The register returns to pending, and it must be paired again with a new
+                code before it can take a sale. This is not the same as disabling it: disabling can be undone
+                instantly, this cannot — the device has to be re-paired from the till itself.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleConfirmRevoke}
+              >
+                Revoke register
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Force-revoke confirmation: reached only after a 409 for an open drawer. */}
+        <AlertDialog
+          open={forceRevokeTarget != null}
+          onOpenChange={(open) => !open && setForceRevokeTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{forceRevokeTarget?.register.displayCode} has an open cash drawer</AlertDialogTitle>
+              <AlertDialogDescription>
+                {forceRevokeTarget?.message} Forcing this revoke will close that drawer at its expected cash and
+                flag it for review — nobody counts it first, so this will likely create a cash variance that has
+                to be investigated later. Do this only if the till is gone or unreachable.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleConfirmForceRevoke}
+              >
+                Close drawer and revoke
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </AdminLayout>
   );
 }

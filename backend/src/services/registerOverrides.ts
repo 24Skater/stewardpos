@@ -4,6 +4,7 @@ import type { DbRow } from '../adapters/db/types';
 import type { DatabaseAdapter } from './database';
 import { dummyPinCompare, verifyPin } from './pins';
 import { getOpenShift } from './registerShifts';
+import { BCRYPT_ROUNDS } from './hashing';
 
 /**
  * Manager overrides: a supervisor authorising exactly one privileged action
@@ -25,7 +26,7 @@ import { getOpenShift } from './registerShifts';
 
 export type OverrideAction = 'discount_approval' | 'drawer_variance' | 'void' | 'no_sale';
 
-const BCRYPT_ROUNDS = 10; // matches pins.ts and registerEnrolment.ts
+
 
 /** How long a grant is good for. Short on purpose: this authorises one action, not a shift. */
 const OVERRIDE_GRANT_TTL_MS = 90 * 1000;

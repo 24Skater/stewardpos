@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { DbRow } from '../adapters/db/types';
 import type { DatabaseAdapter } from './database';
+import { BCRYPT_ROUNDS } from './hashing';
 
 /**
  * PIN-based cashier identification.
@@ -15,7 +16,7 @@ import type { DatabaseAdapter } from './database';
  * same way passwords are.
  */
 
-const BCRYPT_ROUNDS = 10; // matches registerEnrolment.ts and the password hashing in admin.ts
+
 
 /**
  * Absolute floor, regardless of what `organizations.pin_length` says. See

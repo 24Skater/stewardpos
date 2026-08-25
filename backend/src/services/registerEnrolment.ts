@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import type { DbRow } from '../adapters/db/types';
 import type { DatabaseAdapter } from './database';
 import { getOpenShift, endShift } from './registerShifts';
+import { BCRYPT_ROUNDS } from './hashing';
 
 /**
  * Device enrolment: turning a register from a name any browser can claim
@@ -36,7 +37,7 @@ const PAIRING_CODE_LENGTH = 8;
 const PAIRING_CODE_GROUP_SIZE = 4;
 const PAIRING_CODE_TTL_MS = 15 * 60 * 1000;
 
-const BCRYPT_ROUNDS = 10;
+
 
 /**
  * A bcrypt hash of a value nothing will ever match, computed once at module

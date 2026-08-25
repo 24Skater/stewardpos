@@ -17,7 +17,6 @@ import type {
 } from '@/lib/api';
 import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import BrandingSettings from '@/components/settings/BrandingSettings';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
@@ -210,153 +209,178 @@ export default function AdminSettings() {
 
   if (loading) {
     return (
-      <ProtectedRoute>
-        <AdminLayout>
-          <div className="p-8 flex items-center justify-center">
-            <p className="text-muted-foreground">Loading settings...</p>
-          </div>
-        </AdminLayout>
-      </ProtectedRoute>
+      <AdminLayout>
+        <div className="p-8 flex items-center justify-center">
+          <p className="text-muted-foreground">Loading settings...</p>
+        </div>
+      </AdminLayout>
     );
   }
 
   return (
-    <ProtectedRoute>
-      <AdminLayout>
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-              <p className="text-muted-foreground">Configure store and application settings</p>
-            </div>
-            <Button onClick={handleSave} disabled={saving}>
-              <Save className="w-4 h-4 mr-2" />
-              {saving ? 'Saving...' : 'Save Settings'}
-            </Button>
+    <AdminLayout>
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Settings</h1>
+            <p className="text-muted-foreground">Configure store and application settings</p>
           </div>
+          <Button onClick={handleSave} disabled={saving}>
+            <Save className="w-4 h-4 mr-2" />
+            {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </div>
 
-          <Tabs defaultValue="general" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="branding">Branding</TabsTrigger>
-              <TabsTrigger value="payments">Payments</TabsTrigger>
-              <TabsTrigger value="auth">Authentication</TabsTrigger>
-              <TabsTrigger value="database">Database</TabsTrigger>
-            </TabsList>
+        <Tabs defaultValue="general" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="branding">Branding</TabsTrigger>
+            <TabsTrigger value="payments">Payments</TabsTrigger>
+            <TabsTrigger value="auth">Authentication</TabsTrigger>
+            <TabsTrigger value="database">Database</TabsTrigger>
+          </TabsList>
 
-            {/* Branding: colour, marks, and receipt wording. */}
-            <TabsContent value="branding" className="space-y-4">
-              <BrandingSettings
-                settings={settings}
-                onChange={(patch) => setSettings({ ...settings, ...patch })}
-              />
-            </TabsContent>
+          {/* Branding: colour, marks, and receipt wording. */}
+          <TabsContent value="branding" className="space-y-4">
+            <BrandingSettings
+              settings={settings}
+              onChange={(patch) => setSettings({ ...settings, ...patch })}
+            />
+          </TabsContent>
 
-            {/* General Settings */}
-            <TabsContent value="general" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Store className="w-5 h-5" />
-                    Store Information
-                  </CardTitle>
-                  <CardDescription>Basic store details</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+          {/* General Settings */}
+          <TabsContent value="general" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="w-5 h-5" />
+                  Store Information
+                </CardTitle>
+                <CardDescription>Basic store details</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="storeName">Store Name</Label>
+                  <Input
+                    id="storeName"
+                    value={settings.storeName}
+                    onChange={(e) => setSettings({ ...settings, storeName: e.target.value })}
+                    placeholder="Your Store Name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="storeName">Store Name</Label>
+                    <Label htmlFor="storeEmail">Store Email</Label>
                     <Input
-                      id="storeName"
-                      value={settings.storeName}
-                      onChange={(e) => setSettings({ ...settings, storeName: e.target.value })}
-                      placeholder="Your Store Name"
+                      id="storeEmail"
+                      type="email"
+                      value={settings.storeEmail}
+                      onChange={(e) => setSettings({ ...settings, storeEmail: e.target.value })}
+                      placeholder="store@example.com"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="storePhone">Store Phone</Label>
+                    <Input
+                      id="storePhone"
+                      type="tel"
+                      value={settings.storePhone}
+                      onChange={(e) => setSettings({ ...settings, storePhone: e.target.value })}
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="storeEmail">Store Email</Label>
-                      <Input
-                        id="storeEmail"
-                        type="email"
-                        value={settings.storeEmail}
-                        onChange={(e) => setSettings({ ...settings, storeEmail: e.target.value })}
-                        placeholder="store@example.com"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="storePhone">Store Phone</Label>
-                      <Input
-                        id="storePhone"
-                        type="tel"
-                        value={settings.storePhone}
-                        onChange={(e) => setSettings({ ...settings, storePhone: e.target.value })}
-                        placeholder="(555) 123-4567"
-                      />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="taxRate">Default Tax Rate (%)</Label>
+                    <Input
+                      id="taxRate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={(settings.taxRateDefault * 100).toFixed(2)}
+                      onChange={(e) => setSettings({ ...settings, taxRateDefault: parseFloat(e.target.value) / 100 || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="timezone">Timezone</Label>
+                    <Select
+                      value={settings.timezone}
+                      onValueChange={(value) => setSettings({ ...settings, timezone: value })}
+                    >
+                      <SelectTrigger id="timezone">
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timezones.map((tz) => (
+                          <SelectItem key={tz} value={tz}>
+                            {tz.replace(/_/g, ' ')}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+          </TabsContent>
+
+          {/* Payment Methods */}
+          <TabsContent value="payments" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  Payment Methods
+                </CardTitle>
+                <CardDescription>Enable the payment methods available at the register</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+
+                {/* Cash */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Banknote className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <Label>Cash</Label>
+                      <p className="text-sm text-muted-foreground">Accept physical cash payments</p>
                     </div>
                   </div>
+                  <Switch
+                    data-testid="cash-toggle"
+                    checked={settings.config?.paymentMethods?.cash?.enabled}
+                    onCheckedChange={(checked) =>
+                      setSettings({
+                        ...settings,
+                        config: {
+                          ...settings.config,
+                          paymentMethods: {
+                            ...settings.config?.paymentMethods,
+                            cash: { enabled: checked },
+                          },
+                        },
+                      })
+                    }
+                  />
+                </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="taxRate">Default Tax Rate (%)</Label>
-                      <Input
-                        id="taxRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={(settings.taxRateDefault * 100).toFixed(2)}
-                        onChange={(e) => setSettings({ ...settings, taxRateDefault: parseFloat(e.target.value) / 100 || 0 })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="timezone">Timezone</Label>
-                      <Select
-                        value={settings.timezone}
-                        onValueChange={(value) => setSettings({ ...settings, timezone: value })}
-                      >
-                        <SelectTrigger id="timezone">
-                          <SelectValue placeholder="Select timezone" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {timezones.map((tz) => (
-                            <SelectItem key={tz} value={tz}>
-                              {tz.replace(/_/g, ' ')}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-            </TabsContent>
-
-            {/* Payment Methods */}
-            <TabsContent value="payments" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="w-5 h-5" />
-                    Payment Methods
-                  </CardTitle>
-                  <CardDescription>Enable the payment methods available at the register</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-
-                  {/* Cash */}
+                {/* Zelle */}
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <Banknote className="w-5 h-5 text-muted-foreground" />
+                      <Smartphone className="w-5 h-5 text-muted-foreground" />
                       <div>
-                        <Label>Cash</Label>
-                        <p className="text-sm text-muted-foreground">Accept physical cash payments</p>
+                        <Label>Zelle</Label>
+                        <p className="text-sm text-muted-foreground">Accept Zelle digital payments</p>
                       </div>
                     </div>
                     <Switch
-                      data-testid="cash-toggle"
-                      checked={settings.config?.paymentMethods?.cash?.enabled}
+                      data-testid="zelle-toggle"
+                      checked={settings.config?.paymentMethods?.zelle?.enabled}
                       onCheckedChange={(checked) =>
                         setSettings({
                           ...settings,
@@ -364,28 +388,25 @@ export default function AdminSettings() {
                             ...settings.config,
                             paymentMethods: {
                               ...settings.config?.paymentMethods,
-                              cash: { enabled: checked },
+                              zelle: {
+                                ...settings.config?.paymentMethods?.zelle,
+                                enabled: checked,
+                              },
                             },
                           },
                         })
                       }
                     />
                   </div>
-
-                  {/* Zelle */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Smartphone className="w-5 h-5 text-muted-foreground" />
-                        <div>
-                          <Label>Zelle</Label>
-                          <p className="text-sm text-muted-foreground">Accept Zelle digital payments</p>
-                        </div>
-                      </div>
-                      <Switch
-                        data-testid="zelle-toggle"
-                        checked={settings.config?.paymentMethods?.zelle?.enabled}
-                        onCheckedChange={(checked) =>
+                  {settings.config?.paymentMethods?.zelle?.enabled && (
+                    <div className="ml-8 space-y-2">
+                      <Label htmlFor="zelleDestination">Zelle Phone / Email</Label>
+                      <Input
+                        id="zelleDestination"
+                        data-testid="zelle-destination"
+                        placeholder="(555) 123-4567 or payments@store.com"
+                        value={settings.config?.paymentMethods?.zelle?.destination || ''}
+                        onChange={(e) =>
                           setSettings({
                             ...settings,
                             config: {
@@ -394,57 +415,54 @@ export default function AdminSettings() {
                                 ...settings.config?.paymentMethods,
                                 zelle: {
                                   ...settings.config?.paymentMethods?.zelle,
-                                  enabled: checked,
+                                  destination: e.target.value,
                                 },
                               },
                             },
                           })
                         }
                       />
+                      <p className="text-xs text-muted-foreground">Shown to cashier at checkout so they can display it to the customer</p>
                     </div>
-                    {settings.config?.paymentMethods?.zelle?.enabled && (
-                      <div className="ml-8 space-y-2">
-                        <Label htmlFor="zelleDestination">Zelle Phone / Email</Label>
-                        <Input
-                          id="zelleDestination"
-                          data-testid="zelle-destination"
-                          placeholder="(555) 123-4567 or payments@store.com"
-                          value={settings.config?.paymentMethods?.zelle?.destination || ''}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              config: {
-                                ...settings.config,
-                                paymentMethods: {
-                                  ...settings.config?.paymentMethods,
-                                  zelle: {
-                                    ...settings.config?.paymentMethods?.zelle,
-                                    destination: e.target.value,
-                                  },
-                                },
-                              },
-                            })
-                          }
-                        />
-                        <p className="text-xs text-muted-foreground">Shown to cashier at checkout so they can display it to the customer</p>
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
 
-                  {/* Credit / Debit Card */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <CreditCard className="w-5 h-5 text-muted-foreground" />
-                        <div>
-                          <Label>Credit / Debit Card</Label>
-                          <p className="text-sm text-muted-foreground">Accept card payments via a card reader</p>
-                        </div>
+                {/* Credit / Debit Card */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-muted-foreground" />
+                      <div>
+                        <Label>Credit / Debit Card</Label>
+                        <p className="text-sm text-muted-foreground">Accept card payments via a card reader</p>
                       </div>
-                      <Switch
-                        data-testid="card-toggle"
-                        checked={settings.config?.paymentMethods?.card?.enabled}
-                        onCheckedChange={(checked) =>
+                    </div>
+                    <Switch
+                      data-testid="card-toggle"
+                      checked={settings.config?.paymentMethods?.card?.enabled}
+                      onCheckedChange={(checked) =>
+                        setSettings({
+                          ...settings,
+                          config: {
+                            ...settings.config,
+                            paymentMethods: {
+                              ...settings.config?.paymentMethods,
+                              card: {
+                                ...settings.config?.paymentMethods?.card,
+                                enabled: checked,
+                              },
+                            },
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                  {settings.config?.paymentMethods?.card?.enabled && (
+                    <div className="ml-8 space-y-2">
+                      <Label htmlFor="cardProvider">Card Reader Provider</Label>
+                      <Select
+                        value={settings.config?.paymentMethods?.card?.provider || 'square'}
+                        onValueChange={(value) =>
                           setSettings({
                             ...settings,
                             config: {
@@ -453,403 +471,380 @@ export default function AdminSettings() {
                                 ...settings.config?.paymentMethods,
                                 card: {
                                   ...settings.config?.paymentMethods?.card,
-                                  enabled: checked,
+                                  provider: value,
                                 },
                               },
                             },
                           })
                         }
-                      />
-                    </div>
-                    {settings.config?.paymentMethods?.card?.enabled && (
-                      <div className="ml-8 space-y-2">
-                        <Label htmlFor="cardProvider">Card Reader Provider</Label>
-                        <Select
-                          value={settings.config?.paymentMethods?.card?.provider || 'square'}
-                          onValueChange={(value) =>
-                            setSettings({
-                              ...settings,
-                              config: {
-                                ...settings.config,
-                                paymentMethods: {
-                                  ...settings.config?.paymentMethods,
-                                  card: {
-                                    ...settings.config?.paymentMethods?.card,
-                                    provider: value,
-                                  },
-                                },
-                              },
-                            })
-                          }
-                        >
-                          <SelectTrigger data-testid="card-provider-select">
-                            <SelectValue placeholder="Select provider" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CARD_PROVIDERS.map((p) => (
-                              <SelectItem key={p.value} value={p.value}>
-                                {p.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">Used for labeling orders only — process payment on the reader, then confirm here</p>
+                      >
+                        <SelectTrigger data-testid="card-provider-select">
+                          <SelectValue placeholder="Select provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CARD_PROVIDERS.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">Used for labeling orders only — process payment on the reader, then confirm here</p>
 
-                        {/* Terminal Credentials */}
-                        <div className="mt-4 space-y-4 border-t pt-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Label className="text-sm font-medium">Terminal Credentials</Label>
-                              {credentialsStored && (
-                                <Badge variant="secondary" className="font-normal">
-                                  Saved
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleDiscoverReaders}
-                                disabled={discoveringReaders}
-                              >
-                                {discoveringReaders ? 'Discovering...' : 'Discover Readers'}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleTestConnection}
-                                disabled={testingConnection}
-                              >
-                                {testingConnection ? 'Testing...' : 'Test Connection'}
-                              </Button>
-                            </div>
+                      {/* Terminal Credentials */}
+                      <div className="mt-4 space-y-4 border-t pt-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-sm font-medium">Terminal Credentials</Label>
+                            {credentialsStored && (
+                              <Badge variant="secondary" className="font-normal">
+                                Saved
+                              </Badge>
+                            )}
                           </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleDiscoverReaders}
+                              disabled={discoveringReaders}
+                            >
+                              {discoveringReaders ? 'Discovering...' : 'Discover Readers'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleTestConnection}
+                              disabled={testingConnection}
+                            >
+                              {testingConnection ? 'Testing...' : 'Test Connection'}
+                            </Button>
+                          </div>
+                        </div>
 
-                          {credentialsStored && (
-                            <p className="text-xs text-muted-foreground">
-                              Stored keys are never shown. Leave a field blank to keep it; type a new
-                              value to replace it.
-                            </p>
-                          )}
+                        {credentialsStored && (
+                          <p className="text-xs text-muted-foreground">
+                            Stored keys are never shown. Leave a field blank to keep it; type a new
+                            value to replace it.
+                          </p>
+                        )}
 
-                          {/* Stripe fields */}
-                          {settings.config?.paymentMethods?.card?.provider === 'stripe' && (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor="settings-secret-key">Secret Key</Label>
-                                <Input id="settings-secret-key"
-                                  type="password"
-                                  placeholder="sk_live_••••••••"
-                                  value={terminalCreds.stripeSecretKey || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeSecretKey: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-terminal-location-id">Terminal Location ID</Label>
-                                <Input id="settings-terminal-location-id"
-                                  placeholder="tml_xxxxxxxxxxxx"
-                                  value={terminalCreds.stripeTerminalLocationId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeTerminalLocationId: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-reader-id">Reader ID</Label>
-                                <Input id="settings-reader-id"
-                                  placeholder="tmr_xxxxxxxxxxxx"
+                        {/* Stripe fields */}
+                        {settings.config?.paymentMethods?.card?.provider === 'stripe' && (
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="settings-secret-key">Secret Key</Label>
+                              <Input id="settings-secret-key"
+                                type="password"
+                                placeholder="sk_live_••••••••"
+                                value={terminalCreds.stripeSecretKey || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeSecretKey: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-terminal-location-id">Terminal Location ID</Label>
+                              <Input id="settings-terminal-location-id"
+                                placeholder="tml_xxxxxxxxxxxx"
+                                value={terminalCreds.stripeTerminalLocationId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeTerminalLocationId: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-reader-id">Reader ID</Label>
+                              <Input id="settings-reader-id"
+                                placeholder="tmr_xxxxxxxxxxxx"
+                                value={terminalCreds.stripeReaderId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
+                              />
+                              {readers.length > 0 && (
+                                <select
+                                  className="mt-1 w-full border rounded px-2 py-1 text-sm"
                                   value={terminalCreds.stripeReaderId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
-                                />
-                                {readers.length > 0 && (
-                                  <select
-                                    className="mt-1 w-full border rounded px-2 py-1 text-sm"
-                                    value={terminalCreds.stripeReaderId || ''}
-                                    onChange={(e) => setTerminalCreds({ ...terminalCreds, stripeReaderId: e.target.value })}
-                                  >
-                                    <option value="">Pick a discovered reader</option>
-                                    {readers.map((r) => (
-                                      <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
+                                >
+                                  <option value="">Pick a discovered reader</option>
+                                  {readers.map((r) => (
+                                    <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* Square fields */}
-                          {settings.config?.paymentMethods?.card?.provider === 'square' && (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor="settings-access-token">Access Token</Label>
-                                <Input id="settings-access-token"
-                                  type="password"
-                                  placeholder="EAAAxxxxxxxx"
-                                  value={terminalCreds.squareAccessToken || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, squareAccessToken: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-location-id">Location ID</Label>
-                                <Input id="settings-location-id"
-                                  placeholder="Lxxxxxxxxx"
-                                  value={terminalCreds.squareLocationId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, squareLocationId: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-device-id">Device ID</Label>
-                                <Input id="settings-device-id"
-                                  placeholder="Dxxxxxxxxx"
+                        {/* Square fields */}
+                        {settings.config?.paymentMethods?.card?.provider === 'square' && (
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="settings-access-token">Access Token</Label>
+                              <Input id="settings-access-token"
+                                type="password"
+                                placeholder="EAAAxxxxxxxx"
+                                value={terminalCreds.squareAccessToken || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, squareAccessToken: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-location-id">Location ID</Label>
+                              <Input id="settings-location-id"
+                                placeholder="Lxxxxxxxxx"
+                                value={terminalCreds.squareLocationId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, squareLocationId: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-device-id">Device ID</Label>
+                              <Input id="settings-device-id"
+                                placeholder="Dxxxxxxxxx"
+                                value={terminalCreds.squareDeviceId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
+                              />
+                              {readers.length > 0 && (
+                                <select
+                                  className="mt-1 w-full border rounded px-2 py-1 text-sm"
                                   value={terminalCreds.squareDeviceId || ''}
                                   onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
-                                />
-                                {readers.length > 0 && (
-                                  <select
-                                    className="mt-1 w-full border rounded px-2 py-1 text-sm"
-                                    value={terminalCreds.squareDeviceId || ''}
-                                    onChange={(e) => setTerminalCreds({ ...terminalCreds, squareDeviceId: e.target.value })}
-                                  >
-                                    <option value="">Pick a discovered device</option>
-                                    {readers.map((r) => (
-                                      <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
-                                    ))}
-                                  </select>
-                                )}
-                              </div>
+                                >
+                                  <option value="">Pick a discovered device</option>
+                                  {readers.map((r) => (
+                                    <option key={r.id} value={r.id}>{r.label} ({r.status})</option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* Clover fields */}
-                          {settings.config?.paymentMethods?.card?.provider === 'clover' && (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor="settings-api-token">API Token</Label>
-                                <Input id="settings-api-token"
-                                  type="password"
-                                  placeholder="••••••••••••"
-                                  value={terminalCreds.cloverApiToken || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverApiToken: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-merchant-id">Merchant ID</Label>
-                                <Input id="settings-merchant-id"
-                                  placeholder="xxxxxxxxx"
-                                  value={terminalCreds.cloverMerchantId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverMerchantId: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-device-id-2">Device ID</Label>
-                                <Input id="settings-device-id-2"
-                                  placeholder="xxxxxxxxx"
-                                  value={terminalCreds.cloverDeviceId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverDeviceId: e.target.value })}
-                                />
-                              </div>
+                        {/* Clover fields */}
+                        {settings.config?.paymentMethods?.card?.provider === 'clover' && (
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="settings-api-token">API Token</Label>
+                              <Input id="settings-api-token"
+                                type="password"
+                                placeholder="••••••••••••"
+                                value={terminalCreds.cloverApiToken || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverApiToken: e.target.value })}
+                              />
                             </div>
-                          )}
-
-                          {/* Verifone fields */}
-                          {settings.config?.paymentMethods?.card?.provider === 'verifone' && (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor="settings-api-key">API Key</Label>
-                                <Input id="settings-api-key"
-                                  type="password"
-                                  placeholder="••••••••••••"
-                                  value={terminalCreds.verifoneApiKey || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneApiKey: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-merchant-id-2">Merchant ID</Label>
-                                <Input id="settings-merchant-id-2"
-                                  placeholder="xxxxxxxxx"
-                                  value={terminalCreds.verifoneMerchantId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneMerchantId: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-terminal-id-ip">Terminal ID / IP</Label>
-                                <Input id="settings-terminal-id-ip"
-                                  placeholder="192.168.1.x or terminal ID"
-                                  value={terminalCreds.verifoneTerminalId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneTerminalId: e.target.value })}
-                                />
-                              </div>
+                            <div>
+                              <Label htmlFor="settings-merchant-id">Merchant ID</Label>
+                              <Input id="settings-merchant-id"
+                                placeholder="xxxxxxxxx"
+                                value={terminalCreds.cloverMerchantId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverMerchantId: e.target.value })}
+                              />
                             </div>
-                          )}
-
-                          {/* Dejavoo fields */}
-                          {settings.config?.paymentMethods?.card?.provider === 'dejavoo' && (
-                            <div className="space-y-3">
-                              <div>
-                                <Label htmlFor="settings-api-key-2">API Key</Label>
-                                <Input id="settings-api-key-2"
-                                  type="password"
-                                  placeholder="••••••••••••"
-                                  value={terminalCreds.dejavooApiKey || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooApiKey: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-merchant-id-3">Merchant ID</Label>
-                                <Input id="settings-merchant-id-3"
-                                  placeholder="xxxxxxxxx"
-                                  value={terminalCreds.dejavooMerchantId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooMerchantId: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="settings-terminal-id">Terminal ID</Label>
-                                <Input id="settings-terminal-id"
-                                  placeholder="xxxxxxxxx"
-                                  value={terminalCreds.dejavooTerminalId || ''}
-                                  onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooTerminalId: e.target.value })}
-                                />
-                              </div>
+                            <div>
+                              <Label htmlFor="settings-device-id-2">Device ID</Label>
+                              <Input id="settings-device-id-2"
+                                placeholder="xxxxxxxxx"
+                                value={terminalCreds.cloverDeviceId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, cloverDeviceId: e.target.value })}
+                              />
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {/* Generic/Manual — no fields */}
-                          {(settings.config?.paymentMethods?.card?.provider === 'generic' ||
-                            !settings.config?.paymentMethods?.card?.provider) && (
-                            <p className="text-sm text-muted-foreground">
-                              Generic / Manual mode — auto-approves for testing. No credentials required.
-                            </p>
-                          )}
-                        </div>
+                        {/* Verifone fields */}
+                        {settings.config?.paymentMethods?.card?.provider === 'verifone' && (
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="settings-api-key">API Key</Label>
+                              <Input id="settings-api-key"
+                                type="password"
+                                placeholder="••••••••••••"
+                                value={terminalCreds.verifoneApiKey || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneApiKey: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-merchant-id-2">Merchant ID</Label>
+                              <Input id="settings-merchant-id-2"
+                                placeholder="xxxxxxxxx"
+                                value={terminalCreds.verifoneMerchantId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneMerchantId: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-terminal-id-ip">Terminal ID / IP</Label>
+                              <Input id="settings-terminal-id-ip"
+                                placeholder="192.168.1.x or terminal ID"
+                                value={terminalCreds.verifoneTerminalId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, verifoneTerminalId: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Dejavoo fields */}
+                        {settings.config?.paymentMethods?.card?.provider === 'dejavoo' && (
+                          <div className="space-y-3">
+                            <div>
+                              <Label htmlFor="settings-api-key-2">API Key</Label>
+                              <Input id="settings-api-key-2"
+                                type="password"
+                                placeholder="••••••••••••"
+                                value={terminalCreds.dejavooApiKey || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooApiKey: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-merchant-id-3">Merchant ID</Label>
+                              <Input id="settings-merchant-id-3"
+                                placeholder="xxxxxxxxx"
+                                value={terminalCreds.dejavooMerchantId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooMerchantId: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="settings-terminal-id">Terminal ID</Label>
+                              <Input id="settings-terminal-id"
+                                placeholder="xxxxxxxxx"
+                                value={terminalCreds.dejavooTerminalId || ''}
+                                onChange={(e) => setTerminalCreds({ ...terminalCreds, dejavooTerminalId: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Generic/Manual — no fields */}
+                        {(settings.config?.paymentMethods?.card?.provider === 'generic' ||
+                          !settings.config?.paymentMethods?.card?.provider) && (
+                          <p className="text-sm text-muted-foreground">
+                            Generic / Manual mode — auto-approves for testing. No credentials required.
+                          </p>
+                        )}
                       </div>
-                    )}
+                    </div>
+                  )}
+                </div>
+
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Authentication Settings */}
+          <TabsContent value="auth" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" />
+                  Authentication Providers
+                </CardTitle>
+                <CardDescription>Configure login methods</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Local Authentication</Label>
+                    <p className="text-sm text-muted-foreground">Username and password login</p>
                   </div>
+                  <Switch
+                    checked={settings.config?.authMethods?.local}
+                    onCheckedChange={(checked) =>
+                      setSettings({
+                        ...settings,
+                        config: {
+                          ...settings.config,
+                          authMethods: { ...settings.config?.authMethods, local: checked },
+                        },
+                      })
+                    }
+                  />
+                </div>
 
-                </CardContent>
-              </Card>
-            </TabsContent>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Google OAuth</Label>
+                    <p className="text-sm text-muted-foreground">Sign in with Google (requires configuration)</p>
+                  </div>
+                  <Switch
+                    checked={settings.config?.authMethods?.google}
+                    onCheckedChange={(checked) =>
+                      setSettings({
+                        ...settings,
+                        config: {
+                          ...settings.config,
+                          authMethods: { ...settings.config?.authMethods, google: checked },
+                        },
+                      })
+                    }
+                  />
+                </div>
 
-            {/* Authentication Settings */}
-            <TabsContent value="auth" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="w-5 h-5" />
-                    Authentication Providers
-                  </CardTitle>
-                  <CardDescription>Configure login methods</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>OIDC / SSO</Label>
+                    <p className="text-sm text-muted-foreground">OpenID Connect (Azure AD, Okta, etc.)</p>
+                  </div>
+                  <Switch
+                    checked={settings.config?.authMethods?.oidc}
+                    onCheckedChange={(checked) =>
+                      setSettings({
+                        ...settings,
+                        config: {
+                          ...settings.config,
+                          authMethods: { ...settings.config?.authMethods, oidc: checked },
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Database Settings */}
+          <TabsContent value="database" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="w-5 h-5" />
+                  Database Management
+                </CardTitle>
+                <CardDescription>Database maintenance options</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Demo Mode</Label>
+                    <p className="text-sm text-muted-foreground">Enable demo features and sample data</p>
+                  </div>
+                  <Switch
+                    checked={settings.config?.demoMode}
+                    onCheckedChange={(checked) =>
+                      setSettings({
+                        ...settings,
+                        config: { ...settings.config, demoMode: checked },
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="border-t pt-4 mt-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label>Local Authentication</Label>
-                      <p className="text-sm text-muted-foreground">Username and password login</p>
+                      <Label className="text-destructive">Reset Database</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Clear all orders and re-seed product data. This action cannot be undone.
+                      </p>
                     </div>
-                    <Switch
-                      checked={settings.config?.authMethods?.local}
-                      onCheckedChange={(checked) =>
-                        setSettings({
-                          ...settings,
-                          config: {
-                            ...settings.config,
-                            authMethods: { ...settings.config?.authMethods, local: checked },
-                          },
-                        })
-                      }
-                    />
+                    <Button
+                      variant="destructive"
+                      onClick={handleResetDatabase}
+                      disabled={resetting}
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${resetting ? 'animate-spin' : ''}`} />
+                      {resetting ? 'Resetting...' : 'Reset Database'}
+                    </Button>
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Google OAuth</Label>
-                      <p className="text-sm text-muted-foreground">Sign in with Google (requires configuration)</p>
-                    </div>
-                    <Switch
-                      checked={settings.config?.authMethods?.google}
-                      onCheckedChange={(checked) =>
-                        setSettings({
-                          ...settings,
-                          config: {
-                            ...settings.config,
-                            authMethods: { ...settings.config?.authMethods, google: checked },
-                          },
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>OIDC / SSO</Label>
-                      <p className="text-sm text-muted-foreground">OpenID Connect (Azure AD, Okta, etc.)</p>
-                    </div>
-                    <Switch
-                      checked={settings.config?.authMethods?.oidc}
-                      onCheckedChange={(checked) =>
-                        setSettings({
-                          ...settings,
-                          config: {
-                            ...settings.config,
-                            authMethods: { ...settings.config?.authMethods, oidc: checked },
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Database Settings */}
-            <TabsContent value="database" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="w-5 h-5" />
-                    Database Management
-                  </CardTitle>
-                  <CardDescription>Database maintenance options</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Demo Mode</Label>
-                      <p className="text-sm text-muted-foreground">Enable demo features and sample data</p>
-                    </div>
-                    <Switch
-                      checked={settings.config?.demoMode}
-                      onCheckedChange={(checked) =>
-                        setSettings({
-                          ...settings,
-                          config: { ...settings.config, demoMode: checked },
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="border-t pt-4 mt-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="text-destructive">Reset Database</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Clear all orders and re-seed product data. This action cannot be undone.
-                        </p>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        onClick={handleResetDatabase}
-                        disabled={resetting}
-                      >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${resetting ? 'animate-spin' : ''}`} />
-                        {resetting ? 'Resetting...' : 'Reset Database'}
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </AdminLayout>
-    </ProtectedRoute>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </AdminLayout>
   );
 }

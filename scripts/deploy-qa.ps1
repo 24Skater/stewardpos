@@ -14,8 +14,8 @@ if (Test-Path .env.qa) {
 }
 
 # Build and start services
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml build
-docker-compose -f docker-compose.yml -f docker-compose.qa.yml up -d
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml build
+docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml up -d
 
 Write-Host "`n✅ QA/Staging environment deployed!" -ForegroundColor Green
 Write-Host "`nServices:" -ForegroundColor Cyan

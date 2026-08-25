@@ -280,6 +280,41 @@ npm run dev            # Start dev server at :5173
 
 </td>
 </tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🏪 Registers & Locations
+- 📍 Locations as real entities
+- 🔢 Per-location numbering
+- 🔗 Device pairing by code
+- 📡 Online / idle / offline
+- 🚫 Revoke with drawer guard
+- 💳 Per-register card reader
+
+</td>
+<td width="33%" valign="top">
+
+### 👤 Till Sign-On
+- 🔢 Six-digit cashier PIN
+- ⏱️ Shifts, not logins
+- 🔒 Lock screen + idle timeout
+- 🧑‍💼 Sales attributed to cashier
+- 🛑 Lockout after 5 failures
+- 🎭 Admin can assume a till
+
+</td>
+<td width="33%" valign="top">
+
+### 🛡️ Manager Override
+- 🔑 Supervisor PIN, 90 seconds
+- 1️⃣ Single use, action-matched
+- 📋 Approver and values logged
+- 💸 Discount approval routing
+- 📊 Register & cashier reports
+- 🧾 Till and cashier on receipts
+
+</td>
+</tr>
 </table>
 
 <br/>
@@ -610,11 +645,12 @@ git push origin feature/amazing-feature
 
 ## 📊 Status & Roadmap
 
-> **StewardPOS is pre-1.0.** Phases 0-8 of the build plan are complete; Phase 9
-> (the tagged release) is not. An earlier version of this section listed features
-> as "Completed" that a verified audit found broken or missing — including
-> authentication coverage — so it now points at sources checked against running
-> code rather than restating claims.
+> **StewardPOS is pre-1.0.** All nine phases of the build plan are complete
+> except the tag itself, and two further plans have landed since — register
+> management and PIN till sign-on. An earlier version of this section listed
+> features as "Completed" that a verified audit found broken or missing —
+> including authentication coverage — so it now points at sources checked
+> against running code rather than restating claims.
 
 | Document | What it tells you |
 |---|---|
@@ -635,10 +671,18 @@ covered by tests.
 
 | Gap | Why |
 |---|---|
-| **Card payments are simulated** | The Stripe Terminal path (P3-T5) is unwired. It needs real credentials and hardware to verify, and was not written blind. Cash works; do not expect to take a card |
+| **Card payments are unverified** | The Stripe Terminal path is written — `StripeTerminalAdapter` creates a real PaymentIntent, drives the reader, polls for the result, and no order is created unless the charge is approved. What has never happened is a run against real credentials and a real reader, so it is untested rather than unbuilt. Card is off by default. Cash is the tender to rely on |
 | **No install has been verified on a real VPS** | The [guide](docs/guides/install-vps.md) is complete and the stack validates, but nobody has yet followed it start to finish on a clean server |
 | **Multi-tenant is a foundation, not a feature** | `org_id` exists on 20 tables; **no query filters on it**. Single-tenant only. See [multi-tenant.md](docs/guides/multi-tenant.md) |
 | **Deferred by decision** | Services & Quotes, full CRM, SSO, SMS, offline/PWA, and the non-Stripe terminals. See the backlog in [phase-9](docs/masterplan/phase-9-golive.md) |
+
+Since the release candidate, two more plans have landed and are covered by
+tests: **register management** — locations, per-register attribution, device
+pairing with heartbeat and revocation, per-register readers, and reporting by
+register, cashier and location — and **PIN till sign-on**, where a cashier
+opens a shift with a six-digit PIN rather than a password, a supervisor PIN
+authorises one action at a time, and every grant is logged. See the
+[changelog](CHANGELOG.md) for the detail.
 
 Sales tax, cash and split tender, and cashier attribution — which an earlier
 version of this section listed as missing — were built in Phase 3.
