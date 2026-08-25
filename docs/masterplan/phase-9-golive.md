@@ -100,7 +100,7 @@ this phase and is set out below.
 | Fresh VPS → HTTPS install in <30 min from the guide alone | **Not verified.** The guide is complete, `docker compose config` and `caddy validate` both pass, and every startup failure path has a test — but nobody has followed it on a clean server. This needs a VPS and a domain |
 | Setup wizard creates org + admin + roles + settings, then locks | Pass — covered by `setupComplete.integration.test.ts` and `setup.guard.test.ts` |
 | Cashier: cash sale, correct change, transactional, stock decremented, branded receipt | Pass — `checkout.spec.ts` in CI asserts what the **server** recorded, not what the screen said |
-| Cashier: Stripe Terminal card sale end to end; declines create no order | **Cannot pass.** P3-T5 is unwired. Needs real credentials and hardware |
+| Cashier: Stripe Terminal card sale end to end; declines create no order | **Cannot pass** — but only for want of verification. The path is written end to end and a decline provably creates no order (`completeCardOrder` runs only on `approved`); nobody has run it against real credentials and a reader. See the correction in phase 3 |
 | Split tender (cash + card) on one order | Pass — `payments` table, `tender.ts` at 100% |
 | Cash-drawer open/close with correct variance | Pass — `drawer.test.ts`, `drawerRefunds.integration.test.ts` |
 | Manager: return/refund with restock; status + refund correct | Pass — **and this is new**: see below |
@@ -191,7 +191,8 @@ domains that do not resolve are gone.
 
 ### Why `1.0.0-rc.1`
 
-Two checklist items cannot pass: **card payments are simulated**, and **no
+Two checklist items cannot pass: **card payments have never been run against a
+real reader** (the path is written — see the correction in phase 3), and **no
 install has been verified on a real VPS**. Everything else does.
 
 Declaring `1.0.0` while a till cannot take a card would be precisely the failure

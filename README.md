@@ -671,7 +671,7 @@ covered by tests.
 
 | Gap | Why |
 |---|---|
-| **Card payments are simulated** | The Stripe Terminal path (P3-T5) is unwired. It needs real credentials and hardware to verify, and was not written blind. Cash works; do not expect to take a card |
+| **Card payments are unverified** | The Stripe Terminal path is written — `StripeTerminalAdapter` creates a real PaymentIntent, drives the reader, polls for the result, and no order is created unless the charge is approved. What has never happened is a run against real credentials and a real reader, so it is untested rather than unbuilt. Card is off by default. Cash is the tender to rely on |
 | **No install has been verified on a real VPS** | The [guide](docs/guides/install-vps.md) is complete and the stack validates, but nobody has yet followed it start to finish on a clean server |
 | **Multi-tenant is a foundation, not a feature** | `org_id` exists on 20 tables; **no query filters on it**. Single-tenant only. See [multi-tenant.md](docs/guides/multi-tenant.md) |
 | **Deferred by decision** | Services & Quotes, full CRM, SSO, SMS, offline/PWA, and the non-Stripe terminals. See the backlog in [phase-9](docs/masterplan/phase-9-golive.md) |
