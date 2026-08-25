@@ -10,6 +10,7 @@ import { storage } from './storage';
 
 // Import routes
 import authRoutes from './api/routes/auth';
+import webhookRoutes from './api/routes/webhooks';
 import productsRoutes from './api/routes/products';
 import categoriesRoutes from './api/routes/categories';
 import ordersRoutes from './api/routes/orders';
@@ -150,6 +151,17 @@ const pairLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/registers/pair', pairLimiter);
+
+/**
+ * Stripe webhooks, mounted ahead of the JSON parser.
+ *
+ * Signature verification hashes the exact bytes Stripe sent, so this route has
+ * to see the raw body. Once `express.json()` has parsed and the handler
+ * reserialises, the bytes differ — the object is identical, the signature is
+ * not — and every event is rejected. Ordering here is the whole mechanism, so
+ * it must stay above the parser below.
+ */
+app.use('/api/webhooks', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
