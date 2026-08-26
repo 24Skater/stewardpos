@@ -4,24 +4,13 @@ import { AuthLayout, Button, Input, Label } from '@steward-apps/ui';
 import { authApi } from '@/lib/api';
 import { ApiClientError } from '@/lib/api-client';
 import { authStore } from '@/lib/auth-store';
+import { safeRedirect } from '@/lib/safe-redirect';
 import { getErrorMessage } from '@/lib/errors';
 import { USE_PIN_AT_TILL } from '@/lib/register-error-codes';
 import { useInvalidateSession } from '@/hooks/queries/useSession';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, ShieldAlert } from 'lucide-react';
 import Logo from '@/components/Logo';
-
-/**
- * Where to send the user after signing in.
- *
- * `RequireAuth` records the route it turned away in `?next=`. Only same-site
- * paths are honoured - an absolute URL there would turn the login page into an
- * open redirect, which is a stock phishing primitive.
- */
-function safeRedirect(next: string | null): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/pos';
-  return next;
-}
 
 /**
  * Whether to print the seeded demo credentials on the form.
