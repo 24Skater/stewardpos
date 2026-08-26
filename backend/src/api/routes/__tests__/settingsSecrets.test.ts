@@ -120,13 +120,16 @@ describe('PUT /api/admin/settings', () => {
   });
 
   it('overwrites when a new key is actually supplied', async () => {
+    // Rotated to a restricted key: what this case is about is that a supplied
+    // credential replaces the stored one, and an unrestricted live key is no
+    // longer something the route will take.
     await request(app)
       .put('/api/admin/settings')
       .set('Authorization', `Bearer ${adminToken()}`)
-      .send({ config: { terminalCredentials: { stripeSecretKey: 'sk_live_rotated' } } });
+      .send({ config: { terminalCredentials: { stripeSecretKey: 'rk_live_rotated' } } });
 
     expect(updateSettings.mock.calls[0][0].config.terminalCredentials).toEqual({
-      stripeSecretKey: 'sk_live_rotated',
+      stripeSecretKey: 'rk_live_rotated',
     });
   });
 
@@ -148,5 +151,83 @@ describe('PUT /api/admin/settings', () => {
       .send({ config: { demoMode: true, terminalCredentials: {} } });
 
     expect(updateSettings.mock.calls[0][0].config).not.toHaveProperty('terminalCredentials');
+  });
+});
+
+describe('protecting stored payment credentials', () => {
+  function save(terminalCredentials: Record<string, unknown>) {
+    return request(app)
+      .put('/api/admin/settings')
+      .set('Authorization', `Bearer ${adminToken()}`)
+      .send({ config: { demoMode: false, terminalCredentials } });
+  }
+
+  it('refuses an unrestricted live secret key', async () => {
+    // An sk_live_ can charge cards, refund to destinations of its holder's
+    // choosing, read customer records and move payout destinations. When it is
+    // somebody else's key in a database we run, restricted is the only sane
+    // thing to accept.
+    const response = await save({ stripeSecretKey: 'sk_live_unrestricted' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error ?? response.body.message).toMatch(/restricted key/i);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('accepts a restricted live key', async () => {
+    const response = await save({ stripeSecretKey: 'rk_live_restricted' });
+
+    expect(response.status).toBe(200);
+    expect(updateSettings).toHaveBeenCalled();
+  });
+
+  it('leaves test keys alone, because the risk is the point', async () => {
+    // Forcing a restricted key during setup buys friction and nothing else.
+    const response = await save({ stripeSecretKey: 'sk_test_sandbox' });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('does not write the key as given when a key is configured', async () => {
+    process.env.CREDENTIALS_KEY = 'a-high-entropy-value-from-openssl-rand';
+    try {
+      // Re-imported so the crypto module picks up the environment.
+      vi.resetModules();
+      const { default: freshApp } = await import('../../../app');
+
+      await request(freshApp)
+        .put('/api/admin/settings')
+        .set('Authorization', `Bearer ${adminToken()}`)
+        .send({ config: { demoMode: false, terminalCredentials: { stripeSecretKey: 'rk_live_abc' } } });
+
+      const written = updateSettings.mock.calls.at(-1)![0].config.terminalCredentials;
+      expect(written.stripeSecretKey).not.toBe('rk_live_abc');
+      expect(written.stripeSecretKey).toMatch(/^enc:v1:/);
+    } finally {
+      delete process.env.CREDENTIALS_KEY;
+    }
+  });
+
+  it('reports which world the shop is operating in, without the key', async () => {
+    // Believing you are live while in a sandbox takes no money at all; the
+    // reverse charges real cards during training. Both fail quietly.
+    getSettings.mockResolvedValue(storedSettings({ stripeSecretKey: 'rk_test_abc' }));
+
+    const response = await request(app)
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.body.data.config.terminalKeyMode).toBe('test');
+    expect(JSON.stringify(response.body)).not.toContain('rk_test_abc');
+  });
+
+  it('says whether what is stored is protected at rest', async () => {
+    getSettings.mockResolvedValue(storedSettings({ stripeSecretKey: 'rk_live_plaintext' }));
+
+    const response = await request(app)
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${adminToken()}`);
+
+    expect(response.body.data.config.terminalCredentialsEncrypted).toBe(false);
   });
 });
