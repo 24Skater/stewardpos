@@ -1,763 +1,419 @@
 <div align="center">
-  <img src="branding/svg/stewardpos-logo-lockup.svg" alt="StewardPOS Logo" width="400">
+
+<img src="docs/brand/hero-banner.svg" alt="StewardPOS — self-hosted point of sale for churches, ministries, and small shops" width="100%">
+
+<br><br>
+
+<a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/24Skater/stewardpos/ci.yml?style=flat-square&label=CI&labelColor=0F1115&color=4B3F8F" alt="CI"></a>
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.0.0-F5B942?style=flat-square&labelColor=0F1115" alt="Release 1.0.0"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B6FD8?style=flat-square&labelColor=0F1115" alt="MIT License"></a>
+<a href="docker-compose.yml"><img src="https://img.shields.io/badge/docker-first-2A2F3A?style=flat-square&labelColor=0F1115" alt="Docker first"></a>
+
+<br><br>
+
+**[Quick start](#quick-start)** &nbsp;·&nbsp;
+**[What it does](#what-it-does)** &nbsp;·&nbsp;
+**[How the money moves](#how-the-money-moves)** &nbsp;·&nbsp;
+**[Status](#status)** &nbsp;·&nbsp;
+**[Docs](#documentation)**
+
 </div>
 
-<!-- Hero Section -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=200&section=header&text=stewardPOS&fontSize=80&fontAlignY=35&animation=twinkling&fontColor=ffffff&desc=Modern%20Point%20of%20Sale%20System&descAlignY=55&descSize=20" width="100%"/>
+<br>
 
-<p align="center">
-  <b>Self-Hosted • Open Source • Docker-First • Built for Churches & Small Business</b>
-</p>
+A point-of-sale system you run on your own server. It was built for a church
+bookstore — volunteers on the register, one laptop in the back — and it works
+the same way for any small shop.
 
-<!-- Badges -->
-<p align="center">
-  <a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-6366f1?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="License"/></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Release-1.0.0-1b6e51?style=for-the-badge&logo=semver&logoColor=white" alt="Release: 1.0.0"/></a>
-  <a href="docker-compose.yml"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"/></a>
-  <a href="#"><img src="https://img.shields.io/badge/PRs-Welcome-ec4899?style=for-the-badge&logo=github&logoColor=white" alt="PRs Welcome"/></a>
-</p>
+Prices are never trusted from the register. Every total, tax line, discount and
+refund is recomputed on the server in integer cents. That one decision shapes
+most of what follows.
 
-<p align="center">
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/></a>
-  <a href="https://react.dev/"><img src="https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React"/></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js"/></a>
-  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL"/></a>
-  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind"/></a>
-</p>
+<br>
 
-<!-- Navigation -->
-<p align="center">
-  <a href="#-quick-start"><b>🚀 Quick Start</b></a> •
-  <a href="#-features"><b>✨ Features</b></a> •
-  <a href="#-branding--customization"><b>🎨 Branding</b></a> •
-  <a href="#-documentation"><b>📖 Docs</b></a> •
-  <a href="#-deployment"><b>📦 Deploy</b></a> •
-  <a href="#-contributing"><b>🤝 Contribute</b></a>
-</p>
+<div align="center">
+  <img src="docs/screenshots/checkout.gif" alt="A sale from empty cart to printed receipt: four items added, a ten percent discount applied, ten dollars cash tendered, five fifty change, receipt issued" width="900">
+  <br>
+  <sub><b>One sale, start to finish.</b> Four items, a 10% discount, $10 cash, $5.50 change —
+  every figure recomputed server-side before the order is written.</sub>
+</div>
 
-<br/>
+<br>
 
-<!-- Demo Preview -->
-<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
+---
+
+## What it does
 
 <table>
 <tr>
-<td width="50%">
+<td width="33%" valign="top">
 
-### 💳 Modern POS Interface
-Fast, intuitive checkout with barcode scanning, variants, and real-time inventory
+<img src="docs/icons/pos.svg" width="18" align="top"> **Register**
+
+Barcode scan, product variants, cash and split tender, discounts, change due, receipt print or email.
 
 </td>
-<td width="50%">
+<td width="33%" valign="top">
 
-### 📊 Analytics Dashboard
-Comprehensive reports, sales tracking, and business insights
+<img src="docs/icons/inventory.svg" width="18" align="top"> **Inventory**
+
+Catalog with variants and images, live stock, low-stock alerts, CSV in and out.
+
+</td>
+<td width="33%" valign="top">
+
+<img src="docs/icons/returns.svg" width="18" align="top"> **Returns**
+
+Receipt lookup, item-level refunds, gated restock, store credit, reason codes.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+<img src="docs/icons/registers.svg" width="18" align="top"> **Registers & locations**
+
+Real location entities, per-location numbering, device pairing by code, online/idle/offline heartbeat.
+
+</td>
+<td valign="top">
+
+<img src="docs/icons/till.svg" width="18" align="top"> **Till sign-on**
+
+Six-digit cashier PIN, shifts rather than logins, lock screen, lockout after five failures.
+
+</td>
+<td valign="top">
+
+<img src="docs/icons/security.svg" width="18" align="top"> **Manager override**
+
+Supervisor PIN, ninety seconds, single use, matched to one action, approver logged.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+<img src="docs/icons/discounts.svg" width="18" align="top"> **Discounts & promos**
+
+Quick buttons, promo codes, employee rates, approval routing, usage tracking.
+
+</td>
+<td valign="top">
+
+<img src="docs/icons/reports.svg" width="18" align="top"> **Reports**
+
+Server-side sales, revenue and product performance by register, cashier and location. PDF, Excel, CSV.
+
+</td>
+<td valign="top">
+
+<img src="docs/icons/audit.svg" width="18" align="top"> **Audit & access**
+
+Role-based access with custom roles, filterable audit log, API keys, encrypted credentials.
 
 </td>
 </tr>
 </table>
 
-<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%"/>
-
-</div>
-
-<br/>
-
-## 📑 Table of Contents
-
-<details open>
-<summary><b>Click to expand</b></summary>
-
-- [🚀 Quick Start](#-quick-start)
-  - [Docker (Recommended)](#-docker-recommended)
-  - [Local Development](#-local-development)
-- [✨ Features](#-features)
-- [🏗️ Architecture](#️-architecture)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [📖 Documentation](#-documentation)
-- [📦 Deployment](#-deployment)
-- [🎨 Branding & Customization](#-branding--customization)
-- [🔐 Security](#-security)
-- [🤝 Contributing](#-contributing)
-- [📊 Status & Roadmap](#-status--roadmap)
-- [💒 About This Project](#-about-this-project)
-- [📄 License](#-license)
-
-</details>
-
-<br/>
+<br>
 
 ---
 
-## 🔗 Quick Links
+## Quick start
 
-- **[Documentation](docs/)** — guides, reference, and the build plan
-- **[Run the demo locally](docs/guides/demo.md)** — `docker compose -f docker-compose.demo.yml up -d`
-
-There is no hosted website or public demo. Rather than link to domains that do
-not resolve, this says so.
-- **[GitHub Issues](https://github.com/24Skater/stewardpos/issues)** - Report bugs or request features
-- **[Branding Guidelines](branding/README.md)** - Logo usage and brand assets
-
-<br/>
-
-## 🚀 Quick Start
-
-### 🐳 Docker (Recommended)
-
-The fastest way to get started - everything you need in one command!
+**Requires** Docker and Docker Compose. Nothing else.
 
 ```bash
-# Clone the repository
 git clone https://github.com/24Skater/stewardpos.git
 cd stewardpos
-
-# Start all services
-docker-compose up -d
-
-# 🎉 That's it! Open http://localhost:8081
+docker compose up -d
 ```
+
+Open **http://localhost:8081** and complete the setup wizard — admin account,
+database, authentication. That is the whole install.
 
 <details>
-<summary><b>📋 First Time Setup</b></summary>
+<summary><b>Run the seeded demo instead</b></summary>
 
-1. Open `http://localhost:8081`
-2. Complete the setup wizard:
-   - Create admin account
-   - Configure database
-   - Set authentication methods
-3. Login with your credentials
-4. Start selling!
+<br>
 
-**Default Demo Credentials:**
+```bash
+docker compose -f docker-compose.demo.yml up -d
 ```
-Email: admin@demo.local
-Password: DemoPass!1
+
+Signs you in with sample products and orders already loaded:
+
 ```
+Email     admin@demo.local
+Password  DemoPass!1
+```
+
+Demo credentials are seeded data. Never point this compose file at a real install.
+See [docs/guides/demo.md](docs/guides/demo.md).
 
 </details>
 
-<br/>
-
-### 💻 Local Development
-
 <details>
-<summary><b>Backend Setup</b></summary>
+<summary><b>Local development without Docker</b></summary>
+
+<br>
+
+**Requires** Node.js 18+, PostgreSQL 14+, pnpm.
 
 ```bash
+# API — http://localhost:3002
 cd backend
-npm install
-cp env.example .env    # Configure your settings
-npm run setup-db       # Run migrations
-npm run dev            # Start server at :3001
+pnpm install
+cp env.example .env
+pnpm run setup-db
+pnpm dev
 ```
+
+```bash
+# Frontend — http://localhost:5173, proxies /api
+pnpm install
+pnpm dev
+```
+
+Configuration lives in `backend/.env`. The frontend `.env` holds four
+build-time values and no secrets — see
+[docs/reference/environment.md](docs/reference/environment.md).
 
 </details>
 
-<details>
-<summary><b>Frontend Setup</b></summary>
+<br>
+
+---
+
+## How the money moves
+
+The register sends *intent* — which items, how many. It never sends a price.
+The server re-prices from the catalog, computes every figure in integer cents,
+and writes no order unless the charge is approved.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#4B3F8F","primaryTextColor":"#FFFFFF","primaryBorderColor":"#F5B942","lineColor":"#F5B942","actorBkg":"#4B3F8F","actorTextColor":"#FFFFFF","actorBorder":"#F5B942","actorLineColor":"#8892A4","signalColor":"#6B7280","signalTextColor":"#6B7280","sequenceNumberColor":"#0F1115","noteBkgColor":"#F5B942","noteTextColor":"#0F1115","noteBorderColor":"#D39A2F","labelBoxBkgColor":"#F5B942","labelTextColor":"#0F1115"}}}%%
+sequenceDiagram
+    autonumber
+    participant R as Register
+    participant A as API
+    participant C as Catalog
+    participant T as Terminal
+    participant D as Database
+
+    R->>A: item ids + quantities
+    Note over R,A: no prices cross this line
+    A->>C: re-price every line
+    C-->>A: authoritative prices
+    A->>A: total, tax, discount, change<br/>integer cents
+    A->>T: charge the server's amount
+    T-->>A: approved / declined
+    A->>D: write order — only if approved
+    A-->>R: receipt
+```
+
+A declined card provably creates no order. A tampered register changes nothing
+but its own display.
+
+<br>
+
+---
+
+## Architecture
+
+Ports and adapters. Business logic depends on interfaces; the concrete provider
+is chosen by environment variable.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#4B3F8F","primaryTextColor":"#FFFFFF","primaryBorderColor":"#F5B942","lineColor":"#6B7280","fontFamily":"Inter, system-ui, sans-serif","clusterBkg":"transparent","clusterBorder":"#6B7280","titleColor":"#6B7280"}}}%%
+flowchart TB
+    UI["<b>Frontend</b><br/>React 18 · TypeScript · Vite · shadcn/ui"]
+    API["<b>API</b><br/>Express · JWT · Zod validation"]
+    DOM["<b>Domain</b><br/>pricing · orders · returns · shifts"]
+
+    UI --> API --> DOM
+
+    subgraph ADP["Adapters"]
+        direction LR
+        DB["<b>Database</b><br/>Postgres · SQLite"]
+        AUTH["<b>Auth</b><br/>Local · Google · OIDC"]
+        MAIL["<b>Email</b><br/>SMTP · Resend · Console"]
+        PAY["<b>Terminal</b><br/>Stripe · Manual"]
+        FILE["<b>Storage</b><br/>S3 · Azure · Local"]
+    end
+
+    DOM --> DB & AUTH & MAIL & PAY & FILE
+
+    style UI fill:#4B3F8F,stroke:#F5B942,stroke-width:2px,color:#fff
+    style API fill:#3B6FD8,stroke:#F5B942,stroke-width:2px,color:#fff
+    style DOM fill:#2A2F3A,stroke:#F5B942,stroke-width:2px,color:#fff
+    style DB fill:#4B3F8F,stroke:#F5B942,color:#fff
+    style AUTH fill:#4B3F8F,stroke:#F5B942,color:#fff
+    style MAIL fill:#4B3F8F,stroke:#F5B942,color:#fff
+    style PAY fill:#4B3F8F,stroke:#F5B942,color:#fff
+    style FILE fill:#4B3F8F,stroke:#F5B942,color:#fff
+```
+
+<br>
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/screenshots/admin-dashboard.png" alt="Admin dashboard with sales tiles and a revenue trend chart" width="100%">
+<sub><b>Admin.</b> Store performance, reports, exports, audit log.</sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/screenshots/admin-registers.png" alt="Register management showing three registers with liveness and capabilities" width="100%">
+<sub><b>Registers.</b> Pairing, liveness, capabilities, revocation.</sub>
+</td>
+</tr>
+</table>
+
+<br>
+
+---
+
+## Status
+
+Version **1.0.0**. All nine phases of the [master plan](docs/masterplan/README.md)
+are complete, plus register management and PIN till sign-on.
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<img src="docs/icons/check.svg" width="18" align="top"> **Working, covered by tests**
+
+The money path end to end — cash and split tender, drawer sessions, returns with
+gated restock, store credit, discounts and promo codes. Inventory, server-side
+reporting, branding, registers, shifts, manager overrides, and a filterable
+audit log.
+
+</td>
+<td width="50%" valign="top">
+
+<img src="docs/icons/warning.svg" width="18" align="top"> **Not yet verified**
+
+Two items need hardware nobody has run yet. Both are written end to end; neither
+has met the real world.
+
+</td>
+</tr>
+</table>
+
+| Gap | Where it stands |
+|---|---|
+| **Card payments are unverified** | `StripeTerminalAdapter` creates a real PaymentIntent, drives the reader, maps every status, and creates no order unless approved. It has never run against real credentials with a reader attached. **Card is off by default — cash is the tender to rely on.** |
+| **No install verified on a real VPS** | The [guide](docs/guides/install-vps.md) is complete and the stack validates, but nobody has followed it start to finish on a clean server. |
+| **Multi-tenant is a foundation, not a feature** | `org_id` exists on 20 tables; no query filters on it. Single-tenant only — see [multi-tenant.md](docs/guides/multi-tenant.md). |
+| **Deferred by decision** | Services and quotes, full CRM, SSO, SMS, offline/PWA, non-Stripe terminals. Backlog in [phase-9](docs/masterplan/phase-9-golive.md). |
+
+This section is checked against running code rather than restating plans. An
+earlier version listed features as complete that an audit found broken.
+
+<br>
+
+---
+
+## Documentation
+
+The [`docs/`](docs/README.md) tree is ordered by authority — the
+[changelog](CHANGELOG.md) outranks the plan, the plan outranks the guides.
+
+| | | |
+|---|---|---|
+| <img src="docs/icons/rocket.svg" width="16" align="top"> **Install on a VPS** | The supported path, start to finish | [guides/install-vps.md](docs/guides/install-vps.md) |
+| <img src="docs/icons/security.svg" width="16" align="top"> **Backup & restore** | Set this up on day one | [guides/backup-restore.md](docs/guides/backup-restore.md) |
+| <img src="docs/icons/audit.svg" width="16" align="top"> **Operations** | Logs, health checks, troubleshooting | [guides/operations.md](docs/guides/operations.md) |
+| <img src="docs/icons/registers.svg" width="16" align="top"> **Register management** | Locations, pairing, liveness, readers | [guides/register-management.md](docs/guides/register-management.md) |
+| <img src="docs/icons/payments.svg" width="16" align="top"> **API keys** | Machine access and scoping | [guides/api-keys.md](docs/guides/api-keys.md) |
+| <img src="docs/icons/code.svg" width="16" align="top"> **Environment reference** | Every variable the code reads | [reference/environment.md](docs/reference/environment.md) |
+| <img src="docs/icons/architecture.svg" width="16" align="top"> **Master plan** | Phases 0–9 and the locked decisions | [masterplan/README.md](docs/masterplan/README.md) |
+| <img src="docs/icons/docs.svg" width="16" align="top"> **Upgrading** | Version-to-version steps | [guides/upgrade.md](docs/guides/upgrade.md) |
+
+<br>
+
+---
+
+## Stack
+
+| Layer | Built with |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind, shadcn/ui |
+| API | Node.js, Express, JWT, Zod |
+| Data | PostgreSQL (SQLite adapter for tests) |
+| Delivery | Docker Compose, Caddy or nginx |
+
+<br>
+
+---
+
+## Security
+
+bcrypt hashing, JWT sessions, role-based access, Zod validation at every
+boundary, parameterised queries, Helmet headers, rate limiting, encrypted
+payment credentials, and a complete audit log.
+
+Found a vulnerability? Report it privately — **security@stewardpos.dev**. Do not
+open a public issue. See [SECURITY.md](SECURITY.md).
+
+<br>
+
+---
+
+## Contributing
 
 ```bash
-npm install
-npm run dev            # Start dev server at :5173
-```
-
-</details>
-
-<br/>
-
----
-
-<br/>
-
-## ✨ Features
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### 💰 Point of Sale
-- ⚡ Fast checkout interface
-- 📷 Barcode scanning
-- 🎨 Product variants
-- 💳 Multiple payment methods
-- 🧾 Receipt printing/email
-- 💰 Discounts & promotions
-- 🔄 Quick returns from POS
-
-</td>
-<td width="33%" valign="top">
-
-### 📦 Inventory
-- 📚 Product catalog
-- 📊 Real-time stock tracking
-- ⚠️ Low stock alerts
-- 📥 CSV import/export
-- 🖼️ Product images
-- 🔄 Variant management
-
-</td>
-<td width="33%" valign="top">
-
-### 👥 Customers
-- 📇 Customer database
-- 📈 Purchase history
-- 📞 Contact management
-- 🏷️ Tags & custom fields
-- 💎 Lifetime value
-- 📧 Email notifications
-
-</td>
-</tr>
-<tr>
-<td width="33%" valign="top">
-
-### 📊 Reports & Exports
-- 📈 Sales & service analytics
-- 💵 Revenue tracking
-- 🏆 Product performance
-- 📤 Export PDF/Excel/CSV
-- 📅 Date filtering
-- 📉 Trend analysis
-
-</td>
-<td width="33%" valign="top">
-
-### 🔐 Security
-- 🛡️ Role-based access (RBAC)
-- 👔 Custom roles
-- 🔒 Granular permissions
-- 📝 Audit logging
-- 🔑 API key management
-- 🔐 bcrypt hashing
-
-</td>
-<td width="33%" valign="top">
-
-### 🛠️ Services
-- 🔧 Service catalog
-- 📝 Quote generation
-- ⏱️ Flexible pricing
-- 🔄 Quote → Order workflow
-- 📋 Customer booking
-- 📅 Scheduling
-
-</td>
-</tr>
-<tr>
-<td width="33%" valign="top">
-
-### 🎨 Branding
-- 🏪 Store identity config
-- 🎨 Custom brand colors
-- 📷 Logo everywhere
-- 🧾 Receipt customization
-- 📝 Custom header/footer
-- 🌈 Live color preview
-
-</td>
-<td width="33%" valign="top">
-
-### 💸 Discounts & Promos
-- 🏷️ Quick discount buttons
-- 🎟️ Promo code system
-- 👔 Employee discounts
-- ✍️ Manual discounts
-- 📊 Usage tracking
-- 🔒 Approval workflow
-
-</td>
-<td width="33%" valign="top">
-
-### 🔄 Returns & Refunds
-- 🧾 Receipt lookup
-- 📦 Item-level returns
-- 💵 Multiple refund methods
-- ⚡ Quick POS returns
-- 📝 Return reasons
-- 🔄 Auto restock option
-
-</td>
-</tr>
-<tr>
-<td width="33%" valign="top">
-
-### 🏪 Registers & Locations
-- 📍 Locations as real entities
-- 🔢 Per-location numbering
-- 🔗 Device pairing by code
-- 📡 Online / idle / offline
-- 🚫 Revoke with drawer guard
-- 💳 Per-register card reader
-
-</td>
-<td width="33%" valign="top">
-
-### 👤 Till Sign-On
-- 🔢 Six-digit cashier PIN
-- ⏱️ Shifts, not logins
-- 🔒 Lock screen + idle timeout
-- 🧑‍💼 Sales attributed to cashier
-- 🛑 Lockout after 5 failures
-- 🎭 Admin can assume a till
-
-</td>
-<td width="33%" valign="top">
-
-### 🛡️ Manager Override
-- 🔑 Supervisor PIN, 90 seconds
-- 1️⃣ Single use, action-matched
-- 📋 Approver and values logged
-- 💸 Discount approval routing
-- 📊 Register & cashier reports
-- 🧾 Till and cashier on receipts
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
-
-## 🏗️ Architecture
-
-StewardPOS uses **Clean Architecture** with the **Ports and Adapters** pattern:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         FRONTEND                                 │
-│       React 18  •  TypeScript  •  Vite  •  shadcn/ui            │
-├─────────────────────────────────────────────────────────────────┤
-│                           API                                    │
-│          Express  •  JWT Auth  •  Zod Validation                │
-├─────────────────────────────────────────────────────────────────┤
-│                      BUSINESS LOGIC                              │
-│              Domain Models  •  Use Cases  •  Ports              │
-├─────────────────────────────────────────────────────────────────┤
-│                    ADAPTERS (Pluggable)                          │
-│  ┌────────────┬────────────┬────────────┬────────────┐          │
-│  │  Database  │    Auth    │   Email    │  Storage   │          │
-│  ├────────────┼────────────┼────────────┼────────────┤          │
-│  │ PostgreSQL │   Local    │   SMTP     │    S3      │          │
-│  │   SQLite   │   Google   │  Resend    │   Azure    │          │
-│  │ IndexedDB  │   OIDC     │  Console   │   Local    │          │
-│  └────────────┴────────────┴────────────┴────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-<details>
-<summary><b>🎯 Why This Architecture?</b></summary>
-
-| Benefit | Description |
-|---------|-------------|
-| **Swappable** | Change databases/auth without touching business logic |
-| **Testable** | Mock adapters for comprehensive unit tests |
-| **Extensible** | Add new providers by implementing interfaces |
-| **Configurable** | Switch adapters via environment variables |
-
-</details>
-
-<br/>
-
----
-
-<br/>
-
-## 🛠️ Tech Stack
-
-<table>
-<tr>
-<td valign="top" width="50%">
-
-### Frontend
-| Tech | Purpose |
-|------|---------|
-| ![React](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black) | UI Framework |
-| ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) | Type Safety |
-| ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) | Build Tool |
-| ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) | Styling |
-| ![shadcn/ui](https://img.shields.io/badge/shadcn/ui-000000?style=flat-square&logo=shadcnui&logoColor=white) | Components |
-
-</td>
-<td valign="top" width="50%">
-
-### Backend
-| Tech | Purpose |
-|------|---------|
-| ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=node.js&logoColor=white) | Runtime |
-| ![Express](https://img.shields.io/badge/Express-000000?style=flat-square&logo=express&logoColor=white) | Framework |
-| ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) | Database |
-| ![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white) | Auth |
-| ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) | Container |
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
-
-## 📖 Documentation
-
-<table>
-<tr>
-<td width="50%">
-
-### 🚀 Getting Started
-- [Setup Wizard Guide](docs/reference/environment.md)
-- **[Install on a VPS](docs/guides/install-vps.md)** — the supported path, start to finish
-- [Backup and restore](docs/guides/backup-restore.md) — set this up on day one
-- [Operating it](docs/guides/operations.md) — logs, health, troubleshooting
-- [Upgrading](docs/guides/upgrade.md)
-- [Demo Quick Start](docs/guides/demo.md)
-- [Deployment Guide](docs/guides/deployment.md)
-
-### 👨‍💻 Development
-- [Backend README](backend/README.md)
-- [Component Management](docs/guides/component-management.md)
-- [Code Review](docs/masterplan/ASSESSMENT-2026-08-04.md)
-
-</td>
-<td width="50%">
-
-### 📚 API Reference
-- Products API: `/api/products`
-- Orders API: `/api/orders`
-- Customers API: `/api/customers`
-- Services API: `/api/services`
-- Quotes API: `/api/quotes`
-- Returns API: `/api/returns`
-- Discounts API: `/api/discounts`
-- Receipts API: `/api/receipts`
-- Admin API: `/api/admin/*`
-- API Keys: `/api/admin/api-keys`
-
-### 🔧 Configuration
-- Environment variables: `.env`
-- Docker config: `docker-compose.yml`
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
-
-## 📦 Deployment
-
-<table>
-<tr>
-<td align="center" width="25%">
-
-### 🐳 Docker
-**Recommended**
-
-```bash
-docker-compose up -d
-```
-
-[📖 Guide](docs/guides/deployment.md)
-
-</td>
-<td align="center" width="25%">
-
-### 🐧 Linux
-Ubuntu • Debian • CentOS
-
-systemd service
-nginx proxy
-
-[📖 Guide](docs/guides/deployment.md#linux)
-
-</td>
-<td align="center" width="25%">
-
-### 🪟 Windows
-Server 2019+ • Win10/11
-
-PowerShell script
-IIS support
-
-[📖 Guide](docs/guides/deployment.md#windows)
-
-</td>
-<td align="center" width="25%">
-
-### ☁️ Cloud
-AWS • Azure • GCP
-DigitalOcean • more
-
-Container ready
-Auto-scaling
-
-[📖 Guide](docs/guides/deployment.md#cloud)
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
-
-## 🎨 Branding & Customization
-
-Make stewardPOS your own with comprehensive branding options:
-
-<table>
-<tr>
-<td width="50%">
-
-### 🏪 Store Identity
-Configure your business details that appear across the system:
-- **Store Name** - Displayed in POS header
-- **Store Number** - For multi-location tracking
-- **Contact Info** - Phone, email
-- **Address** - Full location details
-
-### 🎨 Visual Branding
-- **Logo** - Appears in POS header
-- **Favicon** - Browser tab icon
-- **Brand Color** - Applied to buttons, links, accents
-- **Live Preview** - See changes instantly!
-
-</td>
-<td width="50%">
-
-### 🧾 Receipt Customization
-Create professional, branded receipts:
-- **Receipt Logo** - Separate from main logo
-- **Store Info** - Name, address, phone
-- **Header Message** - Welcome text
-- **Footer Message** - Return policy, social media
-- **Barcode** - For easy scanning
-- **Print & Email** - Multiple delivery options
-
-### 🌈 Theme Support
-Brand color automatically updates:
-- Primary buttons
-- Links and accents
-- Focus rings
-- Gradients and glows
-
-</td>
-</tr>
-</table>
-
-> **Tip:** Go to **Admin → Branding** to customize all these options with a live preview!
-
-<br/>
-
----
-
-<br/>
-
-## 🔐 Security
-
-<table>
-<tr>
-<td width="50%">
-
-### ✅ Security Features
-- 🔐 bcrypt password hashing
-- 🎫 JWT authentication
-- 🛡️ Role-based access control
-- 📝 Complete audit logging
-- ✅ Zod schema validation
-- 🚫 SQL injection prevention
-- 🛡️ XSS protection
-- 🔒 Security headers (Helmet)
-- ⏱️ Rate limiting
-- 🔐 CORS configuration
-
-</td>
-<td width="50%">
-
-### 🚨 Report Vulnerabilities
-
-Found a security issue? Please report privately:
-
-📧 **Email:** security@stewardpos.dev
-
-**Do not** open public issues for security vulnerabilities.
-
-See [SECURITY.md](SECURITY.md) for details.
-
-</td>
-</tr>
-</table>
-
-<br/>
-
----
-
-<br/>
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-```bash
-# 1. Fork & clone
 git clone https://github.com/YOUR_USERNAME/stewardpos.git
-
-# 2. Install dependencies
-npm install && cd backend && npm install
-
-# 3. Create a branch
-git checkout -b feature/amazing-feature
-
-# 4. Make changes, then commit
-git commit -m "feat: add amazing feature"
-
-# 5. Push and open a PR
-git push origin feature/amazing-feature
+cd stewardpos && pnpm install
+git checkout -b feat/your-change
+pnpm test:run && pnpm typecheck
 ```
 
-<details>
-<summary><b>📋 Contribution Guidelines</b></summary>
+Conventional commits, tests alongside new behaviour, docs updated in the same
+change. Full guidelines in [CONTRIBUTING.md](CONTRIBUTING.md); open issues are
+[here](https://github.com/24Skater/stewardpos/issues).
 
-1. Check [open issues](https://github.com/24Skater/stewardpos/issues) first
-2. Follow our code style (ESLint + Prettier)
-3. Write tests for new features
-4. Update documentation as needed
-5. Use [conventional commits](https://www.conventionalcommits.org/)
-
-</details>
-
-<br/>
+<br>
 
 ---
 
-<br/>
-
-## 📊 Status & Roadmap
-
-> **StewardPOS is pre-1.0.** All nine phases of the build plan are complete
-> except the tag itself, and two further plans have landed since — register
-> management and PIN till sign-on. An earlier version of this section listed
-> features as "Completed" that a verified audit found broken or missing —
-> including authentication coverage — so it now points at sources checked
-> against running code rather than restating claims.
-
-| Document | What it tells you |
-|---|---|
-| **[Master plan](docs/masterplan/README.md)** | Phases 0-9, the locked product decisions, and completion notes recording what each phase actually found |
-| **[Readiness assessment](docs/masterplan/ASSESSMENT-2026-08-04.md)** | The August audit that started this. Historical — several gaps it names are now closed |
-| **[Operator guides](docs/guides/)** | Install, back up, operate, upgrade |
-
-### What works
-
-The money path is server-authoritative end to end: the register sends intents,
-the server reprices from the catalog, and totals, tax, discounts, change and
-refunds are computed in integer cents. Cash and split tender, cash-drawer
-sessions, returns with gated restock, store credit, discounts and promo codes,
-server-side reporting, branding, and a filterable audit log are all in and
-covered by tests.
-
-### What is not
-
-| Gap | Why |
-|---|---|
-| **Card payments are unverified** | The Stripe Terminal path is written — `StripeTerminalAdapter` creates a real PaymentIntent, drives the reader, polls for the result, and no order is created unless the charge is approved. What has never happened is a run against real credentials and a real reader, so it is untested rather than unbuilt. Card is off by default. Cash is the tender to rely on |
-| **No install has been verified on a real VPS** | The [guide](docs/guides/install-vps.md) is complete and the stack validates, but nobody has yet followed it start to finish on a clean server |
-| **Multi-tenant is a foundation, not a feature** | `org_id` exists on 20 tables; **no query filters on it**. Single-tenant only. See [multi-tenant.md](docs/guides/multi-tenant.md) |
-| **Deferred by decision** | Services & Quotes, full CRM, SSO, SMS, offline/PWA, and the non-Stripe terminals. See the backlog in [phase-9](docs/masterplan/phase-9-golive.md) |
-
-Since the release candidate, two more plans have landed and are covered by
-tests: **register management** — locations, per-register attribution, device
-pairing with heartbeat and revocation, per-register readers, and reporting by
-register, cashier and location — and **PIN till sign-on**, where a cashier
-opens a shift with a six-digit PIN rather than a password, a supervisor PIN
-authorises one action at a time, and every grant is logged. See the
-[changelog](CHANGELOG.md) for the detail.
-
-Sales tax, cash and split tender, and cashier attribution — which an earlier
-version of this section listed as missing — were built in Phase 3.
-
-## 💒 About This Project
+## Why this exists
 
 <table>
 <tr>
 <td>
 
-### The Heart Behind stewardPOS
+<img src="docs/icons/heart.svg" width="18" align="top"> Our church bookstore needed a register. Everything on the market was priced
+for a chain or complicated enough to need training. So this got built instead —
+simple enough for volunteers, free, and self-hosted so the data stays with the
+ministry that collected it.
 
-This project was born out of a real need at my church. We needed a simple, reliable point-of-sale system for our bookstore and events, but most solutions were either too expensive or too complicated for our volunteers to use.
+It works just as well for any small shop. That was never a compromise.
 
-So I built stewardPOS — not just as software, but as an act of service.
-
-> *"Whatever you do, work at it with all your heart, as working for the Lord, not for human masters."*
-> — **Colossians 3:23**
-
-While stewardPOS works great for any retail business, it was designed with **churches, ministries, and non-profits** in mind:
-- 🙏 Simple enough for volunteers
-- 💰 Free and open source
-- 🏠 Self-hosted (your data stays yours)
-- ⛪ Perfect for bookstores, cafés, gift shops, and events
-
-Every feature, every line of code was written as unto the Lord. My hope is that this tool blesses your ministry the way building it has blessed mine.
-
-**— The stewardPOS Team**
+> *"Whatever you do, work at it with all your heart, as working for the Lord,
+> not for human masters."* — Colossians 3:23
 
 </td>
 </tr>
 </table>
 
-<br/>
-
----
-
-<br/>
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see [LICENSE](LICENSE) for details.
-
-<table>
-<tr>
-<td>✅ Commercial use</td>
-<td>✅ Modification</td>
-<td>✅ Distribution</td>
-<td>✅ Private use</td>
-</tr>
-</table>
-
-<br/>
+<br>
 
 ---
 
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:667eea,100:764ba2&height=120&section=footer" width="100%"/>
+<img src="docs/icons/scale.svg" width="16" align="top"> **[MIT](LICENSE)** — commercial use, modification, distribution, private use.
 
-### ⭐ Star this repo if you find it useful!
+<sub>Brand assets and usage rules: <a href="branding/README.md">branding/README.md</a></sub>
 
-Special thanks to all our [contributors](https://github.com/24Skater/stewardpos/graphs/contributors)!
+<br><br>
 
-<p>
-  <b>Made with ❤️ and 🙏 for the glory of God</b>
-</p>
-
-<p>
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-documentation">Documentation</a> •
-  <a href="#-contributing">Contribute</a> •
-  <a href="#-stewardpos">Back to Top ↑</a>
-</p>
-
-[![Star History Chart](https://api.star-history.com/svg?repos=24Skater/stewardpos&type=Date)](https://star-history.com/#24Skater/stewardpos&Date)
+<a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
+<a href="docs/README.md">Docs</a> &nbsp;·&nbsp;
+<a href="CHANGELOG.md">Changelog</a> &nbsp;·&nbsp;
+<a href="https://github.com/24Skater/stewardpos/issues">Issues</a>
 
 </div>

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="440" viewBox="0 0 1600 440" role="img" aria-label="StewardPOS — self-hosted point of sale">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F1115"/>
+      <stop offset="0.45" stop-color="#2A2F3A"/>
+      <stop offset="0.78" stop-color="#4B3F8F"/>
+      <stop offset="1" stop-color="#3B6FD8"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="60" y1="90" x2="300" y2="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4B3F8F"/>
+      <stop offset="0.55" stop-color="#3B6FD8"/>
+      <stop offset="1" stop-color="#2A2F3A"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F5B942"/>
+      <stop offset="1" stop-color="#D39A2F"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.3" r="0.6">
+      <stop offset="0" stop-color="#3B6FD8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#3B6FD8" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1.5" fill="#FFFFFF" fill-opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="440" rx="28" fill="url(#bg)"/>
+  <rect width="1600" height="440" rx="28" fill="url(#dots)"/>
+  <rect width="1600" height="440" rx="28" fill="url(#glow)"/>
+
+  <!-- Shield mark -->
+  <g transform="translate(96,86) scale(0.52)">
+    <path d="M250 20 C205 52 150 62 118 70 V220 C118 330 180 418 250 460 C320 418 382 330 382 220 V70 C350 62 295 52 250 20 Z" fill="url(#shield)" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="6"/>
+    <path d="M185 70 C185 64 190 59 196 59 H304 C310 59 315 64 315 70 V136 L304 128 L293 136 L282 128 L271 136 L260 128 L250 136 L240 128 L229 136 L218 128 L207 136 L196 128 L185 136 V70 Z" fill="url(#gold)"/>
+    <rect x="244" y="74" width="12" height="44" rx="4" fill="#FFFFFF"/>
+    <rect x="230" y="88" width="40" height="12" rx="4" fill="#FFFFFF"/>
+    <rect x="198" y="160" width="104" height="86" rx="14" fill="#3B6FD8" opacity="0.92"/>
+    <rect x="246" y="174" width="10" height="52" rx="4" fill="#FFFFFF"/>
+    <rect x="228" y="192" width="46" height="10" rx="4" fill="#FFFFFF"/>
+    <g opacity="0.85" fill="#FFFFFF">
+      <rect x="198" y="262" width="34" height="26" rx="7" opacity="0.55"/>
+      <rect x="236" y="262" width="34" height="26" rx="7" opacity="0.45"/>
+      <rect x="274" y="262" width="34" height="26" rx="7" opacity="0.35"/>
+      <rect x="198" y="292" width="34" height="26" rx="7" opacity="0.45"/>
+      <rect x="236" y="292" width="34" height="26" rx="7" opacity="0.35"/>
+      <rect x="274" y="292" width="34" height="26" rx="7" opacity="0.28"/>
+    </g>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="360" y="196" font-family="Playfair Display, Georgia, 'Times New Roman', serif" font-size="104" font-weight="700" fill="#FFFFFF">StewardPOS</text>
+  <rect x="364" y="228" width="132" height="6" rx="3" fill="url(#gold)"/>
+  <text x="364" y="292" font-family="Inter, Segoe UI, system-ui, Arial, sans-serif" font-size="34" fill="#E5E7EB">Self-hosted point of sale for churches, ministries, and small shops.</text>
+
+  <!-- Chips -->
+  <g font-family="Inter, Segoe UI, system-ui, Arial, sans-serif" font-size="22" fill="#E5E7EB">
+    <rect x="364" y="330" width="196" height="46" rx="23" fill="#FFFFFF" fill-opacity="0.10" stroke="#F5B942" stroke-opacity="0.55"/>
+    <text x="462" y="359" text-anchor="middle">MIT licensed</text>
+    <rect x="576" y="330" width="176" height="46" rx="23" fill="#FFFFFF" fill-opacity="0.10" stroke="#F5B942" stroke-opacity="0.55"/>
+    <text x="664" y="359" text-anchor="middle">Docker-first</text>
+    <rect x="768" y="330" width="374" height="46" rx="23" fill="#FFFFFF" fill-opacity="0.10" stroke="#F5B942" stroke-opacity="0.55"/>
+    <text x="955" y="359" text-anchor="middle">Server-authoritative money path</text>
+    <rect x="1158" y="330" width="196" height="46" rx="23" fill="#FFFFFF" fill-opacity="0.10" stroke="#F5B942" stroke-opacity="0.55"/>
+    <text x="1256" y="359" text-anchor="middle">Your data, yours</text>
+  </g>
+</svg>
