@@ -125,15 +125,46 @@ these existed the file had no bound at all and grew for the life of the install.
 ## Security Checklist (Production)
 
 - [ ] JWT_SECRET is 32+ characters and generated, not edited (`openssl rand -base64 32`)
+- [ ] CREDENTIALS_KEY is set if card payments are configured (see below)
 - [ ] All passwords are strong and generated
 - [ ] CORS_ORIGIN set to the production domain only
 - [ ] AUTO_SEED=false
 - [ ] TRUST_PROXY matches the number of proxies in front of the API
 
-The first three are enforced: the backend **refuses to start** in production if
-`JWT_SECRET`, `DB_PASSWORD` or `S3_SECRET_ACCESS_KEY` is one of the placeholders
+`JWT_SECRET`, `DB_PASSWORD` and `S3_SECRET_ACCESS_KEY` are enforced: the backend
+**refuses to start** in production if any of them is one of the placeholders
 this repository ships. A skipped line fails loudly at boot rather than quietly
 for the life of the install.
+
+### Payment credentials at rest
+
+`CREDENTIALS_KEY` encrypts the payment-processor keys stored in Settings. Set
+it, and a copy of the database is not enough to use them; leave it unset and
+those keys sit in the clear in `settings.config`.
+
+It is **not** required to boot — making it so would refuse to start every
+existing install on upgrade, over a condition they have had since the day they
+were configured. Instead the backend logs an error at startup when it finds live
+credentials stored unprotected. If the value *is* set it must be a real one:
+a placeholder is refused at boot, because a key that looks like protection and
+is not is worse than none.
+
+This matters most when you host StewardPOS for somebody else. The key in that
+database is their Stripe key, and one leaked backup is a full takeover of their
+payment account — charges, refunds to anywhere, customer records, payout
+destinations.
+
+```bash
+# Generate
+openssl rand -base64 32
+
+# Already have credentials saved? Encrypt them in place (safe to re-run):
+cd backend && npm run encrypt-credentials
+```
+
+Back it up wherever you back up `JWT_SECRET`, and not alongside the database.
+Without it the stored credentials cannot be read back and card payments stop
+until they are re-entered in Settings.
 - [ ] Email provider configured
 - [ ] Uploads: `STORAGE_ADAPTER` set, and `S3_BUCKET` + `S3_SECRET_ACCESS_KEY` if `s3`
 - [ ] SSL/TLS certificates configured
