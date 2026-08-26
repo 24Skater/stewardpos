@@ -21,9 +21,9 @@
 
 <br>
 
-A point-of-sale system you run on your own server. It was built for a church
-bookstore — volunteers on the register, one laptop in the back — and it works
-the same way for any small shop.
+A point-of-sale system you run on your own server. It started at a church snack
+table — prices memorized, totals added up in someone's head, change counted out
+of a cash box — and it works the same way for any small shop.
 
 Prices are never trusted from the register. Every total, tax line, discount and
 refund is recomputed on the server in integer cents. That one decision shapes
@@ -385,9 +385,15 @@ change. Full guidelines in [CONTRIBUTING.md](CONTRIBUTING.md); open issues are
 <tr>
 <td>
 
-<img src="docs/icons/heart.svg" width="18" align="top"> Our church bookstore needed a register. Everything on the market was priced
-for a chain or complicated enough to need training. So this got built instead —
-simple enough for volunteers, free, and self-hosted so the data stays with the
+<img src="docs/icons/heart.svg" width="18" align="top"> It started at a snack table. The church was selling drinks and snacks after
+service, and the volunteers were running the whole thing in their heads — prices
+memorized, totals added up on the spot, change counted back out of a cash box.
+It worked, mostly. It was also slow, and every sale was one distraction away
+from being wrong.
+
+Everything on the market was priced for a chain or complicated enough to need
+training. So this got built instead — simple enough to hand a volunteer the
+tablet and let them sell, free, and self-hosted so the data stays with the
 ministry that collected it.
 
 It works just as well for any small shop. That was never a compromise.
