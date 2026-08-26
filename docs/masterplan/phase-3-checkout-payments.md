@@ -206,6 +206,56 @@ and hardware to verify.
 > appeared because the location became a per-store setting instead of an
 > environment variable.
 
+> **Update, 2026-08-25 — the card path was rebuilt (PRs #35–#41).**
+>
+> A full read of the Stripe API against this code found four defects that the
+> correction above did not reach, because it only asked whether the adapter was
+> real and not what happened after the customer taps. All are now fixed:
+>
+> - **Card refunds never reached Stripe.** `process-refund` wrote a
+>   `refund_transactions` row saying `completed` and called no processor. The
+>   customer was told they had been refunded and no money moved. `TerminalPort`
+>   now carries `refundCharge`; providers without an implementation throw rather
+>   than reporting a success that did not happen (#35).
+> - **A declined card read as "waiting" for 90 seconds.** Stripe returns a
+>   declined intent to `requires_payment_method` — the status a new one has — so
+>   the POS polled until its timeout and never showed the reason. Declines now
+>   surface in about two seconds with the issuer's decline code. Cancelling also
+>   resets the reader, which it did not, so a cancelled sale no longer breaks the
+>   next one with `terminal_reader_busy` (#36).
+> - **The browser decided how much to charge.** `/api/terminal/charge` took an
+>   amount and validated only that it was positive. It takes a cart now and
+>   prices it server-side through the same function that prices a quote and an
+>   order (#37).
+> - **A charge could succeed with no order behind it.** `payment_attempts`
+>   (migration 022) records what is about to be charged *before* charging it,
+>   and its id travels in the PaymentIntent metadata. Outcomes arrive from a
+>   webhook or a poll through one handler — both, because a self-hosted install
+>   behind NAT can never receive a webhook (#38). Charges that never became a
+>   sale are listed and repairable under Admin → Unreconciled Charges (#39).
+>
+> Also landed: the card-network required EMV fields on printed and emailed
+> receipts (#40), and encryption at rest for stored payment credentials with
+> unrestricted `sk_live_` keys refused at save (#41).
+>
+> **Two things the plan called for and the code deliberately did not do.**
+> Order-first in a `pending_payment` state was rejected once `createOrder` was
+> read properly: it decrements stock and redeems store credits in one
+> transaction, and the same request burns a one-time discount override, so an
+> abandoned attempt would need compensating reversal for all of it. And capture
+> stays `automatic`: manual capture's seam is now provided by the attempt
+> record, while its failure mode — an order created against an authorization
+> that is never captured — looks paid, is flagged by nothing, and expires
+> silently in two days. Revisit only if on-receipt tipping is wanted, which
+> requires it.
+>
+> **P3-T5 still cannot be signed off.** Everything above is covered by unit and
+> integration tests, and none of it has been run against Stripe test mode with
+> the Terminal simulator. That verification is still the outstanding item, and
+> the specific things to exercise are a decline reaching the cashier in seconds,
+> a sale completing with the webhook endpoint deleted, and killing the till
+> mid-authorization to confirm the charge is left recoverable.
+
 ## Progress notes (2026-08-06)
 
 **Partially done, ahead of the stated entry criteria.** Phase 2 was not yet
