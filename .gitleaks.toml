@@ -1,0 +1,103 @@
+# Secret scanning for StewardPOS.
+#
+# Runs in CI over the **full history**, not just the diff. Scanning only what a
+# pull request changed is the common setup and it misses the case that actually
+# happens: a secret committed on a branch, noticed, deleted in a follow-up
+# commit, and left sitting in the history where anyone can `git log -p` it. A
+# deletion is not a redaction.
+#
+# This repository has one of those, allowlisted below, because it is already
+# public and cannot be un-published by a config file. The allowlist is a record
+# of a known exposure, not a dismissal of it - see docs/guides/secret-rotation.md
+# for what has to be rotated, and why rewriting the history is a separate job
+# that only the repository owner can run.
+
+title = "StewardPOS"
+
+[extend]
+# Gitleaks' own rule set. Extended rather than replaced: the maintained list of
+# provider token formats is the part with real value, and hand-rolling it means
+# quietly dropping whichever provider nobody thought of.
+useDefault = true
+
+[allowlist]
+description = "Known-safe matches, each with a reason it is safe"
+
+paths = [
+  # Placeholders, by design. `.env.example` and `env.example` exist to be copied
+  # and filled in; `config/secrets.ts` lists the shipped placeholder values
+  # precisely so the app can refuse to boot on them in production.
+  '''^\.env\.example$''',
+  '''^\.env\.prod\.example$''',
+  '''^backend/env\.example$''',
+  '''^backend/src/config/secrets\.ts$''',
+
+  # Test fixtures. `settingsSecrets.test.ts` uses a literal `sk_live_...` string
+  # to assert the API never echoes one back; a scanner flagging the test that
+  # proves secrets do not leak is the tail wagging the dog.
+  '''^backend/src/.*/__tests__/.*$''',
+  '''^backend/src/.*\.test\.ts$''',
+  '''^src/.*/__tests__/.*$''',
+  '''^e2e/.*$''',
+
+  # AWS's own published example key (AKIAIOSFODNN7EXAMPLE) appears in the
+  # archived configuration guide. It is a literal from their documentation.
+  '''^docs/archive/.*$''',
+]
+
+# Placeholder values, matched by their literal text rather than by the file they
+# sit in.
+#
+# Precise on purpose. The obvious fix for this noise is to allowlist `docs/` and
+# `*.md` wholesale - which also stops the scanner ever finding the real secret
+# somebody pastes into a runbook, the single most likely place one lands in a
+# repository that is otherwise careful. Naming the placeholders means a value
+# that is *not* one of these still fails the build.
+regexes = [
+  # Documentation stand-ins from the historical quickstart guides.
+  '''YOUR_TOKEN''',
+  '''YOUR_JWT_TOKEN''',
+  # A doc example that exists to demonstrate a 401.
+  '''invalid-token''',
+  '''\$TOKEN''',
+  '''<api_key>''',
+  '''spk_abc12345_''',
+
+  # The truncated example JWT. It is the public `{"alg":"HS256","typ":"JWT"}`
+  # header and nothing else - every JWT ever minted starts with these
+  # characters, so this cannot match a real token's secret half.
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9''',
+
+  # Okta and Resend key shapes from the old CONFIGURATION.md, which documented
+  # forty-three VITE_ variables the app had already stopped reading. Both are
+  # digit-sequence placeholders.
+  '''0oa1234567890abcdef''',
+  '''re_123456789''',
+
+  # The seeded demo login in the old backend README. It is the same credential
+  # VITE_DEMO_MODE prints on the demo deployment's own sign-in screen, so it is
+  # published on purpose.
+  '''admin123''',
+]
+
+stopwords = [
+  # The CI-only JWT signing key, set in ci.yml and release.yml. It is listed in
+  # SHIPPED_PLACEHOLDERS in backend/src/config/secrets.ts precisely so that a
+  # production install refuses to boot on it.
+  "test-secret-min-32-characters-long-for-ci",
+]
+
+commits = [
+  # The one real exposure in this history.
+  #
+  # 31fc1b5 added a `.env` carrying a JWT signing key, the Postgres password and
+  # the MinIO root credentials. 73b012e deleted the file. The values are still
+  # readable in the object store of every clone, so they must be treated as
+  # published: rotate them, do not merely delete them. Allowlisted so this scan
+  # stays useful - a permanent unfixable failure trains people to ignore a red
+  # job, which costs more than this entry does.
+  #
+  # Tracked in docs/guides/secret-rotation.md. Remove this entry once the
+  # history has actually been rewritten.
+  "31fc1b5b368454b6bae448b10f62c40b86ffbd4d",
+]
