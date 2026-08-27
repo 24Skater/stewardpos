@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
 import {
   findPasswordProblems,
   passwordSchema,
@@ -83,6 +85,43 @@ describe('findPasswordProblems', () => {
     // Same reasoning as findWeakSecrets: one fix, one retry.
     const problems = findPasswordProblems('ada', { email: 'ada@shop.example' });
     expect(problems.length).toBeGreaterThan(1);
+  });
+});
+
+describe('the fixtures that have to satisfy this policy', () => {
+  /**
+   * The E2E suite creates a till user through `POST /api/admin/users`, so its
+   * password is subject to this policy like any other.
+   *
+   * That is not hypothetical: tightening the minimum from six to twelve broke
+   * `global-setup.ts`, which used the seeded `DemoPass!1` — ten characters and
+   * on the forbidden list. The POST's response was not checked, so the only
+   * symptom was a lookup failing twenty lines later. Read out of the E2E source
+   * rather than copied, so the next person to tighten the rule finds out here,
+   * in seconds, instead of in a CI run.
+   */
+  it('accepts the password e2e/global-setup.ts creates its till user with', () => {
+    const source = readFileSync(
+      path.resolve(__dirname, '../../../../e2e/global-setup.ts'),
+      'utf8'
+    );
+    const block = source.slice(source.indexOf('const TILL_USER'), source.indexOf('};', source.indexOf('const TILL_USER')));
+
+    const read = (field: string): string => {
+      const marker = `${field}: '`;
+      const at = block.indexOf(marker);
+      if (at === -1) throw new Error(`TILL_USER has no ${field}`);
+      return block.slice(at + marker.length, block.indexOf("'", at + marker.length));
+    };
+
+    const password = read('password');
+    expect(password.length).toBeGreaterThan(0);
+
+    expect(
+      findPasswordProblems(password, { email: read('email'), name: read('name') }),
+      'e2e/global-setup.ts creates its till user through POST /api/admin/users, ' +
+        'so this password must satisfy the policy. Update the fixture there.'
+    ).toEqual([]);
   });
 });
 
