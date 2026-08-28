@@ -74,10 +74,58 @@ listed below.
 Roughly in order. Each step is independently shippable.
 
 **1. Backfill and tighten.** Set `org_id` to the default org on every existing
-row, then make the column `NOT NULL`. Do this while there is still only one
-organization — it is a no-op then, and it turns "forgot to set org_id" from a
-silent cross-tenant leak into an immediate constraint violation. This is the
-single highest-value step and it is worth doing before anything else.
+row, give the column a `DEFAULT`, and only then make it `NOT NULL`. All three
+parts, in that order.
+
+> **The order is not a style preference.** An earlier version of this guide said
+> to backfill and then set `NOT NULL`, describing it as "a no-op" on a
+> single-org install. It is not a no-op — it is an outage. **Not one of the
+> forty-odd `INSERT` statements in the two adapters names `org_id`**, so the
+> constraint rejects every write the application makes. Verified against a real
+> Postgres:
+>
+> ```
+> ALTER TABLE customers ALTER COLUMN org_id SET NOT NULL;
+> INSERT INTO customers (name, email) VALUES ('A', 'a@example.com');
+> -- ERROR: null value in column "org_id" of relation "customers"
+> --        violates not-null constraint
+> ```
+>
+> That is a shop that cannot take a sale, reached by following the runbook. The
+> `DEFAULT` is what makes the constraint survivable: existing writes keep
+> working and land in the default org, while an explicit `org_id` still wins.
+
+```sql
+-- Per tenant-scoped table, in one transaction:
+UPDATE   products SET org_id = '00000000-0000-0000-0000-000000000001' WHERE org_id IS NULL;
+ALTER TABLE products ALTER COLUMN org_id SET DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE products ALTER COLUMN org_id SET NOT NULL;
+```
+
+`backend/src/adapters/db/__tests__/orgIdWriteCoverage.test.ts` enforces this: it
+fails if a migration makes `org_id` `NOT NULL` on a table whose inserts neither
+set it nor have a default to fall back on.
+
+**Drop the `DEFAULT` once step 3 is done.** While it is there, a write that
+forgets `org_id` silently lands in the default org instead of failing — which is
+the wrong behaviour once a second tenant exists, and the opposite of what this
+step is ultimately for. The `DEFAULT` is scaffolding for the window between
+step 1 and step 3, not the destination.
+
+**SQLite cannot do any of this in place.** It has no `ALTER TABLE ... ALTER
+COLUMN`: adding `NOT NULL` or a `DEFAULT` to an existing column requires
+rebuilding the table (create new, copy, drop, rename), twenty times over.
+Confirmed against SQLite 3.53:
+
+```
+sqlite> ALTER TABLE customers ALTER COLUMN org_id SET NOT NULL;
+Error: near "ALTER": syntax error
+```
+
+Since Postgres is also the only one of the two with row-level security, the
+realistic plan is that multi-tenancy is a Postgres feature and SQLite stays the
+single-shop option. Decide that explicitly before starting, rather than
+discovering it halfway through.
 
 **2. Scope reads, one table at a time.** Add `org_id = $n` to each adapter read.
 Start with `products`, `orders`, and `customers` — the tables a leak would
