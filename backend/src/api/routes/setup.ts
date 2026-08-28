@@ -9,6 +9,7 @@ import config from '../../config';
 import { PERMISSION_RESOURCES } from '../middleware/authorize';
 import { ValidationError, getErrorMessage } from '../../utils/errors';
 import { BCRYPT_ROUNDS } from '../../services/hashing';
+import { passwordSchema } from '../../services/passwordPolicy';
 
 const router = Router();
 
@@ -203,7 +204,9 @@ const setupSchema = z.object({
   adminUser: z.object({
     name: z.string().min(1),
     email: z.string().email(),
-    password: z.string().min(8),
+    // Was `min(8)` while `POST /api/admin/users` said six. One rule now, and
+    // the stricter one, since this is the account that creates the others.
+    password: passwordSchema,
   }),
 
   // Database configuration

@@ -150,6 +150,28 @@ describe('POST /api/admin/users', () => {
     expect(createUser).not.toHaveBeenCalled();
   });
 
+  it('rejects a password that used to pass the old six-character floor', async () => {
+    // The rule this replaced accepted `abc123`. Named explicitly so the
+    // loosening would have to be deliberate.
+    const response = await request(app)
+      .post('/api/admin/users')
+      .set(auth())
+      .send({ ...body, password: 'abc123' });
+
+    expect(response.status).toBe(400);
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects a password containing the new account own email', async () => {
+    const response = await request(app)
+      .post('/api/admin/users')
+      .set(auth())
+      .send({ ...body, email: 'ada@example.com', password: 'ada-in-the-office' });
+
+    expect(response.status).toBe(400);
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
   it('rejects a malformed email', async () => {
     expect(
       (await request(app).post('/api/admin/users').set(auth()).send({ ...body, email: 'nope' })).status
@@ -182,10 +204,39 @@ describe('PUT /api/admin/users/:id', () => {
   });
 
   it('hashes a new password when one is given', async () => {
-    await request(app).put('/api/admin/users/u2').set(auth()).send({ password: 'NewPassw0rd' });
+    // Twelve characters or more: `NewPassw0rd` was eleven, and stopped being
+    // an acceptable password when the policy moved from six to twelve
+    // (services/passwordPolicy.ts). The subject of this test is the hashing,
+    // so it needs a password the route will actually accept.
+    const replacement = 'RenewedPassphrase7';
+
+    await request(app).put('/api/admin/users/u2').set(auth()).send({ password: replacement });
 
     const stored = updateUser.mock.calls[0][1];
-    expect(await bcrypt.compare('NewPassw0rd', String(stored.passwordHash))).toBe(true);
+    expect(await bcrypt.compare(replacement, String(stored.passwordHash))).toBe(true);
+  });
+
+  it('applies the password policy on update, not only on create', async () => {
+    const response = await request(app)
+      .put('/api/admin/users/u2')
+      .set(auth())
+      .send({ password: 'short' });
+
+    expect(response.status).toBe(400);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it('refuses a password built from the account it protects', async () => {
+    // `getUserById` returns cashier@example.com, so this contains the local
+    // part of the address it is meant to protect - guessable by anyone who has
+    // ever been emailed by that account.
+    const response = await request(app)
+      .put('/api/admin/users/u2')
+      .set(auth())
+      .send({ password: 'cashier-summer-2026' });
+
+    expect(response.status).toBe(400);
+    expect(updateUser).not.toHaveBeenCalled();
   });
 
   it('404s for a user that does not exist', async () => {

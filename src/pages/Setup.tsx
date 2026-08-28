@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { setupApi, type AuthMethod } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { describePasswordProblem, MIN_PASSWORD_LENGTH } from '@/lib/password-policy';
 import { 
   Database, 
   User, 
@@ -136,10 +137,18 @@ export default function Setup() {
       return;
     }
 
-    if (adminUser.password.length < 8) {
+    // Mirrors the server's rule (backend/src/services/passwordPolicy.ts). The
+    // server is the one that enforces it; this exists so the wizard says so
+    // before the request rather than after, since a rejected setup submission
+    // is a confusing place to first learn the rule.
+    const passwordProblem = describePasswordProblem(adminUser.password, {
+      email: adminUser.email,
+      name: adminUser.name,
+    });
+    if (passwordProblem) {
       toast({
         title: 'Validation Error',
-        description: 'Password must be at least 8 characters',
+        description: passwordProblem,
         variant: 'destructive',
       });
       return;
@@ -485,7 +494,7 @@ export default function Setup() {
                         placeholder="••••••••"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Minimum 8 characters
+                        Minimum {MIN_PASSWORD_LENGTH} characters
                       </p>
                     </div>
                     <div>

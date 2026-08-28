@@ -22,6 +22,7 @@ import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import componentsRoutes from './components';
 import { BCRYPT_ROUNDS } from '../../services/hashing';
+import { findPasswordProblems, passwordSchema } from '../../services/passwordPolicy';
 
 const router = Router();
 router.use(authenticate);
@@ -34,7 +35,7 @@ router.use('/components', componentsRoutes);
 const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: passwordSchema,
   roleIds: z.array(z.string()).min(1),
   status: z.enum(['active', 'inactive']).default('active'),
 });
@@ -42,7 +43,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  password: z.string().min(6).optional(),
+  password: passwordSchema.optional(),
   roleIds: z.array(z.string()).optional(),
   status: z.enum(['active', 'inactive']).optional(),
   /**
@@ -82,6 +83,17 @@ router.post('/users', requirePermission('users', 'write'), async (req: AuthReque
     const userData = createUserSchema.parse(req.body);
     const adapter = db.getAdapter();
 
+    // The rules that need to know whose account this is. `passwordSchema` on
+    // the field above cannot check them: it sees the password and nothing else,
+    // and "does not contain your own email address" needs the address.
+    const contextual = findPasswordProblems(userData.password, {
+      email: userData.email,
+      name: userData.name,
+    });
+    if (contextual.length > 0) {
+      throw new ValidationError(contextual[0]);
+    }
+
     // Hash password
     const passwordHash = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
 
@@ -120,9 +132,22 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     const adapter = db.getAdapter();
 
     const updateData: Record<string, unknown> = { ...userData };
-    
+
     // Hash password if provided
     if (userData.password) {
+      // Against the account's identity as it will be *after* this patch: an
+      // admin renaming someone and setting a password to the new name in one
+      // request should still be refused. Falls back to the stored values for
+      // whichever half the patch leaves alone.
+      const existing = await adapter.getUserById(id);
+      const contextual = findPasswordProblems(userData.password, {
+        email: userData.email ?? (existing?.email as string | undefined),
+        name: userData.name ?? (existing?.name as string | undefined),
+      });
+      if (contextual.length > 0) {
+        throw new ValidationError(contextual[0]);
+      }
+
       updateData.passwordHash = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
       delete updateData.password;
     }
