@@ -28,7 +28,23 @@ const REGISTER_TOKEN_KEY = 'steward-terminal-register-token';
 const TILL_USER = {
   email: 'e2e.till@demo.local',
   name: 'E2E Till',
-  password: 'DemoPass!1',
+  /**
+   * Not `DemoPass!1`, which the rest of this file signs in with.
+   *
+   * That value is the seeded demo credential: ten characters, published in
+   * this repository, and now explicitly on the forbidden list in
+   * `backend/src/services/passwordPolicy.ts` precisely so a demo install going
+   * live cannot keep it. `POST /api/admin/users` refuses it.
+   *
+   * It has to differ for the admin account too, which the seeder writes
+   * directly with `bcrypt.hash` and so never passes through the policy — that
+   * asymmetry is deliberate, not an oversight: the policy governs passwords
+   * being *chosen*, and the demo seed is a fixture.
+   *
+   * This account signs in by PIN in the specs, so the password only has to be
+   * acceptable, never memorable.
+   */
+  password: 'Quiet-Harbour-Lantern-42',
 };
 
 /**
@@ -140,9 +156,15 @@ async function ensureTillUser(
   );
   if (!standard) throw new Error('No standard role to give the e2e till user.');
 
-  // Expected to fail when the account already exists — the PIN write below is
-  // what actually matters, so the response is deliberately not checked here.
-  await page.request.post(`${API}/api/admin/users`, {
+  // Expected to fail when the account already exists, which is why the status
+  // is not simply asserted. But "already exists" is not the only way this can
+  // fail, and swallowing the rest cost a confusing debugging session: when the
+  // password policy tightened, this started returning 400 and the only symptom
+  // was `Could not create or find e2e.till@demo.local` twenty lines later,
+  // pointing at the lookup rather than at the refusal.
+  //
+  // So: a conflict is fine, anything else says why.
+  const created = await page.request.post(`${API}/api/admin/users`, {
     headers: authed,
     data: {
       email: TILL_USER.email,
@@ -151,6 +173,15 @@ async function ensureTillUser(
       roleIds: [standard.id],
     },
   });
+
+  if (!created.ok() && created.status() !== 409) {
+    const body = await created.text();
+    // 400 here is almost always the password policy. Naming the account and
+    // the status turns a lookup failure back into the refusal it really is.
+    throw new Error(
+      `Could not create ${TILL_USER.email}: ${created.status()} ${body.slice(0, 200)}`
+    );
+  }
 
   const users = await page.request.get(`${API}/api/admin/users`, { headers: authed });
   const user = (await users.json()).data?.find(
