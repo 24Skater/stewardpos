@@ -463,6 +463,8 @@ export interface User {
   pinSetAt?: number | null;
   /** Epoch ms the PIN lockout lapses, or null. A past value means it already has. */
   pinLockedUntil?: number | null;
+  /** Epoch ms while the account is locked out of password sign-in, else null. */
+  passwordLockedUntil?: number | null;
   lastLoginAt?: number;
   createdAt: number;
 }

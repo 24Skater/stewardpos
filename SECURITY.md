@@ -288,31 +288,53 @@ backfill `org_id` on every row → make the column `NOT NULL` → scope the quer
 and test them against two organisations → *then* add RLS as defence in depth.
 Doing RLS first breaks the install. See `docs/guides/multi-tenant.md`.
 
-### 3. Brute-force protection is rate limiting, not bot detection
+### 3. Brute-force protection is rate limiting and lockout, not bot detection
 
-There is no CAPTCHA and no proof-of-work. What there is: five separate
-`express-rate-limit` budgets — global, sign-in, device pairing, PIN shift
-start, and supervisor override — with `skipSuccessfulRequests` on the four
+There is no CAPTCHA and no proof-of-work. What there is:
+
+**Five `express-rate-limit` budgets** — global, sign-in, device pairing, PIN
+shift start, and supervisor override — with `skipSuccessfulRequests` on the four
 credential-checking ones, so normal use never spends the budget and only
 failures do.
 
-**Why it is this way.** The endpoints an attacker can reach are a staff sign-in
-form, a PIN keypad, and a device-pairing code. All three are used by people
-standing at a till during a shift change, on a touchscreen, sometimes in a
-hurry. A CAPTCHA there fails closed against the staff and open against anyone
-willing to pay a solving service.
+**Per-account lockout on both credentials.** A PIN locks after five failures
+(`services/pins.ts`); a password after ten (`services/passwordLockout.ts`), both
+for fifteen minutes. The rate limits key on IP, so without this an attacker with
+a few hundred addresses had effectively unlimited attempts against any single
+account.
 
-**What it costs.** An attacker with many source addresses gets more attempts
-than one address would, since the limits key on IP. Mitigations: PINs lock the
-account after repeated failures (`pin_locked_until`), and sign-in is
-timing-equalised so that failures reveal nothing about which addresses exist
-(`burnPasswordComparison` in `api/routes/auth.ts`).
+**Why it is opt-out-able by a manager.** Every account lockout is also a
+denial-of-service primitive: anyone who knows an address can hold that account
+shut by failing on purpose. Two things bound that cost. The window is short.
+And password sign-in is **not on the path to taking money** — cashiers work the
+till with a PIN against a paired register, and `POST /api/auth/login` refuses a
+till-only user outright — so a locked account costs somebody the back office,
+not the shop its trading. A manager can clear either lockout immediately from
+Admin → Roles & Users.
 
-**Set `TRUST_PROXY` correctly or none of this works.** It defaults to `0`. Behind
-a proxy without it, every request appears to come from the proxy and the whole
-internet shares one bucket. Set too high, a forged `X-Forwarded-For` walks past
-the limits entirely. It must equal the number of proxies you actually run — `1`
-for the shipped `docker-compose.prod.yml`.
+**Why a lockout is not announced.** A locked account answers exactly as a wrong
+password does. "This account is locked" confirms the address exists, which is
+the same enumeration leak the decoy comparison closes on the timing side. The
+one exception is a caller who supplies the **correct** password while locked:
+they have proved they are not guessing, so they are told how long is left. They
+are still not let in — a lockout the right password walks through protects
+nothing.
+
+**Why no CAPTCHA.** The reachable endpoints are a staff sign-in form, a PIN
+keypad and a device-pairing code, all used by people standing at a till during a
+shift change, on a touchscreen, often in a hurry. A CAPTCHA there fails closed
+against the staff and open against anyone willing to pay a solving service.
+
+**Set `TRUST_PROXY` correctly or the rate limits do nothing.** It defaults to
+`0`. Behind a proxy without it, every request appears to come from the proxy and
+the whole internet shares one bucket. Set too high, a forged `X-Forwarded-For`
+walks past the limits entirely. It must equal the number of proxies you actually
+run — `1` for the shipped `docker-compose.prod.yml`.
+
+**Passwords set from now on are 12 characters minimum** and may not be built
+from the account's own name or address (`services/passwordPolicy.ts`). That
+governs passwords being *chosen*; accounts created under the old six-character
+rule keep whatever they have, which is exactly why the lockout above matters.
 
 ### 4. Payment credential encryption is opt-in
 
