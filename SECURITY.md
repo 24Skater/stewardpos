@@ -235,47 +235,122 @@ await deleteUser(userId);
 
 ## Known Security Considerations
 
-### 1. **Browser-Based Storage (IndexedDB/LocalStorage)**
+Deliberate trade-offs, with the reasoning. Each is a decision, not an oversight
+— if you disagree with one, the reasoning is what to argue with.
 
-Default setup uses browser storage, which:
-- ✅ Works offline
-- ✅ No backend required
-- ❌ Accessible to all browser scripts
-- ❌ Not encrypted by default
-- ❌ Limited to single device
+### 1. Session tokens live in `localStorage`, not an httpOnly cookie
 
-**Recommendation**: Use server-based database (Postgres) for sensitive data.
+`POST /api/auth/login` returns a JWT that the browser stores in `localStorage`
+and sends as `Authorization: Bearer`. The textbook advice is an httpOnly cookie,
+because script cannot read one.
 
-### 2. **Local Auth Adapter**
+**Why it is this way.** Three of the four ways to authenticate against this API
+are not browsers: an `X-Api-Key` for integrations, an `X-Register-Token` for a
+paired terminal device, and an `X-Override-Token` for a supervisor approval.
+A header-based scheme is one authentication path for all of them. Cookies would
+add a second, browser-only path alongside — and with it CSRF, which a Bearer
+header does not have, because the browser never attaches one automatically.
+There is no CSRF token anywhere in this codebase and none is needed; that is a
+consequence of this decision, not an omission.
 
-Built-in auth uses bcrypt + sessions:
-- ✅ No external dependencies
-- ✅ Passwords properly hashed
-- ❌ Sessions stored in sessionStorage (browser)
-- ❌ No automatic session refresh
-- ❌ No 2FA support (yet)
+**What it costs.** An XSS bug becomes a session-theft bug. The mitigations are
+that there is no XSS surface to speak of — zero uses of
+`dangerouslySetInnerHTML` or `innerHTML` in the frontend, React escaping
+everywhere else, no SVG uploads — and that `script-src 'self'` with no
+`'unsafe-inline'` means injected script does not run even if markup gets
+through. See `nginx.conf`, and `src/test/__tests__/csp.test.ts`, which fails the
+build if that guarantee is weakened.
 
-**Recommendation**: Use OIDC provider (Azure AD, Okta) for enterprise deployments.
+**When to revisit.** If this app ever renders user-authored rich text, the
+trade-off changes and cookies become worth their cost.
 
-### 3. **File Upload Security**
+### 2. There is no database-level Row Level Security
 
-When using storage adapters:
-- Validate file types
-- Limit file sizes
-- Scan for malware (if applicable)
-- Use signed URLs for downloads
-- Implement access controls
+`org_id` exists on the tenant-scoped tables (migration `014_org_tenancy`) but is
+nullable and is not filtered on. Access control is entirely in the application:
+`authenticate` → `requirePermission` → the route.
 
-### 4. **CORS Configuration**
+**Why it is this way.** Every install today is a single organisation, and every
+existing row has `org_id IS NULL`. Attaching a policy such as
+`USING (org_id = current_setting('app.org_id')::uuid)` to that state makes every
+row in the database invisible at once, because `NULL = anything` is `NULL`. RLS
+on a single-tenant install is also unverifiable: the correct implementation and
+the broken one return identical results until a second organisation exists.
 
-Configure CORS appropriately:
-```typescript
-// Production - restrict origins
-const allowedOrigins = ['https://yourapp.com'];
+**What it costs.** A SQL-injection bug or a route that forgets its permission
+check has nothing behind it to catch the mistake. The compensating control is
+that the query layer takes no interpolated user input at all — every value in
+both adapters is a bound parameter, and every column name is a literal in the
+source.
 
-// Development - localhost only
-const allowedOrigins = ['http://localhost:5173'];
-```
+**The order it has to happen in**, whenever a second tenant arrives:
+backfill `org_id` on every row → make the column `NOT NULL` → scope the queries
+and test them against two organisations → *then* add RLS as defence in depth.
+Doing RLS first breaks the install. See `docs/guides/multi-tenant.md`.
+
+### 3. Brute-force protection is rate limiting, not bot detection
+
+There is no CAPTCHA and no proof-of-work. What there is: five separate
+`express-rate-limit` budgets — global, sign-in, device pairing, PIN shift
+start, and supervisor override — with `skipSuccessfulRequests` on the four
+credential-checking ones, so normal use never spends the budget and only
+failures do.
+
+**Why it is this way.** The endpoints an attacker can reach are a staff sign-in
+form, a PIN keypad, and a device-pairing code. All three are used by people
+standing at a till during a shift change, on a touchscreen, sometimes in a
+hurry. A CAPTCHA there fails closed against the staff and open against anyone
+willing to pay a solving service.
+
+**What it costs.** An attacker with many source addresses gets more attempts
+than one address would, since the limits key on IP. Mitigations: PINs lock the
+account after repeated failures (`pin_locked_until`), and sign-in is
+timing-equalised so that failures reveal nothing about which addresses exist
+(`burnPasswordComparison` in `api/routes/auth.ts`).
+
+**Set `TRUST_PROXY` correctly or none of this works.** It defaults to `0`. Behind
+a proxy without it, every request appears to come from the proxy and the whole
+internet shares one bucket. Set too high, a forged `X-Forwarded-For` walks past
+the limits entirely. It must equal the number of proxies you actually run — `1`
+for the shipped `docker-compose.prod.yml`.
+
+### 4. Payment credential encryption is opt-in
+
+`CREDENTIALS_KEY` enables AES-256-GCM encryption of the Stripe/Square
+credentials held in `settings.config.terminalCredentials`. Without it they are
+stored in clear text and the server logs a warning at startup.
+
+**Why it is opt-in.** Making it mandatory would refuse to boot every existing
+install on upgrade, over a condition they have had since the day they were set
+up. Taking a working shop offline is a worse outcome than the one being
+prevented.
+
+**Set it.** On a self-hosted install this is your own key in your own database.
+On a VPS run on someone else's behalf it is *their* live key in *your*
+database, and one leaked backup is full payment-account takeover. See
+`backend/src/services/credentialCrypto.ts`.
+
+### 5. Uploads are validated structurally, not scanned
+
+`POST /api/upload/:type` accepts PNG, JPEG, GIF, WebP and ICO. It checks the
+declared MIME type against an allowlist, checks the leading bytes against that
+type's magic number (`api/routes/imageSignature.ts`), caps the size at 5MB,
+names the file from a UUID, and chooses the extension itself — nothing the
+caller supplies reaches the store. SVG is refused outright: it is a document
+format that can carry script.
+
+**What it does not do.** It does not decode the image or scan for malware, so a
+structurally-valid but malicious file for some downstream decoder would pass.
+If you process uploads with anything beyond serving them back, add a scanner.
+
+### 6. CORS is an allowlist, and it has to be set
+
+`CORS_ORIGIN` is a comma-separated list of exact origins; anything else is
+refused without headers (see `app.ts`). It defaults to `http://localhost:8080`,
+which is wrong for every real deployment. Requests with no `Origin` header at
+all — curl, native apps, server-to-server — are allowed through, because CORS
+is a browser mechanism and blocking them would protect nobody; those callers are
+gated by `authenticate` instead.
 
 ## Security Checklist for Production
 
@@ -293,19 +368,51 @@ const allowedOrigins = ['http://localhost:5173'];
 - [ ] Regular backups configured
 - [ ] Dependencies updated and audited
 - [ ] Security headers configured (CSP, HSTS, etc.)
+- [ ] `TRUST_PROXY` equals the number of proxies in front of the API (`1` for the bundled Caddy stack) — rate limiting is inert or bypassable if this is wrong
+- [ ] `CREDENTIALS_KEY` set, so payment credentials are encrypted at rest
+- [ ] `JWT_SECRET` generated for this install, not copied from anywhere — see [secret rotation](docs/guides/secret-rotation.md)
 
 ## Security Headers
 
-Configure these headers in your web server:
+You do not need to configure these by hand: `nginx-security-headers.conf` (the
+frontend image) and `Caddyfile` (the production reverse proxy) both ship them,
+and `src/test/__tests__/csp.test.ts` fails the build if the policy drifts from
+the page it protects.
 
-```nginx
-# Nginx example
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";
-add_header X-Frame-Options "DENY";
-add_header X-Content-Type-Options "nosniff";
-add_header Referrer-Policy "strict-origin-when-cross-origin";
-add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
-```
+> **If you have forked or customised `nginx.conf`, check this.** nginx inherits
+> `add_header` from an outer block *only when the inner block declares none of
+> its own*. A single `add_header Cache-Control ...` inside a `location` silently
+> discards every security header for that location — no warning, no error, and
+> the directives still sitting correctly in the `server` block above. This
+> repository had exactly that: `location = /index.html` set three cache headers,
+> `location /`'s `try_files` rewrites every route into it, and so the document
+> that boots the application was served with **no** CSP, HSTS, nosniff or frame
+> protection. Confirm with `curl -I`, never by reading the config.
+
+What is sent, and why each one is there:
+
+| Header | Value | What it stops |
+|---|---|---|
+| `Content-Security-Policy` | `script-src 'self'`, no `'unsafe-inline'` | Injected `<script>` running at all |
+| | `frame-ancestors 'none'` | Clickjacking, including where `X-Frame-Options` is ignored |
+| | `object-src 'none'` | Plugin-based script execution |
+| | `base-uri 'self'` | A `<base>` tag rewriting every relative URL on the page |
+| | `form-action 'self'` | An injected form posting credentials elsewhere |
+| `Strict-Transport-Security` | `max-age` 1–2 years, `includeSubDomains` | Downgrade to plaintext after the first visit |
+| `X-Content-Type-Options` | `nosniff` | A file being executed as a type other than its `Content-Type` |
+| `X-Frame-Options` | `DENY` | Clickjacking on older browsers |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Leaking full URLs to third parties |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Silent access to hardware a POS never needs |
+
+`style-src` keeps `'unsafe-inline'`, and that is not an oversight: React and
+Radix set `style=` on the elements they position, and a static file server has
+no nonce to hand them. `script-src` is where the value of a CSP actually is,
+and it is strict.
+
+If you terminate TLS somewhere other than the bundled Caddy, replicate the
+`header` block from `Caddyfile` there — and make sure `TRUST_PROXY` still equals
+the number of proxies in front of Express, or rate limiting silently stops
+working.
 
 ## Incident Response
 

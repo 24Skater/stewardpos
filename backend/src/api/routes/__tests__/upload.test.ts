@@ -26,7 +26,16 @@ function actor(permissions: Record<string, unknown>) {
   };
 }
 
-const png = () => Buffer.from('fake-png-bytes');
+/**
+ * A real PNG, not a string that says "png".
+ *
+ * The route verifies the magic number now (`imageSignature.ts`), so bytes that
+ * merely claim `image/png` are refused - which is the point of that change, and
+ * which every test here would otherwise trip over. Signature plus a truncated
+ * IHDR is enough: the check reads the first twelve bytes and does not decode.
+ */
+const png = () =>
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
 const attachment = { filename: 'x.png', contentType: 'image/png' };
 
 function token(): string {
@@ -51,7 +60,7 @@ describe('POST /api/upload/:type', () => {
     const response = await request(app)
       .post('/api/upload/logo')
       .set('Authorization', `Bearer ${token()}`)
-      .attach('file', Buffer.from('fake-png-bytes'), {
+      .attach('file', png(), {
         filename: 'logo.png',
         contentType: 'image/png',
       });
@@ -69,7 +78,7 @@ describe('POST /api/upload/:type', () => {
     const response = await request(app)
       .post('/api/upload/logo')
       .set('Authorization', `Bearer ${token()}`)
-      .attach('file', Buffer.from('alert(document.domain)'), {
+      .attach('file', png(), {
         filename: 'payload.js',
         contentType: 'image/png',
       });
@@ -93,6 +102,55 @@ describe('POST /api/upload/:type', () => {
       });
 
     expect(response.status).toBe(400);
+  });
+
+  it('refuses script bytes wearing an image/png label', async () => {
+    // The gap the signature check closes. `fileFilter` only ever saw the
+    // caller's own Content-Type, so these bytes used to be stored as
+    // `<uuid>.png` and served back with `Content-Type: image/png`. nosniff
+    // stopped a browser executing them; nothing stopped them being stored, or
+    // being handed to the next decoder that reads the bucket.
+    const response = await request(app)
+      .post('/api/upload/logo')
+      .set('Authorization', `Bearer ${token()}`)
+      .attach('file', Buffer.from('alert(document.domain)'), {
+        filename: 'logo.png',
+        contentType: 'image/png',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error ?? response.body.message).toMatch(/not a valid image/i);
+  });
+
+  it('accepts each image type it advertises', async () => {
+    // Guards against the signature table and the accepted-type table drifting:
+    // a type the route allows but cannot verify would be refused on every
+    // upload, which is a broken feature rather than a tightened one.
+    const samples: Array<[string, string, Buffer]> = [
+      ['image/png', 'a.png', png()],
+      ['image/jpeg', 'a.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])],
+      ['image/gif', 'a.gif', Buffer.from('GIF89a', 'latin1')],
+      [
+        'image/webp',
+        'a.webp',
+        Buffer.concat([
+          Buffer.from('RIFF', 'latin1'),
+          Buffer.from([0x00, 0x00, 0x00, 0x00]),
+          Buffer.from('WEBP', 'latin1'),
+        ]),
+      ],
+      ['image/x-icon', 'a.ico', Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00])],
+    ];
+
+    for (const [contentType, filename, bytes] of samples) {
+      const response = await request(app)
+        .post('/api/upload/logo')
+        .set('Authorization', `Bearer ${token()}`)
+        .attach('file', bytes, { filename, contentType });
+
+      expect(response.status, `${contentType} should be accepted`).toBe(200);
+      fs.rmSync(path.join(logosDir, response.body.data.filename), { force: true });
+    }
   });
 
   it('refuses SVG, which can carry script', async () => {
