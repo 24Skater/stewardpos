@@ -1,5 +1,5 @@
 # Multi-stage build for production
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 
 # Install pnpm (v9 matches pnpm-lock.yaml lockfileVersion 9.0)
 RUN corepack enable && corepack prepare pnpm@9 --activate
