@@ -152,6 +152,44 @@ jobs:
       - name: Build images
         run: docker compose build
 
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    # Blocking, unlike the dependency audit below.
+    #
+    # The two fail for opposite reasons. `npm audit` goes red when someone
+    # else publishes an advisory, which can happen to a commit that was green an
+    # hour earlier and says nothing about the change under review - so it is
+    # advisory. A secret in the diff is caused by the change under review, is
+    # reproducible, and is the one class of mistake that cannot be undone after
+    # the fact: once it is pushed to a public repository it is published, and
+    # deleting it in the next commit does not unpublish it. That is worth
+    # stopping at the gate.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history. The default shallow clone would scan only the tip and
+          # miss exactly the shape this is here to catch: a secret committed,
+          # noticed, and deleted in a follow-up commit, still readable in the
+          # history behind it.
+          fetch-depth: 0
+
+      - name: Scan history for secrets
+        # Pinned to an exact version, not :latest. `.gitleaks.toml`'s allowlist
+        # was tuned against this release; a scanner that silently updates itself
+        # can start reporting a different set of findings on a commit nobody
+        # touched, which is how a blocking job earns a reputation for crying
+        # wolf and stops being read.
+        uses: docker://zricethezav/gitleaks:v8.30.1
+        with:
+          args: >-
+            detect
+            --source=.
+            --config=.gitleaks.toml
+            --redact
+            --no-banner
+            --verbose
+
   security:
     name: Dependency audit (advisory)
     runs-on: ubuntu-latest

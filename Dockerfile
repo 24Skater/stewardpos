@@ -36,7 +36,13 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx configuration
+#
+# Both files. `nginx.conf` includes `security-headers.conf` from this directory
+# in five places; without it nginx refuses to start, which is the right failure
+# - the alternative was serving the app with no security headers and no sign
+# that anything was wrong.
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx-security-headers.conf /etc/nginx/conf.d/security-headers.conf
 
 # Expose port 80
 EXPOSE 80

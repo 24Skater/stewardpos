@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import logger from '../../utils/logger';
 import { ValidationError } from '../../utils/errors';
 import { storage as store } from '../../storage';
+import { matchesDeclaredType } from './imageSignature';
 
 const router = Router();
 
@@ -145,6 +146,24 @@ router.post('/:type', authorizeForType('write'), upload.single('file'), handleUp
         success: false,
         message: 'No file uploaded',
       });
+    }
+
+    /**
+     * The bytes have to agree with the label.
+     *
+     * `fileFilter` above checked `file.mimetype`, which multer copies from the
+     * caller's own part header - it is a claim, not a measurement. Everything
+     * downstream trusts it: the stored extension is chosen from it, and the
+     * `/uploads` route serves the file back with it as the `Content-Type`. So
+     * this is where the claim gets tested against the thing it describes.
+     *
+     * Refused as a ValidationError, the same 400 an unsupported type gets: from
+     * the caller's side both are "that is not a file I can accept", and telling
+     * the two apart only helps someone probing for what slips through.
+     */
+    if (!matchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+      logger.warn(`Rejected ${type} upload: bytes are not a valid ${req.file.mimetype}`);
+      throw new ValidationError('That file is not a valid image');
     }
 
     const { subdir } = DESTINATIONS[type];

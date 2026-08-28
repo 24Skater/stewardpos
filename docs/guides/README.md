@@ -8,6 +8,7 @@ Everything an operator needs, in the order they need it.
 |-------|----------------|
 | [install-vps.md](./install-vps.md) | **Start here.** Bare Ubuntu server to a working till over HTTPS, in about half an hour |
 | [backup-restore.md](./backup-restore.md) | Taking backups, getting them off the box, and restoring one — set this up on day one |
+| [secret-rotation.md](./secret-rotation.md) | Rotating a credential that has been exposed, and the one exposure already in this repository's history |
 | [operations.md](./operations.md) | Logs, health checks, and what to do when the shop says it's not working |
 | [upgrade.md](./upgrade.md) | Taking a new version, and rolling one back |
 
