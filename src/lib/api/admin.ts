@@ -54,6 +54,21 @@ export interface UserPinLockState {
   pinFailedCount: number;
 }
 
+/**
+ * What `POST /api/admin/users/:id/password/unlock` returns.
+ *
+ * The password counterpart to {@link UserPinLockState}, and deliberately its
+ * own shape rather than a shared one: a PIN lockout and a password lockout are
+ * separate pieces of state on the same row, and one being cleared says nothing
+ * about the other.
+ */
+export interface UserPasswordLockState {
+  id: string;
+  /** Epoch ms, or null once unlocked. */
+  passwordLockedUntil: number | null;
+  passwordFailedCount: number;
+}
+
 export interface RoleInput {
   name: string;
   /** Marks the role as one of the built-in archetypes; omit for custom roles. */
@@ -98,6 +113,15 @@ export const adminApi = {
      */
     unlockPin: (id: string) =>
       apiClient.post<UserPinLockState>(`/api/admin/users/${id}/pin/unlock`, {}),
+    /**
+     * Clear a password lockout (`services/passwordLockout.ts`).
+     *
+     * Separate from `unlockPin` because the two lockouts are separate state:
+     * a cashier can be locked out of the till while their password is fine,
+     * and an admin locked out of the back office still has a working PIN.
+     */
+    unlockPassword: (id: string) =>
+      apiClient.post<UserPasswordLockState>(`/api/admin/users/${id}/password/unlock`, {}),
   },
 
   roles: {

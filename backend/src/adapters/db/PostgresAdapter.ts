@@ -503,6 +503,13 @@ export class PostgresAdapter {
         // Null until a second organization exists; `authenticate` falls back to
         // the default org so consumers never see an absent tenant.
         orgId: user.org_id ?? null,
+        // Lockout state (migration 025). Read on every sign-in by
+        // `services/passwordLockout.ts`; without these two the service would
+        // silently see `undefined` and never lock anything.
+        passwordFailedCount: Number(user.password_failed_count ?? 0),
+        passwordLockedUntil: user.password_locked_until
+          ? new Date(user.password_locked_until).getTime()
+          : null,
         lastLoginAt: user.last_login_at ? new Date(user.last_login_at).getTime() : undefined,
         createdAt: new Date(user.created_at).getTime(),
         roles: roles,
@@ -1606,6 +1613,11 @@ export class PostgresAdapter {
         roles: u.roles || [],
         pinSetAt: u.pin_set_at ? new Date(u.pin_set_at).getTime() : null,
         pinLockedUntil: u.pin_locked_until ? new Date(u.pin_locked_until).getTime() : null,
+        // The password lockout's counterpart to pinLockedUntil, so the admin
+        // screen can offer the unlock for one exactly as it does for the other.
+        passwordLockedUntil: u.password_locked_until
+          ? new Date(u.password_locked_until).getTime()
+          : null,
         lastLoginAt: u.last_login_at ? new Date(u.last_login_at).getTime() : null,
         createdAt: new Date(u.created_at).getTime(),
       }));
@@ -6100,6 +6112,38 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error resetting PIN failures:', error);
       throw new DatabaseError('Failed to reset PIN failures');
+    }
+  }
+
+  async recordPasswordFailure(
+    userId: string,
+    payload: { failedCount: number; lockedUntil: number | null }
+  ): Promise<void> {
+    try {
+      await this.pool.query(
+        'UPDATE users SET password_failed_count = $2, password_locked_until = $3 WHERE id = $1',
+        [
+          userId,
+          payload.failedCount,
+          payload.lockedUntil == null ? null : new Date(payload.lockedUntil),
+        ]
+      );
+    } catch (error) {
+      logger.error('Error recording password failure:', error);
+      throw new DatabaseError('Failed to record password failure');
+    }
+  }
+
+  /** A successful sign-in resets the counter and clears any lock. */
+  async resetPasswordFailures(userId: string): Promise<void> {
+    try {
+      await this.pool.query(
+        'UPDATE users SET password_failed_count = 0, password_locked_until = NULL WHERE id = $1',
+        [userId]
+      );
+    } catch (error) {
+      logger.error('Error resetting password failures:', error);
+      throw new DatabaseError('Failed to reset password failures');
     }
   }
 

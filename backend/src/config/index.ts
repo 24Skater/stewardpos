@@ -114,6 +114,34 @@ const configSchema = z.object({
      * shift change should not queue behind key derivation.
      */
     bcryptRounds: z.coerce.number().int().min(10).max(15).default(10),
+
+    /**
+     * Failed password sign-ins before an account locks.
+     *
+     * Ten rather than the PIN's five (`services/pins.ts`). A PIN is six digits
+     * typed on a keypad; a password is a long string typed on a keyboard,
+     * sometimes with the wrong capitalisation or a stale one from a password
+     * manager, so honest failures are simply more common. Ten still cuts an
+     * attacker from "as many attempts as they have IP addresses" to ten per
+     * lockout window, per account, in total.
+     *
+     * Floored at 3 rather than merely defaulted: a value of 1 would lock an
+     * account on the first typo, which is a self-inflicted outage rather than a
+     * security control.
+     */
+    passwordMaxFailures: z.coerce.number().int().min(3).default(10),
+
+    /**
+     * How long an account stays locked, in milliseconds. Default fifteen
+     * minutes, matching the PIN lockout.
+     *
+     * Short on purpose. Every account lockout is also a denial-of-service
+     * primitive - anyone who knows an address can hold it shut - and a short
+     * window bounds that cost while still reducing the guessing rate by orders
+     * of magnitude. A manager can clear it immediately in any case, via
+     * `POST /api/admin/users/:id/password/unlock`.
+     */
+    passwordLockoutMs: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
   }),
 
   /**
@@ -211,6 +239,8 @@ function buildConfig(): AppConfig {
 
     security: {
       bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '10', 10),
+      passwordMaxFailures: parseInt(process.env.PASSWORD_MAX_FAILURES || '10', 10),
+      passwordLockoutMs: parseInt(process.env.PASSWORD_LOCKOUT_MS || '900000', 10),
     },
 
     storage: {

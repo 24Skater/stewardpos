@@ -13,11 +13,24 @@ import jwt from 'jsonwebtoken';
 const getUserByEmail = vi.fn();
 const getAllProducts = vi.fn();
 const updateUserLastLogin = vi.fn();
+// Lockout bookkeeping (services/passwordLockout.ts). Every login test needs
+// these on the mock: the login route calls one of them on every attempt, and a
+// mock without them fails as a 500 rather than as the 401 the test is about.
+const recordPasswordFailure = vi.fn().mockResolvedValue(undefined);
+const resetPasswordFailures = vi.fn().mockResolvedValue(undefined);
+
 const createAuditLog = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
-    getAdapter: () => ({ getUserByEmail, getAllProducts, updateUserLastLogin, createAuditLog }),
+    getAdapter: () => ({
+      getUserByEmail,
+      getAllProducts,
+      updateUserLastLogin,
+      createAuditLog,
+      recordPasswordFailure,
+      resetPasswordFailures,
+    }),
   },
 }));
 

@@ -1,14 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import logger from '../../utils/logger';
 import { ValidationError, AuthenticationError, ForbiddenError } from '../../utils/errors';
 import { authenticate, AuthRequest, DEFAULT_ORG_ID } from '../middleware/auth';
-import { SHIFT_ENDED, USE_PIN_AT_TILL } from '../middleware/registerErrorCodes';
+import { ACCOUNT_LOCKED, SHIFT_ENDED, USE_PIN_AT_TILL } from '../middleware/registerErrorCodes';
 import { mintSession } from '../../services/tillSessions';
 import db from '../../services/database';
-import { BCRYPT_ROUNDS } from '../../services/hashing';
+import { verifyPasswordLogin } from '../../services/passwordLockout';
 import tillRouter from './till';
 
 const router = Router();
@@ -19,52 +17,6 @@ const router = Router();
 // also throttle `POST /till/assume` — a route with no PIN to brute-force,
 // fenced instead by `registers:write`, an audit row, and a thirty-minute cap.
 router.use('/till', tillRouter);
-
-/**
- * Spend the same time a real password check would, then fail.
- *
- * `POST /api/auth/login` answers "Invalid credentials" either way, but it did
- * not *take* the same time either way: an unknown address returned the moment
- * the lookup missed, while a known one paid for a bcrypt verification first. At
- * cost factor 10 that is tens of milliseconds — comfortably measurable over a
- * network, and repeatable enough to average the noise away. So the endpoint
- * still told you which addresses have accounts; it used a stopwatch rather than
- * a message.
- *
- * That matters more here than on a consumer site. These are staff accounts at a
- * named business, so the space of addresses to guess is small, and confirming
- * one turns "spray the internet" into "brute-force this person" — which is
- * exactly what `loginLimiter` is sized to resist, and what a confirmed list of
- * valid addresses makes worth the attempt.
- *
- * The decoy is a hash of 32 random bytes generated in this process, at the
- * install's own `BCRYPT_ROUNDS`. Random rather than a constant so that nothing
- * an attacker can send could ever verify against it, and at the configured cost
- * so that raising the factor speeds up neither branch relative to the other —
- * a fixed hash at cost 10 would leak the difference again on an install that
- * chose 12.
- *
- * Built on first use rather than at import: it costs a full bcrypt hash, and
- * making every module that imports this route pay for it at load time would
- * slow the test suite and the boot for something most requests never touch.
- */
-let decoyHash: string | null = null;
-
-function getDecoyHash(): string {
-  if (decoyHash === null) {
-    decoyHash = bcrypt.hashSync(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
-  }
-  return decoyHash;
-}
-
-/**
- * Always returns false. The return value exists so that callers read as a
- * comparison rather than as a bare side effect.
- */
-async function burnPasswordComparison(password: string): Promise<false> {
-  await bcrypt.compare(password, getDecoyHash());
-  return false;
-}
 
 // Validation schemas
 const loginSchema = z.object({
@@ -85,29 +37,44 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const adapter = db.getAdapter();
     const user = await adapter.getUserByEmail(email);
 
-    // Check if user exists. The decoy comparison is what keeps the timing of
-    // this branch indistinguishable from a wrong password below - see
-    // DECOY_PASSWORD_HASH.
-    if (!user) {
-      await burnPasswordComparison(password);
+    /**
+     * One call owns the whole credential question: whether the password is
+     * right, whether the account is locked, the failure bookkeeping, and the
+     * decoy comparison that keeps a missing account costing what a real one
+     * does. See `services/passwordLockout.ts`.
+     *
+     * It replaces three checks that used to live here. Keeping them inline
+     * would have meant the lockout counter being incremented from the route,
+     * and a second sign-in surface would sooner or later have grown its own
+     * slightly different version - the exact drift `services/pins.ts` avoids by
+     * owning PIN lockout in one function.
+     */
+    const attempt = await verifyPasswordLogin(adapter, user, password);
+
+    if (attempt.outcome === 'locked') {
+      // Reached only when the password was CORRECT, so this leaks nothing an
+      // attacker does not already have. Telling the person how long is left
+      // beats leaving them to wonder whether they have forgotten it.
+      const minutes = Math.max(1, Math.ceil((attempt.until - Date.now()) / 60_000));
+      logger.warn(`Refused sign-in for locked account ${email}`);
+      throw new AuthenticationError(
+        `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+        ACCOUNT_LOCKED
+      );
+    }
+
+    if (attempt.outcome !== 'ok') {
       throw new AuthenticationError('Invalid credentials');
     }
 
-    // Verify password. A non-string hash means a corrupt or half-written user row —
-    // fail closed rather than handing it to bcrypt.
-    if (typeof user.passwordHash !== 'string') {
-      logger.error(`User ${String(user.id)} has no usable password hash`);
-      await burnPasswordComparison(password);
-      throw new AuthenticationError('Invalid credentials');
-    }
-
-    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!isValidPassword) {
-      throw new AuthenticationError('Invalid credentials');
-    }
+    // From here on, the account is the one the check actually verified. Reading
+    // it off the result rather than off the outer `user` is not only narrowing
+    // for the type-checker: it means nothing below can accidentally operate on
+    // a row the credential check never looked at.
+    const account = attempt.user;
 
     // Check if user is active
-    if (user.status !== 'active') {
+    if (account.status !== 'active') {
       throw new AuthenticationError('Account is inactive');
     }
 
@@ -121,7 +88,7 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
      * cashier who is also a Reporter has back-office work to do, and a user
      * with no roles has no business here either way.
      */
-    const roles = (user.roles as { systemRole?: string }[]) ?? [];
+    const roles = (account.roles as { systemRole?: string }[]) ?? [];
     const isTillOnly = roles.length === 0 || roles.every((role) => role.systemRole === 'standard');
     if (isTillOnly) {
       logger.info(`Refused password login for till-only user ${email}`);
@@ -129,14 +96,14 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     }
 
     // Update last login
-    await adapter.updateUserLastLogin(String(user.id));
+    await adapter.updateUserLastLogin(String(account.id));
 
     const { token, expiresIn } = mintSession({
       user: {
-        id: String(user.id),
-        email: String(user.email),
-        roleIds: (user.roleIds as string[]) ?? [],
-        orgId: user.orgId as string | undefined,
+        id: String(account.id),
+        email: String(account.email),
+        roleIds: (account.roleIds as string[]) ?? [],
+        orgId: account.orgId as string | undefined,
       },
     });
 
@@ -153,11 +120,11 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         // never refreshing, 401ing on every call. Say it explicitly instead.
         expiresIn,
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          roleIds: user.roleIds,
-          roles: user.roles,
+          id: account.id,
+          email: account.email,
+          name: account.name,
+          roleIds: account.roleIds,
+          roles: account.roles,
         },
       },
     });

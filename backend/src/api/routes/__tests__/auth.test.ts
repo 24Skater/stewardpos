@@ -6,10 +6,23 @@ import bcrypt from 'bcryptjs';
 // as route tests — no Postgres, no SQLite native bindings, no seeded fixtures.
 const getUserByEmail = vi.fn();
 const updateUserLastLogin = vi.fn();
+// Lockout bookkeeping (services/passwordLockout.ts). Every login test needs
+// these on the mock: the login route calls one of them on every attempt, and a
+// mock without them fails as a 500 rather than as the 401 the test is about.
+const recordPasswordFailure = vi.fn().mockResolvedValue(undefined);
+const resetPasswordFailures = vi.fn().mockResolvedValue(undefined);
+const createAuditLog = vi.fn().mockResolvedValue(undefined);
+
 
 vi.mock('../../../services/database', () => ({
   default: {
-    getAdapter: () => ({ getUserByEmail, updateUserLastLogin }),
+    getAdapter: () => ({
+      getUserByEmail,
+      updateUserLastLogin,
+      recordPasswordFailure,
+      resetPasswordFailures,
+      createAuditLog,
+    }),
   },
 }));
 

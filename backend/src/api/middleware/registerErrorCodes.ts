@@ -79,3 +79,18 @@ export const REGISTER_INACTIVE = 'REGISTER_INACTIVE';
  * would be both wrong and unhelpful — they would retype a password that works.
  */
 export const USE_PIN_AT_TILL = 'USE_PIN_AT_TILL';
+
+/**
+ * The account has been locked after repeated failed password sign-ins
+ * (`services/passwordLockout.ts`).
+ *
+ * Only ever sent to a caller who supplied the **correct** password, so it
+ * reveals nothing to somebody guessing: a wrong password against a locked
+ * account is an ordinary "Invalid credentials", indistinguishable from a wrong
+ * password against an unlocked one.
+ *
+ * Distinguished from a plain 401 so the login screen can say "wait, or ask a
+ * manager to unlock you" rather than "check your password" — which would be
+ * actively misleading advice to somebody who just typed the right one.
+ */
+export const ACCOUNT_LOCKED = 'ACCOUNT_LOCKED';

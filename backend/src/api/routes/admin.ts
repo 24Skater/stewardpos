@@ -300,6 +300,60 @@ router.post(
 );
 
 /**
+ * POST /api/admin/users/:id/password/unlock
+ *
+ * Clear a password lockout without waiting it out
+ * (`services/passwordLockout.ts`). The sibling of the PIN unlock above, and it
+ * exists for a sharper reason: every account lockout is also a
+ * denial-of-service primitive, since anyone who knows an address can hold that
+ * account shut by failing on purpose. This is the answer to that - a manager
+ * can put a colleague back to work immediately instead of the shop waiting on
+ * an attacker's timer.
+ *
+ * Does NOT change the password. The account holder's own password still works
+ * afterwards; use `PUT /users/:id` to actually set a new one.
+ */
+router.post(
+  '/users/:id/password/unlock',
+  requirePermission('users', 'write'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const orgId = req.orgId ?? DEFAULT_ORG_ID;
+      const adapter = db.getAdapter();
+
+      const user = await adapter.getUserById(id);
+      // Out-of-org must be indistinguishable from non-existent, same as the
+      // PIN unlock above.
+      if (!user || String(user.orgId ?? DEFAULT_ORG_ID) !== orgId) {
+        throw new NotFoundError('User not found');
+      }
+
+      const before = {
+        passwordLockedUntil: user.passwordLockedUntil,
+        passwordFailedCount: user.passwordFailedCount,
+      };
+      await adapter.resetPasswordFailures(id);
+      const after = { passwordLockedUntil: null, passwordFailedCount: 0 };
+
+      await audit(req, { action: 'update', entity: 'user', entityId: id, before, after });
+
+      // Hand-picked, never the adapter's row: it carries `passwordHash`.
+      res.json({
+        success: true,
+        data: {
+          id,
+          passwordLockedUntil: after.passwordLockedUntil,
+          passwordFailedCount: after.passwordFailedCount,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * DELETE /api/admin/users/:id
  * Delete user
  */
