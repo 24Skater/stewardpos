@@ -46,6 +46,7 @@ export default function CashierPinManager() {
   const [dialogState, setDialogState] = useState<PinDialogState | null>(null);
   const [clearingId, setClearingId] = useState<string | null>(null);
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
+  const [unlockingPasswordId, setUnlockingPasswordId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -74,6 +75,38 @@ export default function CashierPinManager() {
    */
   const isLockedOut = (user: User): boolean =>
     user.pinLockedUntil != null && Number(user.pinLockedUntil) > Date.now();
+
+  /**
+   * Whether this person is locked out of the *password* form right now.
+   *
+   * A separate question from {@link isLockedOut}. The two lockouts are separate
+   * state on the same row: a cashier can be locked out of the till with a
+   * perfectly good password, and an admin locked out of the back office still
+   * has a working PIN. Same lazy-clearing caveat — a lapsed timestamp is not a
+   * lockout.
+   */
+  const isPasswordLockedOut = (user: User): boolean =>
+    user.passwordLockedUntil != null && Number(user.passwordLockedUntil) > Date.now();
+
+  const handleUnlockPassword = async (user: User) => {
+    setUnlockingPasswordId(user.id);
+    try {
+      await adminApi.users.unlockPassword(user.id);
+      toast({
+        title: `Sign-in unlocked for ${user.name}`,
+        description: 'Their existing password still works.',
+      });
+      await loadUsers();
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: getErrorMessage(error, 'Could not clear the lockout'),
+        variant: 'destructive',
+      });
+    } finally {
+      setUnlockingPasswordId(null);
+    }
+  };
 
   const handleUnlockPin = async (user: User) => {
     setUnlockingId(user.id);
@@ -204,6 +237,23 @@ export default function CashierPinManager() {
                         >
                           <LockOpen className="w-4 h-4 mr-1" aria-hidden="true" />
                           Unlock
+                        </Button>
+                      </>
+                    )}
+                    {isPasswordLockedOut(user) && (
+                      <>
+                        <span className="text-sm text-destructive">
+                          Sign-in locked after too many failed attempts
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleUnlockPassword(user)}
+                          disabled={unlockingPasswordId === user.id}
+                          aria-label={`Unlock sign-in for ${user.name}`}
+                        >
+                          <LockOpen className="w-4 h-4 mr-1" aria-hidden="true" />
+                          Unlock sign-in
                         </Button>
                       </>
                     )}

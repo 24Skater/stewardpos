@@ -443,6 +443,10 @@ export class SQLiteAdapter {
         status: user.status,
         // See the Postgres adapter: null until a second organization exists.
         orgId: user.org_id ?? null,
+        // Lockout state (migration 025). Already epoch milliseconds here,
+        // where Postgres stores a timestamp and converts on the way out.
+        passwordFailedCount: Number(user.password_failed_count ?? 0),
+        passwordLockedUntil: user.password_locked_until ?? null,
         lastLoginAt: user.last_login_at,
         createdAt: user.created_at,
         roles,
@@ -1543,6 +1547,10 @@ export class SQLiteAdapter {
           roles,
           pinSetAt: u.pin_set_at == null ? null : Number(u.pin_set_at),
           pinLockedUntil: u.pin_locked_until == null ? null : Number(u.pin_locked_until),
+          // See the Postgres adapter: the password lockout's counterpart,
+          // so the admin screen can offer both unlocks.
+          passwordLockedUntil:
+            u.password_locked_until == null ? null : Number(u.password_locked_until),
           lastLoginAt: u.last_login_at,
           createdAt: u.created_at,
         };
@@ -5843,6 +5851,33 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error resetting PIN failures:', error);
       throw new DatabaseError('Failed to reset PIN failures');
+    }
+  }
+
+  /** Record a failed password sign-in, and lock the account when the caller says the threshold was hit. */
+  async recordPasswordFailure(
+    userId: string,
+    payload: { failedCount: number; lockedUntil: number | null }
+  ): Promise<void> {
+    try {
+      this.db
+        .prepare('UPDATE users SET password_failed_count = ?, password_locked_until = ? WHERE id = ?')
+        .run(payload.failedCount, payload.lockedUntil, userId);
+    } catch (error) {
+      logger.error('Error recording password failure:', error);
+      throw new DatabaseError('Failed to record password failure');
+    }
+  }
+
+  /** A successful sign-in resets the counter and clears any lock. */
+  async resetPasswordFailures(userId: string): Promise<void> {
+    try {
+      this.db
+        .prepare('UPDATE users SET password_failed_count = 0, password_locked_until = NULL WHERE id = ?')
+        .run(userId);
+    } catch (error) {
+      logger.error('Error resetting password failures:', error);
+      throw new DatabaseError('Failed to reset password failures');
     }
   }
 
