@@ -120,14 +120,22 @@ describe('PIN columns', () => {
   });
 
   it(
-    'getActiveUsersWithPin finds a user with org_id NULL under DEFAULT_ORG_ID — ' +
-      'the fallback every pre-multi-org row depends on',
+    'getActiveUsersWithPin finds a user created without an explicit org — ' +
+      'the property every cashier PIN lookup depends on',
     async () => {
+      // The precondition used to be `org_id IS NULL`, because `createUser`
+      // never sets it and nothing supplied a value. Migration 026 gave the
+      // column a DEFAULT, so the same write now lands the default org id.
+      //
+      // The property under test is unchanged and is the one that matters: a
+      // user created by a write that says nothing about tenancy is still found
+      // by the org-scoped lookup. If that ever stops being true, every cashier
+      // on a single-org install fails to sign on to a till.
       const userId = await makeUser(`${mark}-e@example.com`);
       await h.adapter.setUserPin(userId, { pinHash: 'hash-e', pinSetAt: Date.now() });
 
       const { rows } = await h.query('SELECT org_id FROM users WHERE id = $1', [userId]);
-      expect(rows[0].org_id).toBeNull(); // createUser never sets it
+      expect(rows[0].org_id).toBe(DEFAULT_ORG_ID);
 
       const candidates = await h.adapter.getActiveUsersWithPin(DEFAULT_ORG_ID);
 
