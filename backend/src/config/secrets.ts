@@ -23,6 +23,20 @@
  * Matched exactly rather than by pattern: a store is entitled to choose a
  * passphrase containing the word "change", and refusing to boot over that would
  * be a worse failure than the one being prevented.
+ *
+ * Two kinds of value live here. Most are obvious placeholders - the defaults in
+ * the compose files and `.env.example`, which an operator is meant to replace
+ * and which are refused so that skipping the step cannot go unnoticed.
+ *
+ * The last entry is different, and is the reason this comment exists: it is a
+ * real, random-looking secret that was committed to this repository once and
+ * then deleted. Deleting a file does not unpublish it, so that value is
+ * readable in the history of every clone, forever. It looks nothing like a
+ * placeholder, which is exactly the problem - somebody recovering it from
+ * `git log -p` and pasting it into a `.env` would get an install that starts
+ * cleanly and signs its sessions with a key anyone can read off GitHub.
+ *
+ * Nothing was ever deployed on it. This is here so nothing ever is.
  */
 const SHIPPED_PLACEHOLDERS: readonly string[] = [
   'change_this_min_32_characters_secret',
@@ -39,6 +53,20 @@ const SHIPPED_PLACEHOLDERS: readonly string[] = [
   'your-secret-key',
   'your-super-secret-jwt-key',
   'test-secret-min-32-characters-long-for-ci',
+
+  /**
+   * The JWT signing key committed in 31fc1b5 and deleted in 73b012e.
+   *
+   * Lower-cased like every other entry, because the comparison lower-cases the
+   * candidate. That makes the match case-insensitive, which is wider than the
+   * exposed value alone - and correct: somebody retyping it with different
+   * capitalisation has still chosen a published string, not a secret.
+   *
+   * The database and MinIO passwords from that same commit
+   * (`stewardpos_secure_password_123`, `minioadmin123`) were already on this
+   * list, because they were placeholders as well as leaks. This one was not.
+   */
+  'lgt59wewxy1tarnadbc6lv7xyfkqpjzr',
 ];
 
 export interface SecretToCheck {
@@ -66,7 +94,13 @@ export function findWeakSecrets(secrets: readonly SecretToCheck[]): string[] {
 
     if (SHIPPED_PLACEHOLDERS.includes(value.trim().toLowerCase())) {
       problems.push(
-        `${name} is the placeholder this repository ships, which is public. ` +
+        // "published", not "placeholder". Most entries on the list are
+        // placeholders, but one is a real secret that was committed here once
+        // and deleted - calling that a placeholder would send an operator
+        // hunting for where they configured it. What both have in common, and
+        // the only fact that matters, is that the value is readable by anyone
+        // who can read this repository.
+        `${name} is a value this repository publishes, so it is not secret. ` +
           `Generate one with: openssl rand -base64 32`
       );
       continue;
