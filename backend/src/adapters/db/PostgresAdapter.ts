@@ -500,8 +500,11 @@ export class PostgresAdapter {
         name: user.name,
         roleIds: user.role_ids || [],
         status: user.status,
-        // Null until a second organization exists; `authenticate` falls back to
-        // the default org so consumers never see an absent tenant.
+        // The default org since migration 026 made the column NOT NULL with
+        // that value as its DEFAULT. The `?? null` stays: it costs nothing, and
+        // it is what keeps this identical to the SQLite adapter, where 026
+        // could not be applied and the column is still nullable. `authenticate`
+        // maps either answer to the same org.
         orgId: user.org_id ?? null,
         // Lockout state (migration 025). Read on every sign-in by
         // `services/passwordLockout.ts`; without these two the service would
