@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'child_process';
+import { randomBytes } from 'crypto';
+import path from 'path';
 import {
   assertProductionSecrets,
   findWeakSecrets,
@@ -27,7 +30,10 @@ describe('findWeakSecrets', () => {
     ]);
 
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(/placeholder/);
+    // Asserts the fact the operator needs - the value is public - rather than
+    // the word "placeholder", which stopped being accurate once a genuinely
+    // leaked secret joined the same list.
+    expect(problems[0]).toMatch(/this repository publishes/);
     // The message says what to do about it, not merely that it is wrong.
     expect(problems[0]).toMatch(/openssl rand/);
   });
@@ -169,5 +175,103 @@ describe('assertProductionSecrets', () => {
     expect(() =>
       assertProductionSecrets({ NODE_ENV: 'production' } as NodeJS.ProcessEnv)
     ).toThrow(/install-vps\.md/);
+  });
+});
+
+describe('secrets this repository has published', () => {
+  /**
+   * A secret that was ever committed is published, whether or not the commit
+   * deleting it came a minute later. `31fc1b5` added a `.env`; `73b012e`
+   * removed the file. All four values are still readable in the object store of
+   * every clone.
+   *
+   * Nothing was ever deployed on them - this project had no production install
+   * when they were found. The risk is forward-looking: somebody recovering a
+   * value from `git log -p` and pasting it into a `.env`. For the JWT key that
+   * would have started cleanly, because unlike the others it looks like a real
+   * secret rather than a placeholder.
+   *
+   * The values are written out here rather than read from git. That was the
+   * other way round at first, on the reasoning that a hardcoded copy could
+   * drift from what was really exposed - but it cannot: they live in an
+   * immutable commit, so there is nothing for them to drift from. What reading
+   * from git actually bought was a dependency on full history, and CI checks
+   * out shallow, so the git-backed version failed there while passing locally.
+   *
+   * The cross-check against the commit is still below, skipped where the
+   * history is not available. The assertions here run everywhere.
+   */
+  const LEAKED = {
+    JWT_SECRET: 'LGt59weWXY1TarNADbC6lv7xyFkqPjzR',
+    POSTGRES_PASSWORD: 'stewardpos_secure_password_123',
+    DB_PASSWORD: 'stewardpos_secure_password_123',
+    MINIO_ROOT_PASSWORD: 'minioadmin123',
+    MINIO_ROOT_USER: 'minioadmin',
+  } as const;
+
+  it('refuses every credential that commit exposed', () => {
+    for (const [name, value] of Object.entries(LEAKED)) {
+      const problems = findWeakSecrets([{ name, value }]);
+      expect(
+        problems.join(' '),
+        `${name}=${value} is readable in this repository's history and must not start a production install`
+      ).toMatch(/this repository publishes/);
+    }
+  });
+
+  it('refuses the leaked signing key whatever its capitalisation', () => {
+    // A property of the comparison, which lower-cases the candidate, rather
+    // than of the entry. Worth pinning: somebody retyping the value with
+    // different capitalisation has still chosen a published string.
+    for (const variant of [
+      'LGt59weWXY1TarNADbC6lv7xyFkqPjzR',
+      'lgt59wewxy1tarnadbc6lv7xyfkqpjzr',
+      'LGT59WEWXY1TARNADBC6LV7XYFKQPJZR',
+      '  LGt59weWXY1TarNADbC6lv7xyFkqPjzR  ',
+    ]) {
+      expect(findWeakSecrets([{ name: 'JWT_SECRET', value: variant }])).not.toEqual([]);
+    }
+  });
+
+  it('still accepts a secret an operator generated for themselves', () => {
+    // The failure that would matter more: a check refusing legitimate values is
+    // an outage, not a safeguard.
+    const generated = randomBytes(32).toString('base64');
+    expect(findWeakSecrets([{ name: 'JWT_SECRET', value: generated, minLength: 32 }])).toEqual([]);
+  });
+
+  /**
+   * Cross-check the list above against the commit itself, where the history is
+   * deep enough to read it. Skipped rather than failed on a shallow clone: the
+   * assertions above already carry the guarantee, and a test that cannot run in
+   * CI is worse than one that says so.
+   */
+  const historyAvailable = (): boolean => {
+    try {
+      execFileSync('git', ['cat-file', '-e', '31fc1b5b368454b6bae448b10f62c40b86ffbd4d:.env'], {
+        cwd: path.resolve(__dirname, '../../../..'),
+        stdio: 'ignore',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it.skipIf(!historyAvailable())('matches what the commit actually contained', () => {
+    const raw = execFileSync('git', ['show', '31fc1b5b368454b6bae448b10f62c40b86ffbd4d:.env'], {
+      cwd: path.resolve(__dirname, '../../../..'),
+      encoding: 'utf8',
+    });
+
+    for (const [name, expected] of Object.entries(LEAKED)) {
+      const line = raw
+        .split(String.fromCharCode(10))
+        .map((l) => l.trim())
+        .find((l) => l.startsWith(`${name}=`));
+
+      expect(line, `${name} is no longer in that commit`).toBeDefined();
+      expect(line).toBe(`${name}=${expected}`);
+    }
   });
 });
