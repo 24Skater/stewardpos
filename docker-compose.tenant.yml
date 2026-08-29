@@ -1,0 +1,224 @@
+# StewardPOS - one customer's stack, when you host several.
+#
+# Not run directly. `scripts/tenant.sh` supplies the project name and env file:
+#
+#   docker compose -p stewardpos-<slug> --env-file tenants/<slug>/.env \
+#     -f docker-compose.tenant.yml up -d
+#
+# ## How this differs from docker-compose.prod.yml, and why
+#
+# Two changes, both about coexistence:
+#
+#   * No Caddy, and nothing publishes a port. Ports 80 and 443 can be bound once
+#     per host; docker-compose.edge.yml binds them and routes by hostname.
+#   * The backend and frontend join the shared `stewardpos_edge` network under a
+#     per-tenant alias, so the edge can address them. Postgres and MinIO do not -
+#     they stay on this tenant's private network, which is what makes one
+#     customer's database unreachable from another customer's containers rather
+#     than merely unpublished.
+#
+# Everything else is deliberately identical, including the resource limits and
+# TRUST_PROXY=1 - still exactly one proxy in front of the API, just a shared one.
+#
+# ## What is NOT shared
+#
+# Database, uploads volume, logs, MinIO bucket, and every secret: JWT_SECRET,
+# CREDENTIALS_KEY, POSTGRES_PASSWORD, MinIO credentials. `scripts/tenant.sh new`
+# generates each of them per tenant. That is the whole isolation model, and it
+# is why this is safe today while a shared database is not: no query in this
+# codebase filters by organisation yet, so one database per customer is the only
+# thing standing between them.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stewardpos}
+      POSTGRES_USER: ${POSTGRES_USER:-stewardpos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stewardpos_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tenant
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - tenant
+
+  minio-createbucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/$${S3_BUCKET} &&
+      echo bucket-ready $${S3_BUCKET}
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      S3_BUCKET: ${S3_BUCKET:-stewardpos}
+    restart: "no"
+    networks:
+      - tenant
+
+  backend:
+    image: ghcr.io/24skater/stewardpos-backend:${IMAGE_TAG:-local}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    pull_policy: ${IMAGE_PULL_POLICY:-missing}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+
+      DB_ADAPTER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-stewardpos}
+      DB_USER: ${POSTGRES_USER:-stewardpos_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a value you generated}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+
+      # Required here, unlike the single-shop stack where it is optional.
+      #
+      # On a self-hosted install an unencrypted Stripe key is the operator's own
+      # key in their own database - poor practice, their risk. On a stack you
+      # run for a customer it is THEIR live key in YOUR database, and one leaked
+      # backup is a payment-account takeover for every tenant whose backup sat
+      # beside it. `scripts/tenant.sh` generates one per tenant; the `:?` is
+      # here so a hand-rolled tenant cannot quietly skip it.
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:?CREDENTIALS_KEY must be set when hosting for others}
+
+      CORS_ORIGIN: https://${TENANT_DOMAIN:?TENANT_DOMAIN must be set}
+
+      # Still exactly one proxy: the shared edge routes /api straight here, the
+      # same shape docker-compose.prod.yml uses with its own Caddy.
+      TRUST_PROXY: 1
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-3000}
+      RATE_LIMIT_MAX_LOGIN_ATTEMPTS: ${RATE_LIMIT_MAX_LOGIN_ATTEMPTS:-10}
+      RATE_LIMIT_MAX_PAIR_ATTEMPTS: ${RATE_LIMIT_MAX_PAIR_ATTEMPTS:-10}
+      RATE_LIMIT_MAX_SHIFT_ATTEMPTS: ${RATE_LIMIT_MAX_SHIFT_ATTEMPTS:-10}
+      RATE_LIMIT_MAX_OVERRIDE_ATTEMPTS: ${RATE_LIMIT_MAX_OVERRIDE_ATTEMPTS:-10}
+
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+      PASSWORD_MAX_FAILURES: ${PASSWORD_MAX_FAILURES:-10}
+      PASSWORD_LOCKOUT_MS: ${PASSWORD_LOCKOUT_MS:-900000}
+
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: /app/logs/app.log
+      LOG_MAX_SIZE_MB: ${LOG_MAX_SIZE_MB:-20}
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-5}
+
+      # Never. The seed writes an administrator whose password is published in
+      # this repository - on a hosted stack that is a customer's shop, not a
+      # demo you can throw away.
+      AUTO_SEED: "false"
+
+      STORAGE_ADAPTER: ${STORAGE_ADAPTER:-localstorage}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-stewardpos}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+
+      EMAIL_ADAPTER: ${EMAIL_ADAPTER:-console}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@${TENANT_DOMAIN}}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    volumes:
+      - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: ${TENANT_BACKEND_CPUS:-2}
+          memory: ${TENANT_BACKEND_MEMORY:-2G}
+    networks:
+      tenant:
+      edge:
+        aliases:
+          # How the shared Caddy addresses this tenant. Compose's own container
+          # names carry a project prefix and a numeric suffix, which is not a
+          # name a generated site file should have to guess.
+          - ${TENANT_SLUG:?TENANT_SLUG must be set}-backend
+
+  frontend:
+    image: ghcr.io/24skater/stewardpos-frontend:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+    pull_policy: ${IMAGE_PULL_POLICY:-missing}
+    restart: unless-stopped
+    environment:
+      - VITE_APP_ENV=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: ${TENANT_FRONTEND_CPUS:-1}
+          memory: ${TENANT_FRONTEND_MEMORY:-512M}
+    networks:
+      tenant:
+      edge:
+        aliases:
+          - ${TENANT_SLUG:?TENANT_SLUG must be set}-frontend
+
+volumes:
+  postgres_data:
+  minio_data:
+  backend_logs:
+  backend_uploads:
+
+networks:
+  # Private to this tenant. Compose namespaces it by project, so two tenants
+  # each get their own bridge and neither can reach the other's database.
+  tenant:
+    driver: bridge
+  # Shared, created by docker-compose.edge.yml. `external` so bringing a tenant
+  # down never removes the network every other tenant is still using.
+  edge:
+    external: true
+    name: stewardpos_edge

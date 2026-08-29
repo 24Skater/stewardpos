@@ -1,0 +1,24 @@
+# The shared edge. See docker-compose.edge.yml.
+#
+# This file is not edited per customer. Each tenant gets its own file in
+# sites/, written by `scripts/tenant.sh new`, and imported below.
+{
+	email {$ACME_EMAIL}
+
+	# Uncomment while testing DNS or firewall setup. Staging certificates are
+	# untrusted by browsers but the rate limits are far looser, and the
+	# production CA will lock you out for hours if you get it wrong repeatedly
+	# — across every tenant domain at once, on a shared edge.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# One file per tenant. The glob matches nothing before the first customer,
+# which is fine: Caddy starts and serves the fallback below.
+import /etc/caddy/sites/*.caddy
+
+# Anything arriving on an address no tenant claims. Without this, an unmatched
+# host falls through to the first site defined, which would serve one customer's
+# shop to a request for another's — or to a stray scan of the host's IP.
+:80 {
+	respond "Not found" 404
+}
