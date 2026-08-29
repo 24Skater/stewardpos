@@ -130,6 +130,34 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a value you generated}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
 
+      # Encrypts the payment credentials held in `settings.config`.
+      #
+      # This was absent, which made it impossible to turn on: the backend reads
+      # `process.env.CREDENTIALS_KEY`, compose passes only what is listed here,
+      # and there is no `env_file`. Setting it in `.env` did nothing at all, so
+      # every production install has been holding its Stripe or Square key in
+      # clear text with no way to stop.
+      #
+      # Unlike the other credentials it can have no database fallback — it is
+      # the key those values are encrypted *with*, so keeping it beside them
+      # would defeat the point. The environment is the only place it can live.
+      #
+      # Optional here rather than required, matching the application: an
+      # existing install must not refuse to boot on upgrade over a condition it
+      # has had all along. The backend warns at startup when it is unset. On a
+      # stack you run on someone else's behalf, set it.
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
+
+      # Cost factor for every bcrypt hash: passwords, PINs, device tokens,
+      # override grants. Documented as configurable in env.example, and until
+      # now not actually settable in production.
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+
+      # Per-account lockout on password sign-in. The rate limits below count per
+      # IP; these are the half that counts per account.
+      PASSWORD_MAX_FAILURES: ${PASSWORD_MAX_FAILURES:-10}
+      PASSWORD_LOCKOUT_MS: ${PASSWORD_LOCKOUT_MS:-900000}
+
       # One origin. The SPA and the API are served from the same hostname, so
       # this is the only value CORS ever needs to allow.
       CORS_ORIGIN: https://${DOMAIN}
@@ -143,9 +171,20 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-3000}
       RATE_LIMIT_MAX_LOGIN_ATTEMPTS: ${RATE_LIMIT_MAX_LOGIN_ATTEMPTS:-10}
+      # The other three brute-force budgets. All five limiters existed; only two
+      # of them could be tuned in production, which is a strange place to draw
+      # the line given these guard a device-pairing code and two PIN keypads.
+      RATE_LIMIT_MAX_PAIR_ATTEMPTS: ${RATE_LIMIT_MAX_PAIR_ATTEMPTS:-10}
+      RATE_LIMIT_MAX_SHIFT_ATTEMPTS: ${RATE_LIMIT_MAX_SHIFT_ATTEMPTS:-10}
+      RATE_LIMIT_MAX_OVERRIDE_ATTEMPTS: ${RATE_LIMIT_MAX_OVERRIDE_ATTEMPTS:-10}
 
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE: /app/logs/app.log
+      # Rotation. Without these the file transport keeps its defaults, which are
+      # fine — but a volume that fills months after install is a bad way to find
+      # out the knobs were unreachable.
+      LOG_MAX_SIZE_MB: ${LOG_MAX_SIZE_MB:-20}
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-5}
 
       # Never on a real install. The seed writes an administrator whose password
       # is published in this repository; the backend refuses it in production

@@ -65,3 +65,10 @@ sales-*.csv
 inventory-*.csv
 customers-*.csv
 returns-*.pdf
+
+# Per-customer secrets and state for hosted installs (scripts/tenant.sh).
+# Never committed: these are the only copy of each customer database password,
+# JWT signing key and payment-credential encryption key.
+tenants/
+backups/
+deploy/edge/sites/*.caddy
