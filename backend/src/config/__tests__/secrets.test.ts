@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'child_process';
+import { randomBytes } from 'crypto';
+import path from 'path';
 import {
   assertProductionSecrets,
   findWeakSecrets,
@@ -27,7 +30,10 @@ describe('findWeakSecrets', () => {
     ]);
 
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(/placeholder/);
+    // Asserts the fact the operator needs - the value is public - rather than
+    // the word "placeholder", which stopped being accurate once a genuinely
+    // leaked secret joined the same list.
+    expect(problems[0]).toMatch(/this repository publishes/);
     // The message says what to do about it, not merely that it is wrong.
     expect(problems[0]).toMatch(/openssl rand/);
   });
@@ -169,5 +175,87 @@ describe('assertProductionSecrets', () => {
     expect(() =>
       assertProductionSecrets({ NODE_ENV: 'production' } as NodeJS.ProcessEnv)
     ).toThrow(/install-vps\.md/);
+  });
+});
+
+describe('secrets this repository has published', () => {
+  /**
+   * A secret that was ever committed is published, whether or not the commit
+   * that deleted it came a minute later. `31fc1b5` added a `.env` carrying a
+   * JWT signing key, a Postgres password and MinIO credentials; `73b012e`
+   * removed the file. Every clone still has all four in its object store.
+   *
+   * Nothing was ever deployed on them - this project had no production install
+   * at the time these were found. The risk is entirely forward-looking:
+   * somebody recovering a value from `git log -p` and pasting it into a `.env`,
+   * which for the JWT key would have started cleanly, because unlike the others
+   * it looks like a real secret rather than a placeholder.
+   *
+   * Read out of git rather than hardcoded here. A copy in the test could agree
+   * with a copy in the source while both had drifted from what was actually
+   * exposed, which is the one way this check could pass and mean nothing.
+   */
+  const leakedEnv = (): Record<string, string> => {
+    const raw = execFileSync('git', ['show', '31fc1b5b368454b6bae448b10f62c40b86ffbd4d:.env'], {
+      cwd: path.resolve(__dirname, '../../../..'),
+      encoding: 'utf8',
+    });
+
+    const values: Record<string, string> = {};
+    // Split without a regex literal: an escape sequence here is one more
+    // thing to get wrong, and trim() below removes any carriage return.
+    for (const line of raw.split(String.fromCharCode(10))) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^([A-Z][A-Z0-9_]*)=(.*)$/);
+      if (match && match[2].trim()) values[match[1]] = match[2].trim();
+    }
+    return values;
+  };
+
+  it('can still read the commit it is asserting about', () => {
+    // Guards the guard. If the history is ever rewritten this throws rather
+    // than silently finding nothing and passing.
+    const values = leakedEnv();
+    expect(Object.keys(values).length).toBeGreaterThan(5);
+    expect(values.JWT_SECRET).toBeTruthy();
+  });
+
+  it('refuses every credential that commit exposed', () => {
+    const values = leakedEnv();
+
+    // The three that are credentials. POSTGRES_USER and the port/URL settings
+    // in that file are configuration, not secrets, and a store is entitled to
+    // reuse them.
+    for (const name of ['JWT_SECRET', 'POSTGRES_PASSWORD', 'DB_PASSWORD', 'MINIO_ROOT_PASSWORD']) {
+      const leaked = values[name];
+      if (!leaked) continue;
+
+      const problems = findWeakSecrets([{ name, value: leaked }]);
+      expect(
+        problems.join(' '),
+        `${name}=${leaked} is readable in this repository's history and must not start a production install`
+      ).toMatch(/this repository publishes/);
+    }
+  });
+
+  it('refuses the leaked signing key whatever its capitalisation', () => {
+    // The comparison lower-cases the candidate, so this is a property of the
+    // mechanism rather than of the entry. Worth pinning: somebody retyping the
+    // value has still chosen a published string.
+    for (const variant of [
+      'LGt59weWXY1TarNADbC6lv7xyFkqPjzR',
+      'lgt59wewxy1tarnadbc6lv7xyfkqpjzr',
+      'LGT59WEWXY1TARNADBC6LV7XYFKQPJZR',
+      '  LGt59weWXY1TarNADbC6lv7xyFkqPjzR  ',
+    ]) {
+      expect(findWeakSecrets([{ name: 'JWT_SECRET', value: variant }])).not.toEqual([]);
+    }
+  });
+
+  it('still accepts a secret an operator generated for themselves', () => {
+    // The failure this must not have: refusing a legitimate value and turning a
+    // safety check into an outage. A real `openssl rand -base64 32` passes.
+    const generated = randomBytes(32).toString('base64');
+    expect(findWeakSecrets([{ name: 'JWT_SECRET', value: generated, minLength: 32 }])).toEqual([]);
   });
 });
