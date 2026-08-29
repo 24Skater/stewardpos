@@ -10,6 +10,9 @@ import { connect, tag, type Harness } from './harness';
  * what a person is allowed to do. A mocked adapter hands the middleware a
  * hand-written object and proves none of it.
  */
+/** The org every pre-multi-org row belongs to — migration 014, and the DEFAULT since 026. */
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 let h: Harness;
 const mark = tag();
 
@@ -132,12 +135,20 @@ describe('getUserByEmail', () => {
     expect(await h.adapter.getUserByEmail(`${mark}-nobody@example.com`)).toBeNull();
   });
 
-  it('carries orgId, defaulting to null before a second org exists', async () => {
+  it('carries orgId, which the column default supplies when the write omits it', async () => {
+    // Was `expect(user!.orgId).toBeNull()`. Migration 026 made `org_id`
+    // NOT NULL with the default org as its DEFAULT, so a row created by a
+    // write that never mentions the column - which is every write in this
+    // adapter today - now reads back as the default org rather than as null.
+    //
+    // The behaviour consumers see is unchanged: `authenticate` mapped null to
+    // this same id before, and does so still. What changed is that the
+    // fallback is now the database's job rather than the application's.
     await makeUser(`${mark}-g@example.com`, []);
 
     const user = await h.adapter.getUserByEmail(`${mark}-g@example.com`);
 
-    expect(user!.orgId).toBeNull();
+    expect(user!.orgId).toBe(DEFAULT_ORG_ID);
   });
 });
 

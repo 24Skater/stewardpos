@@ -1,0 +1,55 @@
+-- Counterpart to the Postgres migration of the same number, which makes
+-- `org_id` NOT NULL with a DEFAULT on twenty tenant-scoped tables.
+--
+-- This file deliberately changes nothing. It exists to keep the version
+-- numbering in step between the two adapters, and to put the reasoning
+-- somewhere a person will find it when they wonder why the schemas differ.
+--
+-- ## SQLite cannot do it
+--
+-- There is no `ALTER TABLE ... ALTER COLUMN`. Neither the constraint nor the
+-- default can be added to a column that already exists:
+--
+--     sqlite> ALTER TABLE customers ALTER COLUMN org_id SET NOT NULL;
+--     Error: near "ALTER": syntax error
+--
+-- The supported route is the twelve-step rebuild — create a new table, copy
+-- every row, drop the old one, rename, recreate every index and trigger — done
+-- twenty times, against a live shop's only copy of its data. That is a large
+-- amount of fragile SQL in exchange for the benefit described below, which for
+-- SQLite is nil.
+--
+-- ## A trigger was considered and rejected
+--
+-- `AFTER INSERT ... WHEN NEW.org_id IS NULL` can fill the column, and it does
+-- work — it was tried. It was rejected for three reasons:
+--
+--   * It emulates the DEFAULT but not the NOT NULL, so it is half a migration
+--     wearing the name of a whole one.
+--   * It costs an extra UPDATE per INSERT, on `orders` and `order_items` among
+--     others — the checkout path. Paying a write amplification on the hottest
+--     path in the application to make a column cosmetically consistent is a bad
+--     trade.
+--   * Twenty triggers are invisible in the schema. Someone reading the table
+--     definition would see a nullable column with no default and no explanation
+--     for why it keeps being filled in.
+--
+-- ## Why nothing is lost by skipping it
+--
+-- The constraint is not what makes anything work today; on Postgres it is inert
+-- too, satisfied by the DEFAULT on every write. Its value is structural, and it
+-- is realised at step 3 of docs/guides/multi-tenant.md, when writes set `org_id`
+-- explicitly and the DEFAULT comes off — from which point a query that forgets
+-- the column fails instead of silently writing into the wrong tenant.
+--
+-- That destination is row-level security, and **SQLite has none**. Multi-tenancy
+-- on this codebase is a Postgres feature. A SQLite install is a single shop, it
+-- is the supported way to run one, and it stays exactly as correct as it is now.
+--
+-- The application already reads through the difference: every org-scoped query
+-- uses `COALESCE(org_id, <default org>)`, and `authenticate` falls back to the
+-- same value. A NULL here and the default org id there mean the same thing to
+-- every consumer, which is why the two adapters can differ in what they store
+-- without differing in how they behave.
+
+INSERT INTO schema_migrations (version, name) VALUES (26, '026_org_id_required');

@@ -73,59 +73,78 @@ listed below.
 
 Roughly in order. Each step is independently shippable.
 
-**1. Backfill and tighten.** Set `org_id` to the default org on every existing
-row, give the column a `DEFAULT`, and only then make it `NOT NULL`. All three
-parts, in that order.
+**1. Backfill and tighten.** ✅ **Done — migration 026 (Postgres only).**
+
+Set `org_id` to the default org on every existing row, give the column that
+value as its `DEFAULT`, and only then make it `NOT NULL`. All three parts, in
+that order.
 
 > **The order is not a style preference.** An earlier version of this guide said
 > to backfill and then set `NOT NULL`, describing it as "a no-op" on a
 > single-org install. It is not a no-op — it is an outage. **Not one of the
-> forty-odd `INSERT` statements in the two adapters names `org_id`**, so the
-> constraint rejects every write the application makes. Verified against a real
-> Postgres:
+> forty-four `INSERT` statements in the two adapters names `org_id`**, so the
+> constraint rejects every write the application makes:
 >
 > ```
-> ALTER TABLE customers ALTER COLUMN org_id SET NOT NULL;
-> INSERT INTO customers (name, email) VALUES ('A', 'a@example.com');
-> -- ERROR: null value in column "org_id" of relation "customers"
-> --        violates not-null constraint
+> ERROR:  null value in column "org_id" of relation "customers"
+>         violates not-null constraint
 > ```
 >
-> That is a shop that cannot take a sale, reached by following the runbook. The
-> `DEFAULT` is what makes the constraint survivable: existing writes keep
+> The `DEFAULT` is what makes the constraint survivable: existing writes keep
 > working and land in the default org, while an explicit `org_id` still wins.
 
+What migration 026 does, per table:
+
 ```sql
--- Per tenant-scoped table, in one transaction:
-UPDATE   products SET org_id = '00000000-0000-0000-0000-000000000001' WHERE org_id IS NULL;
-ALTER TABLE products ALTER COLUMN org_id SET DEFAULT '00000000-0000-0000-0000-000000000001';
-ALTER TABLE products ALTER COLUMN org_id SET NOT NULL;
+UPDATE       products SET org_id = '00000000-0000-0000-0000-000000000001' WHERE org_id IS NULL;
+ALTER TABLE  products ALTER COLUMN org_id SET DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE  products ALTER COLUMN org_id SET NOT NULL;
 ```
 
-`backend/src/adapters/db/__tests__/orgIdWriteCoverage.test.ts` enforces this: it
-fails if a migration makes `org_id` `NOT NULL` on a table whose inserts neither
-set it nor have a default to fall back on.
+**It changes no behaviour.** On a single-org install the `DEFAULT` satisfies the
+constraint on every write, so the application is bit-for-bit identical before
+and after — which is exactly what made it safe to land ahead of the scoping
+work rather than as part of it. Verified by running the full adapter
+integration suite (379 tests) against the constrained schema.
 
-**Drop the `DEFAULT` once step 3 is done.** While it is there, a write that
-forgets `org_id` silently lands in the default org instead of failing — which is
-the wrong behaviour once a second tenant exists, and the opposite of what this
-step is ultimately for. The `DEFAULT` is scaffolding for the window between
-step 1 and step 3, not the destination.
+Fully reversible while the `DEFAULT` is in place:
 
-**SQLite cannot do any of this in place.** It has no `ALTER TABLE ... ALTER
-COLUMN`: adding `NOT NULL` or a `DEFAULT` to an existing column requires
-rebuilding the table (create new, copy, drop, rename), twenty times over.
-Confirmed against SQLite 3.53:
+```sql
+ALTER TABLE <t> ALTER COLUMN org_id DROP NOT NULL;
+ALTER TABLE <t> ALTER COLUMN org_id DROP DEFAULT;
+```
+
+Two tests keep this honest: `orgIdWriteCoverage.test.ts` fails if a migration
+makes `org_id` `NOT NULL` on a table whose inserts neither set it nor have a
+default, and `orgIdRequired.integration.test.ts` asserts the constraint, the
+default, and the blind write against a real database.
+
+### SQLite does not get this, and will not
+
+SQLite has no `ALTER TABLE ... ALTER COLUMN`, so neither the constraint nor the
+default can be added to an existing column:
 
 ```
 sqlite> ALTER TABLE customers ALTER COLUMN org_id SET NOT NULL;
 Error: near "ALTER": syntax error
 ```
 
-Since Postgres is also the only one of the two with row-level security, the
-realistic plan is that multi-tenancy is a Postgres feature and SQLite stays the
-single-shop option. Decide that explicitly before starting, rather than
-discovering it halfway through.
+The alternatives were a twenty-table rebuild (create, copy, drop, rename, twice
+per table, against a shop's only copy of its data) or twenty `AFTER INSERT`
+triggers. The trigger version was written and tested — it works — and rejected:
+it emulates the `DEFAULT` but not the `NOT NULL`, it costs an extra `UPDATE` per
+`INSERT` on the checkout path, and twenty invisible triggers are a worse thing
+to inherit than a documented difference.
+
+**So multi-tenancy is a Postgres feature.** That is not a workaround; it is the
+honest end state, because the destination of this whole sequence is row-level
+security and SQLite has none. A SQLite install is a single shop, which is the
+supported way to run one.
+
+The adapters do not diverge in behaviour, only in what they store: every
+org-scoped query reads through `COALESCE(org_id, <default org>)` and
+`authenticate` falls back to the same value, so a `NULL` on SQLite and the
+default org id on Postgres mean the same thing to every consumer.
 
 **2. Scope reads, one table at a time.** Add `org_id = $n` to each adapter read.
 Start with `products`, `orders`, and `customers` — the tables a leak would
@@ -134,8 +153,19 @@ explicitly from the route or service; do not reach for a global or an
 async-local store, since a background job has no request and would silently
 read the wrong tenant.
 
-**3. Scope writes.** Set `org_id` on every insert from `req.orgId`. With step 1
-done, anything missed fails loudly rather than writing an orphan row.
+**3. Scope writes.** Set `org_id` on every insert from `req.orgId` — forty-four
+statements across the two adapters, none of which names the column today.
+
+**Then drop the `DEFAULT`**, and only then:
+
+```sql
+ALTER TABLE <t> ALTER COLUMN org_id DROP DEFAULT;
+```
+
+Until it is gone the constraint from step 1 catches nothing, because the default
+satisfies it on every write. Afterwards, a statement that forgets `org_id` fails
+immediately instead of silently filing a row under the default org — which is
+the whole point of step 1, realised here rather than there.
 
 **4. Org-scoped login.** Email is currently unique globally. Two organizations
 will eventually both want `manager@`, so uniqueness has to become

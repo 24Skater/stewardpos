@@ -441,7 +441,10 @@ export class SQLiteAdapter {
         name: user.name,
         roleIds,
         status: user.status,
-        // See the Postgres adapter: null until a second organization exists.
+        // Still genuinely nullable here, unlike Postgres: SQLite has no
+        // ALTER COLUMN, so migration 026 could not add the constraint or the
+        // default. See that migration for why nothing is lost by it - every
+        // org-scoped query reads through `COALESCE(org_id, <default>)`.
         orgId: user.org_id ?? null,
         // Lockout state (migration 025). Already epoch milliseconds here,
         // where Postgres stores a timestamp and converts on the way out.
