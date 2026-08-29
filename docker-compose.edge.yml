@@ -1,0 +1,55 @@
+# StewardPOS — the shared edge, for hosting several customers on one machine.
+#
+#   docker compose -f docker-compose.edge.yml up -d
+#
+# One Caddy, in front of every tenant stack. It exists because ports 80 and 443
+# can be bound once per host: `docker-compose.prod.yml` publishes them itself,
+# which is right for a single shop and makes a second one impossible on the
+# same machine.
+#
+# So tenants run `docker-compose.tenant.yml`, which publishes nothing at all,
+# and this routes to them by hostname over a shared Docker network. Each tenant
+# keeps its own database, its own uploads volume and its own secrets; the only
+# thing they share is the TLS terminator and the machine underneath it.
+#
+# Bring this up ONCE, before the first tenant. `scripts/tenant.sh` writes a site
+# file per tenant into deploy/edge/sites/ and reloads Caddy; nothing here needs
+# editing per customer.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: stewardpos-edge
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set; Let's Encrypt uses it for expiry warnings}
+    volumes:
+      - ./deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      # One file per tenant, written by scripts/tenant.sh. Mounted as a
+      # directory rather than baked in so adding a customer is a file plus a
+      # reload, with no edit to a file every other customer also depends on.
+      - ./deploy/edge/sites:/etc/caddy/sites:ro
+      # Certificates and ACME account keys for every tenant domain. Losing this
+      # volume means re-issuing all of them at once, which is the fastest way to
+      # meet Let's Encrypt's rate limits.
+      - edge_caddy_data:/data
+      - edge_caddy_config:/config
+    networks:
+      - edge
+
+volumes:
+  edge_caddy_data:
+  edge_caddy_config:
+
+networks:
+  # Created here, joined by every tenant stack as `external: true`. Only the
+  # backend and frontend of each tenant attach to it - their Postgres and MinIO
+  # stay on the tenant's own private network, so one tenant's database is not
+  # merely unpublished but unreachable from any other tenant's containers.
+  edge:
+    name: stewardpos_edge
+    driver: bridge
