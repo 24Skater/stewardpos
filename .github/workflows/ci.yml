@@ -18,6 +18,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  boundaries:
+    name: Platform boundaries
+    runs-on: ubuntu-latest
+    # Complements the secret scan below rather than duplicating it. Gitleaks
+    # cannot tell a platform Stripe key from a tenant one - both are sk_live_ -
+    # so the boundary this guard enforces is the variable name. The platform
+    # billing prefix belongs to the console's environment and must never be
+    # referenced here; see docs/PLATFORM.md.
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh scripts/ci/check-platform-boundaries.sh
+
   frontend:
     name: "Frontend: lint, typecheck, test, build"
     runs-on: ubuntu-latest
