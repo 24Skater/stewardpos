@@ -44,8 +44,12 @@ scan() {
 scan "no platform Stripe credentials in a product app" \
   "STRIPE_PLATFORM_"
 
+# The trailing class is load-bearing. Without it the pattern also matches a
+# tenant host like "grace-stewardtable.app.example.org", where the domain is
+# example.org and "stewardtable.app" is merely a label followed by more
+# labels. Matching to end-of-token means only a real hardcoded domain trips it.
 scan "no hardcoded platform domain (use PLATFORM_ROOT_DOMAIN)" \
-  "steward(grace|table|pos)?\.(app|com)"
+  "steward(grace|table|pos)?\.(app|com)([^a-z0-9.-]|$)"
 
 if [ "$STATUS" -ne 0 ]; then
   echo "Platform boundary guard failed. See docs/PLATFORM.md."
