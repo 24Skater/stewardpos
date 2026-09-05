@@ -52,7 +52,7 @@ scan "no hardcoded platform domain (use PLATFORM_ROOT_DOMAIN)" \
   "steward(grace|table|pos)?\.(app|com)([^a-z0-9.-]|$)"
 
 if [ "$STATUS" -ne 0 ]; then
-  echo "Platform boundary guard failed. See docs/PLATFORM.md."
+  echo "Platform boundary guard failed. See docs/HOSTING.md."
 fi
 
 exit "$STATUS"
