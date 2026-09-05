@@ -58,7 +58,7 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: frontend-coverage
@@ -145,7 +145,7 @@ jobs:
         working-directory: ./backend
         run: npm run build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-coverage
@@ -272,7 +272,7 @@ jobs:
       - name: Run Playwright specs
         run: pnpm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
