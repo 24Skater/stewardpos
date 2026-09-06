@@ -9,7 +9,22 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Both inventory screens can now edit a product's variants — size, colour, price
+  delta, stock count, and an active toggle — with an **Add variant** control.
+  Admin → Inventory Management also gets a **New** button beside the category
+  picker that creates a managed category, so a new one no longer has to be
+  introduced by a CSV import or the register-side screen.
+
+### Fixed
+
+- **Editing a variant on either inventory screen silently discarded the change.**
+  Product update does not touch variants — they are a sub-resource — so a
+  corrected stock count, a disabled size, or a new colour was shown in the form,
+  accepted on Save, and never sent. Saves now diff the variant list and issue
+  the matching `POST`/`PUT`/`DELETE /api/products/:id/variants` calls, and never
+  remove a product's last variant (which the server rejects anyway).
 
 ---
 

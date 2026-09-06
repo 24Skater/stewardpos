@@ -7,21 +7,34 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { adminApi, categoriesApi, productsApi, uploadApi } from '@/lib/api';
 import type {
   Category,
   CreateProductRequest,
   Product,
+  ProductVariant,
   UnmanagedCategory,
   UpdateProductRequest,
 } from '@/lib/api';
-import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Upload, RefreshCw, ImagePlus, X } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { getCurrentSession, hasPermission, type AuthSession } from '@/lib/auth';
 import { exportInventoryToCSV } from '@/lib/export-utils';
 import ImportInventoryDialog from '@/components/ImportInventoryDialog';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
+import { applyVariantChanges, diffVariants } from '@/lib/variant-sync';
+
+/** A blank variant row for the editor; the temp id marks it as not yet saved. */
+const blankVariant = (): ProductVariant => ({
+  id: `new-${Math.random().toString(36).slice(2)}`,
+  size: '',
+  color: '',
+  priceDelta: 0,
+  stock: 0,
+  enabled: true,
+});
 
 export default function AdminInventory() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,6 +52,10 @@ export default function AdminInventory() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  /** When set, the category field is a "name a new one" input rather than the picker. */
+  const [newCategory, setNewCategory] = useState<string | null>(null);
+  const [addingCategory, setAddingCategory] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -146,20 +163,65 @@ export default function AdminInventory() {
       basePrice: 0,
       image: '',
       barcode: '',
-      variants: [],
+      variants: [blankVariant()],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
     setIsNewProduct(true);
     setUploadedImage(null);
+    setNewCategory(null);
     setEditDialogOpen(true);
   };
 
   const handleEdit = (product: Product) => {
-    setEditingProduct(product);
+    // Copy the variants — the editor mutates this list, and `editingProduct`
+    // would otherwise be the same array instance as the row in `products`.
+    setEditingProduct({ ...product, variants: product.variants.map(v => ({ ...v })) });
     setIsNewProduct(false);
     setUploadedImage(null);
+    setNewCategory(null);
     setEditDialogOpen(true);
+  };
+
+  const setVariant = (index: number, patch: Partial<ProductVariant>) => {
+    setEditingProduct(prev =>
+      prev
+        ? { ...prev, variants: prev.variants.map((v, i) => (i === index ? { ...v, ...patch } : v)) }
+        : prev
+    );
+  };
+
+  const addVariant = () => {
+    setEditingProduct(prev => (prev ? { ...prev, variants: [...prev.variants, blankVariant()] } : prev));
+  };
+
+  const removeVariant = (index: number) => {
+    setEditingProduct(prev =>
+      prev && prev.variants.length > 1
+        ? { ...prev, variants: prev.variants.filter((_, i) => i !== index) }
+        : prev
+    );
+  };
+
+  const handleCreateCategory = async () => {
+    const name = (newCategory ?? '').trim();
+    if (!name) return;
+    try {
+      setAddingCategory(true);
+      await categoriesApi.create({ name });
+      await loadProducts();
+      setEditingProduct(prev => (prev ? { ...prev, category: name } : prev));
+      setNewCategory(null);
+      toast({ title: `Category "${name}" created` });
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to create category'),
+        variant: 'destructive',
+      });
+    } finally {
+      setAddingCategory(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,10 +275,12 @@ export default function AdminInventory() {
       });
       return;
     }
-    
+
     try {
+      setSavingEdit(true);
       if (isNewProduct) {
-        // Create new product
+        // Create new product. Variants go in nested — a `new-…` temp id would be
+        // rejected, so send only the fields the API takes.
         const createData: CreateProductRequest = {
           name: editingProduct.name,
           description: editingProduct.description,
@@ -224,18 +288,13 @@ export default function AdminInventory() {
           basePrice: editingProduct.basePrice || 0,
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
-          variants: editingProduct.variants || [],
+          variants: editingProduct.variants.map(({ id: _id, ...v }) => v),
         };
-        const response = await productsApi.create(createData);
-        
-        setEditDialogOpen(false);
-        setEditingProduct(null);
-        setIsNewProduct(false);
-        setUploadedImage(null);
-        await loadProducts();
+        await productsApi.create(createData);
         toast({ title: 'Product added successfully' });
       } else {
-        // Update existing product
+        // Product update does not carry variants — persist the edited list
+        // through the variant sub-resource, or a stock correction is dropped.
         const updateData: UpdateProductRequest = {
           name: editingProduct.name,
           description: editingProduct.description,
@@ -244,21 +303,30 @@ export default function AdminInventory() {
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
         };
-        const response = await productsApi.update(editingProduct.id, updateData);
-        
-        setEditDialogOpen(false);
-        setEditingProduct(null);
-        setIsNewProduct(false);
-        setUploadedImage(null);
-        await loadProducts();
+        await productsApi.update(editingProduct.id, updateData);
+
+        const original = products.find(p => p.id === editingProduct.id);
+        await applyVariantChanges(
+          editingProduct.id,
+          diffVariants(original?.variants ?? [], editingProduct.variants)
+        );
         toast({ title: 'Product updated' });
       }
+
+      setEditDialogOpen(false);
+      setEditingProduct(null);
+      setIsNewProduct(false);
+      setUploadedImage(null);
+      setNewCategory(null);
+      await loadProducts();
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: getErrorMessage(error, `Failed to ${isNewProduct ? 'create' : 'update'} product`),
         variant: 'destructive',
       });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -398,9 +466,10 @@ export default function AdminInventory() {
             setEditingProduct(null);
             setIsNewProduct(false);
             setUploadedImage(null);
+            setNewCategory(null);
           }
         }}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{isNewProduct ? 'Add Product' : 'Edit Product'}</DialogTitle>
             </DialogHeader>
@@ -426,27 +495,55 @@ export default function AdminInventory() {
                     A free-text box here meant a typo produced a second
                     category that no other product would ever share, and the
                     seeded `categories` table went unused because nothing
-                    could read it.
+                    could read it. The picker stays; "New category" is an
+                    explicit action that creates a managed row rather than a
+                    stray name.
 
                     A product whose category is not in the list still shows
                     it, rather than appearing blank — otherwise saving an
                     unrelated edit would silently move the product.
                   */}
-                  <Select
-                    value={editingProduct.category || undefined}
-                    onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categoryOptions.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {newCategory === null ? (
+                    <div className="flex gap-2">
+                      <Select
+                        value={editingProduct.category || undefined}
+                        onValueChange={(value) => setEditingProduct({ ...editingProduct, category: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoryOptions.map((name) => (
+                            <SelectItem key={name} value={name}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" onClick={() => setNewCategory('')}>
+                        <Plus className="w-4 h-4 mr-1" />
+                        New
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        autoFocus
+                        value={newCategory}
+                        placeholder="New category name"
+                        onChange={(e) => setNewCategory(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory(); }
+                        }}
+                      />
+                      <Button type="button" onClick={handleCreateCategory} disabled={addingCategory || !newCategory.trim()}>
+                        Add
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Cancel new category" onClick={() => setNewCategory(null)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="inventory-base-price">Base Price</Label>
@@ -506,16 +603,90 @@ export default function AdminInventory() {
                     onChange={(e) => setEditingProduct({ ...editingProduct, barcode: e.target.value })}
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Variants &amp; stock</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add variant
+                    </Button>
+                  </div>
+                  {/* Every product needs at least one sellable variant; stock and
+                      the active toggle live here, not on the product itself. */}
+                  <div className="space-y-2">
+                    {editingProduct.variants.map((variant, index) => (
+                      <div key={variant.id} className="grid grid-cols-[1fr_1fr_5rem_5rem_auto_auto] items-end gap-2 rounded-md border border-border p-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Size</Label>
+                          <Input
+                            value={variant.size || ''}
+                            placeholder="S, M…"
+                            onChange={(e) => setVariant(index, { size: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Color</Label>
+                          <Input
+                            value={variant.color || ''}
+                            placeholder="Red…"
+                            onChange={(e) => setVariant(index, { color: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">± Price</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={variant.priceDelta ?? 0}
+                            onChange={(e) => setVariant(index, { priceDelta: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Stock</Label>
+                          <Input
+                            type="number"
+                            value={variant.stock}
+                            onChange={(e) => setVariant(index, { stock: parseInt(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Active</Label>
+                          <div className="flex h-10 items-center">
+                            <Switch
+                              checked={variant.enabled}
+                              onCheckedChange={(checked) => setVariant(index, { enabled: checked })}
+                              aria-label={`Variant ${index + 1} active`}
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove variant ${index + 1}`}
+                          disabled={editingProduct.variants.length === 1}
+                          onClick={() => removeVariant(index)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => {
+              <Button variant="outline" disabled={savingEdit} onClick={() => {
                 setEditDialogOpen(false);
                 setEditingProduct(null);
                 setIsNewProduct(false);
                 setUploadedImage(null);
+                setNewCategory(null);
               }}>Cancel</Button>
-              <Button onClick={handleSaveEdit}>{isNewProduct ? 'Create Product' : 'Save Changes'}</Button>
+              <Button onClick={handleSaveEdit} disabled={savingEdit}>
+                {savingEdit ? 'Saving…' : isNewProduct ? 'Create Product' : 'Save Changes'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
