@@ -176,6 +176,41 @@ describe('step 1 — the database connection', () => {
 
     expect(runMigrations).not.toHaveBeenCalled();
   });
+
+  it('does not probe in demo mode, which reuses the existing configuration', async () => {
+    // Demo mode sends only the adapter name. The old code still built a
+    // `pg.Pool` from the undefined rest and probed it — which, on a
+    // containerised backend, meant localhost and a connection refused against a
+    // database that was healthy one service away.
+    const response = await request(app)
+      .post('/api/setup/complete')
+      .send({ ...VALID, demoMode: true, database: { adapter: 'postgres' } });
+
+    expect(poolQuery).not.toHaveBeenCalled();
+    expect(poolEnd).not.toHaveBeenCalled();
+    expect(runMigrations).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
+
+  it('does not probe when the operator supplied no connection details', async () => {
+    // A stack already wired to its database — the wizard only needs to create
+    // the administrator, not re-test a connection nobody typed.
+    const response = await request(app)
+      .post('/api/setup/complete')
+      .send({ ...VALID, database: { adapter: 'postgres' } });
+
+    expect(poolQuery).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
+
+  it('still probes when the operator did supply a host', async () => {
+    poolQuery.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const response = await request(app).post('/api/setup/complete').send(VALID);
+
+    expect(poolQuery).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+  });
 });
 
 describe('step 2 — migrations', () => {

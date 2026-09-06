@@ -131,7 +131,18 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FILE: /app/logs/app.log
       
-      # Auto-seed database on first startup (set to false to prevent duplicate seeding)
+      # Seed a demo administrator (admin@demo.local / DemoPass!1) and a sample
+      # catalogue on first startup. Off by default: a real install creates its
+      # own admin through the first-run wizard at http://localhost:8081.
+      #
+      # For a throwaway demo, skip the wizard entirely:
+      #   AUTO_SEED=true docker compose up -d
+      # The seeder is idempotent and refuses to run under NODE_ENV=production.
+      #
+      # If you do use the wizard here, pick "Production Setup" — it now detects
+      # that this stack is already connected to Postgres and only asks for the
+      # admin account. (The database host, if you are ever asked, is `postgres`,
+      # the service name on this network — not `localhost`.)
       AUTO_SEED: ${AUTO_SEED:-false}
       
       # Uploads. STORAGE_ADAPTER=localstorage keeps images on the

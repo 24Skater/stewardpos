@@ -252,31 +252,54 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
   try {
     const setupData = setupSchema.parse(req.body);
 
-    // Step 1: Test database connection
-    logger.info('Testing database connection...');
-    try {
-      if (setupData.database.adapter === 'postgres') {
-        const { Pool } = await import('pg');
-        const pool = new Pool({
-          host: setupData.database.host,
-          port: setupData.database.port,
-          database: setupData.database.name,
-          user: setupData.database.user,
-          password: setupData.database.password,
+    // Step 1: Test database connection — but only when the operator actually
+    // supplied connection details to test. Two flows reach this point without
+    // any:
+    //
+    //   - Demo mode, which by definition reuses the server's existing
+    //     configuration rather than taking a fresh one from the form.
+    //   - A stack that is already wired to a database and migrated — a Docker
+    //     Compose deployment, say — where the wizard's only remaining job is to
+    //     create the founding administrator.
+    //
+    // The old code probed unconditionally, building a `pg.Pool` out of
+    // all-undefined fields. libpq then falls back to its own defaults
+    // (localhost, the OS user), so on a containerised backend this failed to
+    // reach a database that was in fact healthy and one service away — and
+    // setup could get no further. A genuine connectivity problem still
+    // surfaces: the migrator below opens its own connection and a failure
+    // there is reported as a 500.
+    const suppliedConnectionDetails =
+      setupData.database.adapter === 'postgres'
+        ? Boolean(setupData.database.host)
+        : Boolean(setupData.database.filename);
+
+    if (!setupData.demoMode && suppliedConnectionDetails) {
+      logger.info('Testing database connection...');
+      try {
+        if (setupData.database.adapter === 'postgres') {
+          const { Pool } = await import('pg');
+          const pool = new Pool({
+            host: setupData.database.host,
+            port: setupData.database.port,
+            database: setupData.database.name,
+            user: setupData.database.user,
+            password: setupData.database.password,
+          });
+          await pool.query('SELECT 1');
+          await pool.end();
+        } else {
+          const Database = (await import('better-sqlite3')).default;
+          const db = new Database(setupData.database.filename || './data/stewardpos.db');
+          db.prepare('SELECT 1').get();
+          db.close();
+        }
+      } catch (error: unknown) {
+        return res.status(400).json({
+          success: false,
+          error: `Database connection failed: ${getErrorMessage(error)}`,
         });
-        await pool.query('SELECT 1');
-        await pool.end();
-      } else {
-        const Database = (await import('better-sqlite3')).default;
-        const db = new Database(setupData.database.filename || './data/stewardpos.db');
-        db.prepare('SELECT 1').get();
-        db.close();
       }
-    } catch (error: unknown) {
-      return res.status(400).json({
-        success: false,
-        error: `Database connection failed: ${getErrorMessage(error)}`,
-      });
     }
 
     // Step 2: Run migrations
