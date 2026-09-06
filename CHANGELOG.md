@@ -25,6 +25,14 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accepted on Save, and never sent. Saves now diff the variant list and issue
   the matching `POST`/`PUT`/`DELETE /api/products/:id/variants` calls, and never
   remove a product's last variant (which the server rejects anyway).
+- First-run setup wizard no longer dead-ends on a containerised deployment. When
+  the backend is already connected to a migrated database (a Docker Compose
+  stack, for example), the wizard skips the database-configuration step and only
+  asks for an admin account, and `POST /api/setup/complete` no longer probes a
+  connection the operator never supplied — the previous behaviour built a
+  `pg.Pool` from empty fields, fell back to `localhost`, and returned
+  `400 Database connection failed` against a database that was healthy one
+  service away. Demo mode is fixed the same way.
 
 ---
 
