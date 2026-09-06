@@ -18,10 +18,12 @@ import {
 import { ArrowLeft, Plus, Pencil, Trash2, Package, AlertCircle, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { getErrorMessage } from '@/lib/errors';
+import { applyVariantChanges, diffVariants } from '@/lib/variant-sync';
 
 export default function Inventory() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -101,6 +103,15 @@ export default function Inventory() {
           image: currentProduct.image,
         };
         await updateProduct.mutateAsync({ id: currentProduct.id, body: updateData });
+
+        // Product update does not carry variants — persist the edited list
+        // through the variant sub-resource, or a corrected stock count is lost.
+        const original = products.find(p => p.id === currentProduct.id);
+        await applyVariantChanges(
+          currentProduct.id,
+          diffVariants(original?.variants ?? [], currentProduct.variants)
+        );
+        await refetch();
         toast({ title: "Product updated successfully" });
       }
 
@@ -346,7 +357,7 @@ export default function Inventory() {
                 <div className="space-y-2">
                   {currentProduct.variants.map((variant, index) => (
                     <Card key={variant.id} className="p-4 bg-secondary/20 border-border">
-                      <div className="grid grid-cols-5 gap-3">
+                      <div className="grid grid-cols-6 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Size</Label>
                           <Input
@@ -383,6 +394,16 @@ export default function Inventory() {
                             onChange={(e) => handleUpdateVariant(index, 'stock', parseInt(e.target.value) || 0)}
                             className="bg-background border-border"
                           />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Active</Label>
+                          <div className="flex h-10 items-center">
+                            <Switch
+                              checked={variant.enabled}
+                              onCheckedChange={(checked) => handleUpdateVariant(index, 'enabled', checked)}
+                              aria-label="Variant active"
+                            />
+                          </div>
                         </div>
                         <div className="flex items-end">
                           <Button
