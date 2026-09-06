@@ -9,7 +9,16 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- First-run setup wizard no longer dead-ends on a containerised deployment. When
+  the backend is already connected to a migrated database (a Docker Compose
+  stack, for example), the wizard skips the database-configuration step and only
+  asks for an admin account, and `POST /api/setup/complete` no longer probes a
+  connection the operator never supplied — the previous behaviour built a
+  `pg.Pool` from empty fields, fell back to `localhost`, and returned
+  `400 Database connection failed` against a database that was healthy one
+  service away. Demo mode is fixed the same way.
 
 ---
 
