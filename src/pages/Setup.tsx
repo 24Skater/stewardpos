@@ -154,13 +154,16 @@ export default function Setup() {
       return;
     }
 
-    // In demo mode, use existing database config from environment
-    const dbConfig = demoMode ? {
-      adapter: (import.meta.env.VITE_DB_ADAPTER || 'postgres') as 'postgres' | 'sqlite',
-      // Use existing env vars or defaults
+    // Demo mode, or a deployment that is already wired to a database (a Docker
+    // Compose stack that has already migrated, for instance): the wizard never
+    // collected connection details, so send just the adapter name and let the
+    // server provision against the database it is already configured with.
+    const useExistingDatabase = demoMode || dbAlreadyConfigured;
+    const dbConfig = useExistingDatabase ? {
+      adapter: (setupStatus?.databaseAdapter || import.meta.env.VITE_DB_ADAPTER || 'postgres') as 'postgres' | 'sqlite',
     } : database;
 
-    if (!demoMode && database.adapter === 'postgres') {
+    if (!useExistingDatabase && database.adapter === 'postgres') {
       if (!database.host || !database.name || !database.user) {
         toast({
           title: 'Validation Error',
@@ -204,6 +207,13 @@ export default function Setup() {
       setLoading(false);
     }
   };
+
+  // The server already has a working, migrated database — it reported the
+  // schema present. The database-configuration step has nothing to collect;
+  // the wizard only needs an admin account.
+  const dbAlreadyConfigured = Boolean(setupStatus?.isInitialized);
+  // Whichever way we got here, step 2 collects no connection details.
+  const skipDatabaseStep = demoMode || dbAlreadyConfigured;
 
   const totalSteps = 6;
 
@@ -315,8 +325,9 @@ export default function Setup() {
             </div>
           )}
 
-          {/* Step 2: Database Configuration (skip if demo mode) */}
-          {step === 2 && !demoMode ? (
+          {/* Step 2: Database Configuration (skipped in demo mode, or when the
+              server is already connected to a migrated database) */}
+          {step === 2 && !skipDatabaseStep ? (
             <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
@@ -437,16 +448,21 @@ export default function Setup() {
                 </Button>
               </div>
             </div>
-          ) : step === 2 && demoMode ? (
-            // Skip database step in demo mode, go directly to admin user
+          ) : step === 2 && skipDatabaseStep ? (
+            // Nothing to configure here — go straight on to the admin account.
             <div className="space-y-6">
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>
-                  Demo mode will use the existing database configuration. Proceeding to admin account creation...
+                  {dbAlreadyConfigured && !demoMode
+                    ? `This deployment is already connected to a ${setupStatus?.databaseAdapter === 'sqlite' ? 'SQLite' : 'PostgreSQL'} database. Setup will use that connection — you only need to create an admin account.`
+                    : 'Demo mode will use the existing database configuration and load sample data. You still need to create an admin account.'}
                 </AlertDescription>
               </Alert>
-              <div className="flex justify-end">
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setStep(1)}>
+                  Back
+                </Button>
                 <Button onClick={() => setStep(3)}>
                   Continue
                 </Button>
@@ -511,7 +527,7 @@ export default function Setup() {
               </div>
 
               <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setStep(demoMode ? 1 : 2)}>
+                <Button variant="outline" onClick={() => setStep(skipDatabaseStep ? 1 : 2)}>
                   Back
                 </Button>
                 <Button onClick={() => setStep(4)}>
@@ -798,7 +814,7 @@ export default function Setup() {
                     </CardContent>
                   </Card>
 
-                  {!demoMode && (
+                  {!skipDatabaseStep && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-sm">Database</CardTitle>
