@@ -134,7 +134,7 @@ jobs:
 
       - name: Tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.name }}
           # `latest` only for a full release. A release candidate that claimed it
