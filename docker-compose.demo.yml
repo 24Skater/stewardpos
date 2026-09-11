@@ -26,7 +26,7 @@ services:
 
   # MinIO (S3-compatible storage)
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: stewardpos-storage-demo
     restart: unless-stopped
     environment:
