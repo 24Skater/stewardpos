@@ -24,8 +24,15 @@ services:
       - stewardpos-network
 
   # MinIO (S3-compatible storage)
+  #
+  # From quay.io, and pinned. MinIO withdrew both `minio/minio` and `minio/mc`
+  # from Docker Hub, so every `minio/...:latest` reference started answering
+  # "pull access denied ... repository does not exist" with no change on this
+  # side -- E2E went red on a commit that touched nothing to do with storage.
+  # quay.io is where MinIO publishes now. The pin is the other half of the
+  # lesson: a floating tag is a dependency on someone else's Tuesday.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -48,7 +55,7 @@ services:
   # this, switching STORAGE_ADAPTER to s3 on a fresh volume fails the backend's
   # startup check on a bucket that was never made.
   minio-createbucket:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
