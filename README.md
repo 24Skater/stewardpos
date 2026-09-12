@@ -4,16 +4,16 @@
 
 <br><br>
 
-<a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/24Skater/stewardpos/ci.yml?style=flat-square&label=CI&labelColor=0F1115&color=4B3F8F" alt="CI"></a>
-<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.0.0-F5B942?style=flat-square&labelColor=0F1115" alt="Release 1.0.0"></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B6FD8?style=flat-square&labelColor=0F1115" alt="MIT License"></a>
-<a href="docker-compose.yml"><img src="https://img.shields.io/badge/docker-first-2A2F3A?style=flat-square&labelColor=0F1115" alt="Docker first"></a>
+<a href="https://github.com/24Skater/stewardpos/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/24Skater/stewardpos/ci.yml?style=flat-square&label=CI&labelColor=0D1B2E&color=16A34A" alt="CI"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-16A34A?style=flat-square&labelColor=0D1B2E" alt="MIT licence"></a>
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-1.0.0-6B7A8D?style=flat-square&labelColor=0D1B2E" alt="Release 1.0.0"></a>
+<img src="https://img.shields.io/badge/self--hosted-yes-6B7A8D?style=flat-square&labelColor=0D1B2E" alt="Self-hosted">
 
 <br><br>
 
 **[Quick start](#quick-start)** &nbsp;·&nbsp;
 **[What it does](#what-it-does)** &nbsp;·&nbsp;
-**[How the money moves](#how-the-money-moves)** &nbsp;·&nbsp;
+**[Architecture](#architecture)** &nbsp;·&nbsp;
 **[Status](#status)** &nbsp;·&nbsp;
 **[Docs](#documentation)**
 
@@ -193,7 +193,7 @@ The server re-prices from the catalog, computes every figure in integer cents,
 and writes no order unless the charge is approved.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#4B3F8F","primaryTextColor":"#FFFFFF","primaryBorderColor":"#F5B942","lineColor":"#F5B942","actorBkg":"#4B3F8F","actorTextColor":"#FFFFFF","actorBorder":"#F5B942","actorLineColor":"#8892A4","signalColor":"#6B7280","signalTextColor":"#6B7280","sequenceNumberColor":"#0F1115","noteBkgColor":"#F5B942","noteTextColor":"#0F1115","noteBorderColor":"#D39A2F","labelBoxBkgColor":"#F5B942","labelTextColor":"#0F1115"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#0D1B2E","primaryTextColor":"#FAF7F2","primaryBorderColor":"#E8B847","lineColor":"#E8B847","actorBkg":"#0D1B2E","actorTextColor":"#FAF7F2","actorBorder":"#E8B847","actorLineColor":"#6B7A8D","signalColor":"#6B7A8D","signalTextColor":"#6B7A8D","sequenceNumberColor":"#0D1B2E","noteBkgColor":"#E8B847","noteTextColor":"#0D1B2E","noteBorderColor":"#C49A2E","labelBoxBkgColor":"#E8B847","labelTextColor":"#0D1B2E"}}}%%
 sequenceDiagram
     autonumber
     participant R as Register
@@ -226,7 +226,7 @@ Ports and adapters. Business logic depends on interfaces; the concrete provider
 is chosen by environment variable.
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#4B3F8F","primaryTextColor":"#FFFFFF","primaryBorderColor":"#F5B942","lineColor":"#6B7280","fontFamily":"Inter, system-ui, sans-serif","clusterBkg":"transparent","clusterBorder":"#6B7280","titleColor":"#6B7280"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#0D1B2E","primaryTextColor":"#FAF7F2","primaryBorderColor":"#E8B847","lineColor":"#6B7A8D","fontFamily":"Inter, system-ui, sans-serif","clusterBkg":"transparent","clusterBorder":"#6B7A8D","titleColor":"#6B7A8D"}}}%%
 flowchart TB
     UI["<b>Frontend</b><br/>React 18 · TypeScript · Vite · shadcn/ui"]
     API["<b>API</b><br/>Express · JWT · Zod validation"]
@@ -245,14 +245,14 @@ flowchart TB
 
     DOM --> DB & AUTH & MAIL & PAY & FILE
 
-    style UI fill:#4B3F8F,stroke:#F5B942,stroke-width:2px,color:#fff
-    style API fill:#3B6FD8,stroke:#F5B942,stroke-width:2px,color:#fff
-    style DOM fill:#2A2F3A,stroke:#F5B942,stroke-width:2px,color:#fff
-    style DB fill:#4B3F8F,stroke:#F5B942,color:#fff
-    style AUTH fill:#4B3F8F,stroke:#F5B942,color:#fff
-    style MAIL fill:#4B3F8F,stroke:#F5B942,color:#fff
-    style PAY fill:#4B3F8F,stroke:#F5B942,color:#fff
-    style FILE fill:#4B3F8F,stroke:#F5B942,color:#fff
+    style UI fill:#0D1B2E,stroke:#E8B847,stroke-width:2px,color:#FAF7F2
+    style API fill:#16A34A,stroke:#E8B847,stroke-width:2px,color:#FAF7F2
+    style DOM fill:#1A2F4A,stroke:#E8B847,stroke-width:2px,color:#FAF7F2
+    style DB fill:#0D1B2E,stroke:#E8B847,color:#FAF7F2
+    style AUTH fill:#0D1B2E,stroke:#E8B847,color:#FAF7F2
+    style MAIL fill:#0D1B2E,stroke:#E8B847,color:#FAF7F2
+    style PAY fill:#0D1B2E,stroke:#E8B847,color:#FAF7F2
+    style FILE fill:#0D1B2E,stroke:#E8B847,color:#FAF7F2
 ```
 
 <br>
@@ -311,6 +311,28 @@ has met the real world.
 
 This section is checked against running code rather than restating plans. An
 earlier version listed features as complete that an audit found broken.
+
+<br>
+
+---
+
+## The Steward family
+
+Steward is four applications on one design system. Each one runs standalone and
+self-hosted — nothing here requires the others, or us.
+
+| Application | What it does |
+| --- | --- |
+| **[Congregation](https://github.com/24Skater/StewardChMS)** | Members, giving, worship planning, reporting |
+| **[StewardPOS](https://github.com/24Skater/stewardpos)** | Point of sale, inventory, returns |
+| **[Table](https://github.com/24Skater/steward-table)** | Food orders, kitchen display, delivery |
+| **[VBS](https://github.com/24Skater/vbs-app)** | Registration, check-in, reporting |
+
+They share one design system — [Steward Brand](https://github.com/24Skater/steward-brand),
+the tokens, components and icons every screen is built from.
+
+Selling food rather than stock? [Table](https://github.com/24Skater/steward-table)
+handles order-ahead, a kitchen queue and delivery, which a register does not.
 
 <br>
 
