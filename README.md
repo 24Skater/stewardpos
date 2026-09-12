@@ -326,7 +326,7 @@ self-hosted — nothing here requires the others, or us.
 | **[Congregation](https://github.com/24Skater/StewardChMS)** | Members, giving, worship planning, reporting |
 | **[StewardPOS](https://github.com/24Skater/stewardpos)** | Point of sale, inventory, returns |
 | **[Table](https://github.com/24Skater/steward-table)** | Food orders, kitchen display, delivery |
-| **[VBS](https://github.com/24Skater/vbs-app)** | Registration, check-in, reporting |
+| **[VBS](https://github.com/24Skater/StewardVBS)** | Registration, check-in, reporting |
 
 They share one design system — [Steward Brand](https://github.com/24Skater/steward-brand),
 the tokens, components and icons every screen is built from.
