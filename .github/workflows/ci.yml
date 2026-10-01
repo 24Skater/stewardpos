@@ -38,7 +38,7 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -91,7 +91,7 @@ jobs:
       JWT_SECRET: test-secret-min-32-characters-long-for-ci
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -214,7 +214,7 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'pnpm'
@@ -246,7 +246,7 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'pnpm'
