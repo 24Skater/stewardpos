@@ -27,14 +27,14 @@ jobs:
     # billing prefix belongs to the console's environment and must never be
     # referenced here; see docs/HOSTING.md.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: sh scripts/ci/check-platform-boundaries.sh
 
   frontend:
     name: "Frontend: lint, typecheck, test, build"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 9
@@ -90,7 +90,7 @@ jobs:
       DB_PASSWORD: postgres
       JWT_SECRET: test-secret-min-32-characters-long-for-ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -156,7 +156,7 @@ jobs:
     name: Docker images build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
 
       # Catches the class of failure that let a stale backend image keep serving:
@@ -178,7 +178,7 @@ jobs:
     # deleting it in the next commit does not unpublish it. That is worth
     # stopping at the gate.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history. The default shallow clone would scan only the tip and
           # miss exactly the shape this is here to catch: a secret committed,
@@ -210,7 +210,7 @@ jobs:
     # Review the output; do not treat a green run as an all-clear.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 9
@@ -242,7 +242,7 @@ jobs:
     # failed and was always ignored, which is worse than not running it.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 9
