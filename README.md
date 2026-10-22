@@ -318,15 +318,16 @@ earlier version listed features as complete that an audit found broken.
 
 ## The Steward family
 
-Steward is four applications on one design system. Each one runs standalone and
+Steward is five applications on one design system. Each one runs standalone and
 self-hosted — nothing here requires the others, or us.
 
-| Application | What it does |
-| --- | --- |
+| Application                                                 | What it does                                 |
+| ----------------------------------------------------------- | -------------------------------------------- |
 | **[Congregation](https://github.com/24Skater/StewardChMS)** | Members, giving, worship planning, reporting |
-| **[StewardPOS](https://github.com/24Skater/stewardpos)** | Point of sale, inventory, returns |
-| **[Table](https://github.com/24Skater/steward-table)** | Food orders, kitchen display, delivery |
-| **[VBS](https://github.com/24Skater/StewardVBS)** | Registration, check-in, reporting |
+| **[StewardPOS](https://github.com/24Skater/stewardpos)**    | Point of sale, inventory, returns            |
+| **[Table](https://github.com/24Skater/steward-table)**      | Food orders, kitchen display, delivery       |
+| **[VBS](https://github.com/24Skater/StewardVBS)**           | Registration, check-in, reporting            |
+| **[Display](https://github.com/24Skater/steward-display)**  | Lobby screens, announcements, TV pairing     |
 
 They share one design system — [Steward Brand](https://github.com/24Skater/steward-brand),
 the tokens, components and icons every screen is built from.
