@@ -149,7 +149,7 @@ const configSchema = z.object({
    *
    * `localstorage` writes to the `uploads` volume on the API host and is right
    * for a single-backend install. `s3` targets any S3-compatible bucket —
-   * Amazon's, or the MinIO container in the Compose stack, via `S3_ENDPOINT`.
+   * Amazon's, or the s3 container in the Compose stack, via `S3_ENDPOINT`.
    *
    * The enum used to also offer `azure`, alongside an `azure` credentials
    * block. Nothing implemented it, so setting it validated cleanly and then

@@ -13,13 +13,13 @@ import { assertSafeKey } from './key';
 export interface S3StorageConfig {
   bucket: string;
   region?: string;
-  /** Set for MinIO or any other S3-compatible server; omit for AWS itself. */
+  /** Set for the bundled S3 gateway or any other S3-compatible server; omit for AWS itself. */
   endpoint?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
 }
 
-/** The error names S3 and MinIO use for "that object is not here". */
+/** The error names S3 and S3-compatible servers use for "that object is not here". */
 const NOT_FOUND = new Set(['NoSuchKey', 'NotFound', 'NoSuchBucket']);
 
 function isNotFound(error: unknown): boolean {
@@ -29,7 +29,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Uploads in an S3 bucket, or anything that speaks S3 — MinIO included.
+ * Uploads in an S3 bucket, or anything that speaks S3 — the bundled gateway included.
  *
  * Objects are addressed as `<prefix>/<filename>`, matching the layout the local
  * adapter uses on disk, so the same URL resolves under either and a migration is

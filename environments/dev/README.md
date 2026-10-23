@@ -33,4 +33,4 @@ docker-compose -f docker-compose.yml -f environments/dev/docker-compose.dev.yml 
 - Frontend: http://localhost:8081
 - Backend: http://localhost:3002
 - Database: localhost:5433
-- MinIO Console: http://localhost:9003
+- S3 API: http://localhost:9002

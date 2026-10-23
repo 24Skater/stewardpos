@@ -42,4 +42,4 @@ docker-compose -f docker-compose.yml -f environments/qa/docker-compose.qa.yml up
 - Frontend: http://localhost:8082
 - Backend: http://localhost:3003
 - Database: localhost:5434
-- MinIO Console: http://localhost:9005
+- S3 API: http://localhost:9004

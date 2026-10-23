@@ -184,7 +184,7 @@ read to a per-org one and drop the singleton assumption in
 
 **7. Uploads.** Files land in one shared directory. Prefix keys with the org id
 before a second tenant can upload, or one shop's product photos sit beside
-another's — see the note on MinIO in the Phase 4 plan, which becomes relevant
+another's — see the object-storage note in the Phase 4 plan, which becomes relevant
 at the same point for the same reason.
 
 ## Testing a change to any of this

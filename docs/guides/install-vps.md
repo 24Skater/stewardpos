@@ -58,7 +58,7 @@ sudo ufw allow 443/tcp    # HTTPS
 sudo ufw enable
 ```
 
-Nothing else needs to be open. Postgres, MinIO and the API are not published to
+Nothing else needs to be open. Postgres, object storage and the API are not published to
 the host at all — they are reachable only from inside the Docker network.
 
 ## 4. Get the code
@@ -82,7 +82,7 @@ placeholders into something that merely looks random:
 ```bash
 openssl rand -base64 32   # JWT_SECRET
 openssl rand -base64 32   # POSTGRES_PASSWORD
-openssl rand -base64 32   # MINIO_ROOT_PASSWORD
+openssl rand -base64 32   # S3_SECRET_ACCESS_KEY
 ```
 
 Then edit `.env` and set:
@@ -93,7 +93,7 @@ Then edit `.env` and set:
 | `ACME_EMAIL` | A mailbox someone reads; it gets certificate-expiry warnings |
 | `JWT_SECRET` | The first generated value |
 | `POSTGRES_PASSWORD` | The second |
-| `MINIO_ROOT_PASSWORD` | The third |
+| `S3_SECRET_ACCESS_KEY` | The third |
 
 ```bash
 chmod 600 .env

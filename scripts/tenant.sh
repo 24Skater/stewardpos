@@ -174,8 +174,8 @@ cmd_new() {
     echo "# customer has to re-enter their credentials."
     echo "CREDENTIALS_KEY=$(generate_secret)"
     echo
-    echo "MINIO_ROOT_USER=stewardpos-$slug"
-    echo "MINIO_ROOT_PASSWORD=$(generate_secret)"
+    echo "S3_ACCESS_KEY_ID=stewardpos-$slug"
+    echo "S3_SECRET_ACCESS_KEY=$(generate_secret)"
     echo "S3_BUCKET=stewardpos"
     echo "STORAGE_ADAPTER=localstorage"
     echo

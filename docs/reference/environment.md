@@ -65,8 +65,7 @@ cp .env.prod.example .env.prod
 | Frontend | 8081 | 8082 | 80 |
 | Backend | 3002 | 3003 | 3001 |
 | Database | 5433 | 5434 | 5432 |
-| MinIO API | 9002 | 9004 | 9000 |
-| MinIO Console | 9003 | 9005 | 9001 |
+| S3 API (Versity S3 Gateway) | 9002 | 9004 | not published |
 
 ## How the Frontend Finds the Backend
 

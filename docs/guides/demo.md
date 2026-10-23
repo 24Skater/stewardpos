@@ -12,7 +12,7 @@ This is a simplified Docker setup for quick demos and local development.
 2. **Access the application:**
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3001
-   - MinIO Console: http://localhost:9001 (minioadmin / minioadmin123)
+   - S3 API: http://localhost:9000 (credentials are `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`)
    - Database: localhost:5432
 
 3. **Default credentials:**
@@ -22,7 +22,7 @@ This is a simplified Docker setup for quick demos and local development.
 ## What's Included
 
 - PostgreSQL database (auto-seeded with demo data)
-- MinIO storage (S3-compatible)
+- Object storage (Versity S3 Gateway, S3-compatible)
 - Backend API
 - Frontend application
 

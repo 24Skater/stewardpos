@@ -56,7 +56,7 @@
       Storage Adapters
     </text>
     <text x="600" y="330" text-anchor="middle" font-size="10" fill="white">LocalStorage</text>
-    <text x="600" y="350" text-anchor="middle" font-size="10" fill="white">S3 / MinIO</text>
+    <text x="600" y="350" text-anchor="middle" font-size="10" fill="white">S3 / Versity gateway</text>
     <text x="600" y="370" text-anchor="middle" font-size="10" fill="white">Azure Blob</text>
   </g>
 

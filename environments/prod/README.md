@@ -16,7 +16,7 @@ It used to hold a `docker-compose.prod.yml` that *overlaid* the development
 stack, and that arrangement was the problem rather than a detail of it.
 
 An overlay inherits everything it does not override, and the base stack
-publishes Postgres, MinIO and the API on host ports because that is what a
+publishes Postgres, object storage and the API on host ports because that is what a
 developer wants. The prod overlay overrode some of those and not others, so
 following this directory's instructions put a database on the public internet,
 listening on 5432, behind whatever password the operator had set. It also had no

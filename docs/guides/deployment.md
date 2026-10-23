@@ -36,7 +36,7 @@ cp .env.dev.example .env.dev
 - Frontend: http://localhost:8081
 - Backend: http://localhost:3002
 - Database: localhost:5433
-- MinIO Console: http://localhost:9003
+- S3 API: http://localhost:9002
 
 ### QA/Staging Environment
 
@@ -59,7 +59,7 @@ cp .env.qa.example .env.qa
 - Frontend: http://localhost:8082
 - Backend: http://localhost:3003
 - Database: localhost:5434
-- MinIO Console: http://localhost:9005
+- S3 API: http://localhost:9004
 
 ### Production Environment
 
@@ -89,7 +89,7 @@ cp .env.prod.example .env.prod
 - Frontend: Configured via FRONTEND_PORT (default: 80)
 - Backend: Configured via BACKEND_PORT (default: 3001)
 - Database: Configured via DB_HOST/DB_PORT
-- MinIO: Configured via ports 9000/9001
+- S3 API: Configured via S3_PORT (not published in production)
 
 ## Manual Deployment
 
@@ -119,8 +119,7 @@ docker compose -f docker-compose.prod.yml up -d
 | Frontend | 8081 | 8082 | 80 (configurable) |
 | Backend | 3002 | 3003 | 3001 (configurable) |
 | Database | 5433 | 5434 | 5432 (configurable) |
-| MinIO API | 9002 | 9004 | 9000 |
-| MinIO Console | 9003 | 9005 | 9001 |
+| S3 API (Versity S3 Gateway) | 9002 | 9004 | not published |
 
 ### Environment Variables
 
@@ -162,7 +161,7 @@ Each environment has its own `.env` file:
 ## Storage Configuration
 
 ### Development/QA
-- Uses MinIO in Docker
+- Uses the s3 container (Versity S3 Gateway) in Docker
 - Local volumes for data
 
 ### Production

@@ -9,6 +9,29 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Object storage is now Versity S3 Gateway instead of MinIO.** MinIO stopped
+  publishing images anyone can pull: `quay.io/minio/*` and Docker Hub's
+  `minio/minio` both answer 401, so a fresh install could not start and CI's
+  E2E job failed before running a test. The `s3` service
+  (`versity/versitygw:v1.9.0`, Apache-2.0) runs on your own hardware like
+  MinIO did, opens only the S3 API port, and refuses to start without
+  credentials. Objects are plain files under `/data/<bucket>/` on the `s3_data`
+  volume. `s3-createbucket` replaces `minio-createbucket` and needs no client
+  image. The backend now waits for `s3` to be healthy, so
+  `STORAGE_ADAPTER=s3` no longer races it at startup.
+
+  **Upgrading:** rename `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` in `.env` to
+  `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`. If you set
+  `S3_ENDPOINT=http://minio:9000`, change it to `http://s3:7070` or remove it.
+  Installs on the default `STORAGE_ADAPTER=localstorage` have nothing in object
+  storage and need nothing else. With `STORAGE_ADAPTER=s3`, copy objects across
+  before switching, for example
+  `rclone copy minio:stewardpos s3new:stewardpos` while the old container still
+  runs from its cached image. The old `minio_data` volume is left in place
+  until you remove it.
+
 ### Added
 
 - Both inventory screens can now edit a product's variants — size, colour, price
