@@ -10,3 +10,21 @@ minimumReleaseAgeExclude:
   - '@steward-apps/ui@1.1.0'
   - '@steward-apps/tokens@1.0.0'
   - '@steward-apps/tokens@1.1.0'
+# Transitive fixes for advisories (pnpm audit). Mirrored in package.json
+# "pnpm", which is where CI's pnpm 9 reads them; keep the two in step. Drop
+# each one once its parent ships the patched version.
+overrides:
+  js-yaml@4: ^4.3.2
+  brace-expansion@1: ^1.1.21
+  dompurify: ^3.4.16
+  source-map-js: ^1.2.2
+  undici@7: ^7.29.1
+  brace-expansion@5: ^5.0.12
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3: no patched release exists. Reached only through
+    # tailwind 3's file watcher inside lovable-tagger, on our own source.
+    - GHSA-vfj7-8cjw-p6xm
+    # postcss-selector-parser: the fix is 7.x, a major the tailwind 3 inside
+    # lovable-tagger cannot take. It parses our own CSS at build time.
+    - GHSA-rj75-hqrm-r3gf
