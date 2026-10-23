@@ -15,14 +15,10 @@ services:
     volumes:
       - postgres_data_qa:/var/lib/postgresql/data
 
-  minio:
+  s3:
     container_name: stewardpos-storage-qa
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-qaadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-qa_secure_password_change_me}
     ports:
-      - "9004:9000"
-      - "9005:9001"
+      - "9004:7070"
 
   backend:
     container_name: stewardpos-backend-qa

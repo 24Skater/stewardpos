@@ -22,5 +22,5 @@ echo "Services:"
 echo "  Frontend: http://localhost:8082"
 echo "  Backend:  http://localhost:3003"
 echo "  Database: localhost:5434"
-echo "  MinIO:    http://localhost:9005"
+echo "  S3 API:   http://localhost:9004"
 

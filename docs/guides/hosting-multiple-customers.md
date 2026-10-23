@@ -48,13 +48,13 @@ actually hurts.
    │ alpha.example.com    │               │ beta.example.com     │
    │  frontend + backend  │               │  frontend + backend  │
    │  postgres  (private) │               │  postgres  (private) │
-   │  minio     (private) │               │  minio     (private) │
+   │  s3        (private) │               │  s3        (private) │
    │  own secrets, own    │               │  own secrets, own    │
    │  volumes             │               │  volumes             │
    └──────────────────────┘               └──────────────────────┘
 ```
 
-Each customer gets their own database, uploads volume, logs, MinIO bucket and —
+Each customer gets their own database, uploads volume, logs, S3 bucket and —
 importantly — their own `JWT_SECRET`, `CREDENTIALS_KEY`, database password and
 object-store credentials. `scripts/tenant.sh` generates all four per tenant with
 `openssl rand`; none of them is ever shared or reused.
@@ -194,7 +194,7 @@ conversation with someone qualified before the first paying customer, not after.
 
 ## When to stop doing it this way
 
-Silos cost one Postgres, one MinIO and one Node process per customer. That is
+Silos cost one Postgres, one S3 gateway and one Node process per customer. That is
 fine for tens of customers on a decent machine and wasteful at hundreds.
 
 Reach for pooling when **all** of these are true:

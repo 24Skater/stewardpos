@@ -15,14 +15,10 @@ services:
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
 
-  minio:
+  s3:
     container_name: stewardpos-storage-dev
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-devadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-dev_password_change_me}
     ports:
-      - "9002:9000"  # Different ports
-      - "9003:9001"
+      - "9002:7070"
 
   backend:
     container_name: stewardpos-backend-dev

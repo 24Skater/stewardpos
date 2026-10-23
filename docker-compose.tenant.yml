@@ -12,7 +12,7 @@
 #   * No Caddy, and nothing publishes a port. Ports 80 and 443 can be bound once
 #     per host; docker-compose.edge.yml binds them and routes by hostname.
 #   * The backend and frontend join the shared `stewardpos_edge` network under a
-#     per-tenant alias, so the edge can address them. Postgres and MinIO do not -
+#     per-tenant alias, so the edge can address them. Postgres and object storage do not -
 #     they stay on this tenant's private network, which is what makes one
 #     customer's database unreachable from another customer's containers rather
 #     than merely unpublished.
@@ -22,8 +22,8 @@
 #
 # ## What is NOT shared
 #
-# Database, uploads volume, logs, MinIO bucket, and every secret: JWT_SECRET,
-# CREDENTIALS_KEY, POSTGRES_PASSWORD, MinIO credentials. `scripts/tenant.sh new`
+# Database, uploads volume, logs, S3 bucket, and every secret: JWT_SECRET,
+# CREDENTIALS_KEY, POSTGRES_PASSWORD, S3 credentials. `scripts/tenant.sh new`
 # generates each of them per tenant. That is the whole isolation model, and it
 # is why this is safe today while a shared database is not: no query in this
 # codebase filters by organisation yet, so one database per customer is the only
@@ -47,41 +47,55 @@ services:
     networks:
       - tenant
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+  # Object storage: Versity S3 Gateway, an Apache-2.0 S3 server that keeps each
+  # object as a plain file under /data/<bucket>/ on the s3_data volume, so a
+  # backup is a copy of a directory. It replaced MinIO when MinIO stopped
+  # publishing images anyone can pull (quay.io and Docker Hub both answer 401).
+  # It opens one port, the S3 API, and refuses to start without both
+  # credentials, so there is no anonymous mode to fall into. Pinned: a floating
+  # tag is a dependency on someone else's Tuesday.
+  s3:
+    image: versity/versitygw:v1.9.0
     restart: unless-stopped
+    command: ["posix", "/data"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
-    command: server /data --console-address ":9001"
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID must be set}
+      ROOT_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY must be set}
+      VGW_HEALTH: /health
+      VGW_QUIET: "true"
     volumes:
-      - minio_data:/data
+      - s3_data:/data
+    depends_on:
+      s3-createbucket:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:7070/health"]
       interval: 30s
-      timeout: 20s
+      timeout: 10s
       retries: 3
     networks:
       - tenant
 
-  minio-createbucket:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
-      mc mb --ignore-existing local/$${S3_BUCKET} &&
-      echo bucket-ready $${S3_BUCKET}
-      "
+  # A bucket is a top-level directory on the gateway's volume. Making it before
+  # the gateway starts means STORAGE_ADAPTER=s3 on a fresh volume passes the
+  # backend's startup check on the bucket. The name is checked first: it
+  # becomes a path.
+  s3-createbucket:
+    image: versity/versitygw:v1.9.0
+    entrypoint:
+      - sh
+      - -c
+      - |
+        case "$$S3_BUCKET" in
+          ""|*[!a-z0-9.-]*) echo "S3_BUCKET must be lowercase letters, digits, dots and hyphens" >&2; exit 1 ;;
+        esac
+        mkdir -p "/data/$$S3_BUCKET" && echo "bucket ready: $$S3_BUCKET"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
       S3_BUCKET: ${S3_BUCKET:-stewardpos}
+    volumes:
+      - s3_data:/data
+    network_mode: none
     restart: "no"
-    networks:
-      - tenant
 
   backend:
     image: ghcr.io/24skater/stewardpos-backend:${IMAGE_TAG:-local}
@@ -142,11 +156,11 @@ services:
       AUTO_SEED: "false"
 
       STORAGE_ADAPTER: ${STORAGE_ADAPTER:-localstorage}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://s3:7070}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-stewardpos}
-      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID must be set}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY must be set}
 
       EMAIL_ADAPTER: ${EMAIL_ADAPTER:-console}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@${TENANT_DOMAIN}}
@@ -160,6 +174,9 @@ services:
       - backend_uploads:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      # STORAGE_ADAPTER=s3 checks the bucket at startup and exits if it cannot.
+      s3:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -208,7 +225,7 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
+  s3_data:
   backend_logs:
   backend_uploads:
 

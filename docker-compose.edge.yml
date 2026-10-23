@@ -47,7 +47,7 @@ volumes:
 
 networks:
   # Created here, joined by every tenant stack as `external: true`. Only the
-  # backend and frontend of each tenant attach to it - their Postgres and MinIO
+  # backend and frontend of each tenant attach to it - their Postgres and object storage
   # stay on the tenant's own private network, so one tenant's database is not
   # merely unpublished but unreachable from any other tenant's containers.
   edge:

@@ -3,13 +3,13 @@
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Standalone, not an overlay on docker-compose.yml. That is deliberate: the base
-# file is a development stack and publishes Postgres, MinIO and the backend on
+# file is a development stack and publishes Postgres, object storage and the backend on
 # host ports. An overlay inherits those unless every one is overridden, and
 # forgetting one exposes a database to the internet. A separate file cannot
 # inherit a mistake.
 #
 # Only Caddy publishes ports. Everything else talks over the internal network,
-# so there is no host-level path to Postgres, MinIO or the API except through
+# so there is no host-level path to Postgres, object storage or the API except through
 # TLS on 443.
 #
 # Fill .env from .env.prod.example first — the backend refuses to start in
@@ -62,44 +62,56 @@ services:
     networks:
       - stewardpos
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+  # Object storage: Versity S3 Gateway, an Apache-2.0 S3 server that keeps each
+  # object as a plain file under /data/<bucket>/ on the s3_data volume, so a
+  # backup is a copy of a directory. It replaced MinIO when MinIO stopped
+  # publishing images anyone can pull (quay.io and Docker Hub both answer 401).
+  # It opens one port, the S3 API, and refuses to start without both
+  # credentials, so there is no anonymous mode to fall into. Pinned: a floating
+  # tag is a dependency on someone else's Tuesday.
+  s3:
+    image: versity/versitygw:v1.9.0
     restart: unless-stopped
+    command: ["posix", "/data"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
-    command: server /data --console-address ":9001"
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID must be set}
+      ROOT_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY must be set}
+      VGW_HEALTH: /health
+      VGW_QUIET: "true"
     volumes:
-      - minio_data:/data
+      - s3_data:/data
+    depends_on:
+      s3-createbucket:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:7070/health"]
       interval: 30s
-      timeout: 20s
+      timeout: 10s
       retries: 3
     networks:
       - stewardpos
 
-  # Creates the bucket MinIO does not create for itself, then exits. Without it,
-  # STORAGE_ADAPTER=s3 on a fresh volume fails the backend's startup check on a
-  # bucket that was never made.
-  minio-createbucket:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
-      mc mb --ignore-existing local/$${S3_BUCKET} &&
-      echo 'bucket ready: '$${S3_BUCKET}
-      "
+  # A bucket is a top-level directory on the gateway's volume. Making it before
+  # the gateway starts means STORAGE_ADAPTER=s3 on a fresh volume passes the
+  # backend's startup check on the bucket. The name is checked first: it
+  # becomes a path.
+  s3-createbucket:
+    image: versity/versitygw:v1.9.0
+    entrypoint:
+      - sh
+      - -c
+      - |
+        case "$$S3_BUCKET" in
+          ""|*[!a-z0-9.-]*) echo "S3_BUCKET must be lowercase letters, digits, dots and hyphens" >&2; exit 1 ;;
+        esac
+        mkdir -p "/data/$$S3_BUCKET" && echo "bucket ready: $$S3_BUCKET"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
       S3_BUCKET: ${S3_BUCKET:-stewardpos}
+    volumes:
+      - s3_data:/data
+    network_mode: none
     restart: "no"
-    networks:
-      - stewardpos
+
   backend:
     # Pull a published image when IMAGE_TAG is set, build from source otherwise.
     #
@@ -193,15 +205,15 @@ services:
 
       # Uploads. localstorage keeps images on the backend_uploads volume and is
       # correct for a single backend; set STORAGE_ADAPTER=s3 to put them in the
-      # MinIO container below, or in a real bucket by changing S3_ENDPOINT.
+      # s3 container above, or in a real bucket by changing S3_ENDPOINT.
       #
       # These were six MINIO_* variables naming nothing the backend read.
       STORAGE_ADAPTER: ${STORAGE_ADAPTER:-localstorage}
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://s3:7070}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-stewardpos}
-      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID must be set}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY must be set}
 
       EMAIL_ADAPTER: ${EMAIL_ADAPTER:-console}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@${DOMAIN}}
@@ -212,13 +224,16 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     volumes:
       - backend_logs:/app/logs
-      # Uploads live on a volume rather than in the image: MinIO is optional and
+      # Uploads live on a volume rather than in the image: the s3 bucket is optional and
       # the disk path is the default, so this is where a shop's product photos
       # and receipt logos actually are. It is in the backup script for that
       # reason.
       - backend_uploads:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      # STORAGE_ADAPTER=s3 checks the bucket at startup and exits if it cannot.
+      s3:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
@@ -262,7 +277,7 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
+  s3_data:
   backend_logs:
   backend_uploads:
   caddy_data:

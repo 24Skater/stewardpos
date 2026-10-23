@@ -22,5 +22,5 @@ Write-Host "`nServices:" -ForegroundColor Cyan
 Write-Host "  Frontend: http://localhost:8081" -ForegroundColor White
 Write-Host "  Backend:  http://localhost:3002" -ForegroundColor White
 Write-Host "  Database: localhost:5433" -ForegroundColor White
-Write-Host "  MinIO:    http://localhost:9003" -ForegroundColor White
+Write-Host "  S3 API:   http://localhost:9002" -ForegroundColor White
 

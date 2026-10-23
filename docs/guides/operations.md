@@ -15,7 +15,7 @@ aliasing.
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Five services: `caddy`, `postgres`, `minio`, `backend`, `frontend`. The backend
+Five services: `caddy`, `postgres`, `s3`, `backend`, `frontend`. The backend
 reports `healthy` once its own health check passes; the others report `running`.
 
 ```bash

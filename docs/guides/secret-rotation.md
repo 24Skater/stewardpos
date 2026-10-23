@@ -18,8 +18,8 @@ What was in it:
 |---|---|---|
 | `JWT_SECRET` | Signs every session token | **Critical** |
 | `POSTGRES_PASSWORD` / `DB_PASSWORD` | The application database | **Critical** |
-| `MINIO_ROOT_PASSWORD` | Object storage root account | High |
-| `POSTGRES_USER` / `MINIO_ROOT_USER` | Usernames, not secrets | Informational |
+| `S3_SECRET_ACCESS_KEY` | Object storage root account | High |
+| `POSTGRES_USER` / `S3_ACCESS_KEY_ID` | Usernames, not secrets | Informational |
 
 The `JWT_SECRET` is the sharp one. Knowing it means being able to *mint* a
 valid session token for any user, including an admin — no password required,
@@ -84,10 +84,13 @@ on **first** initialisation of the data volume — changing it in `.env` alone
 does nothing to an existing database. The `ALTER USER` above is what actually
 changes it.
 
-### 3. MinIO / S3 credentials
+### 3. S3 credentials
 
-Only if `STORAGE_ADAPTER=s3`. Issue a new access key pair in your provider's
-console (or MinIO's), update `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`,
+For the bundled `s3` container, set a new `S3_SECRET_ACCESS_KEY` in `.env` and
+`docker compose up -d`: the gateway and the backend read the same variable, so
+both switch together and the old secret stops working when the gateway
+restarts. For a hosted bucket (`STORAGE_ADAPTER=s3` against your provider),
+issue a new access key pair in the provider's console, update both variables,
 restart, confirm an image still loads, then **delete the old pair**. A rotation
 that leaves the old key working is not a rotation.
 

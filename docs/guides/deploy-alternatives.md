@@ -35,9 +35,10 @@ container and will not work. Use your provider's snapshots for the database —
 and keep running the script for uploads and `.env`, or replace it with your own.
 A provider snapshot alone is not a full backup of this application.
 
-## S3 instead of MinIO
+## A hosted bucket instead of the s3 container
 
-MinIO exists so the stack is self-contained. Any S3-compatible store works:
+The `s3` container (Versity S3 Gateway) exists so the stack is self-contained
+and runs entirely on your own hardware. Any S3-compatible store works instead:
 
 ```yaml
 backend:
@@ -50,7 +51,8 @@ backend:
     S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
 ```
 
-Then drop the `minio` service.
+Then drop the `s3` and `s3-createbucket` services, and `s3` from the backend's
+`depends_on`.
 
 Note that uploads currently default to a **volume-backed disk path** rather than
 object storage, and that is deliberate — it is correct until there is more than
