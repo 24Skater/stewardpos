@@ -56,12 +56,18 @@ export default defineConfig({
        *
        * Every number here was checked by raising it until the run failed, then
        * setting it back. A gate nobody has watched fail is not a gate.
+       *
+       * Re-baselined for vitest 4, with the owner's sign-off (2026-10-23). Its
+       * v8 provider maps coverage through the AST, and the same suite over the
+       * same files read 66.6 / 77.9 / 38.5 / 66.6 (statements / branches /
+       * functions / lines) on vitest 3 against 47.1 / 38.4 / 34.5 / 48.0 now:
+       * a stricter count, not lost tests. The ratchet starts again from here.
        */
       thresholds: {
-        statements: 64,
-        branches: 75,
-        functions: 36,
-        lines: 64,
+        statements: 47,
+        branches: 38,
+        functions: 34,
+        lines: 47,
 
         /**
          * The pure logic behind the register: change due, permission checks,
@@ -77,8 +83,8 @@ export default defineConfig({
 
         // The transport every page depends on, and the export path that has
         // shipped a silent failure before.
-        'src/lib/api-client.ts': { statements: 87, branches: 92, functions: 86, lines: 87 },
-        'src/lib/export-core.ts': { statements: 93, branches: 91, functions: 78, lines: 93 },
+        'src/lib/api-client.ts': { statements: 85, branches: 85, functions: 85, lines: 85 },
+        'src/lib/export-core.ts': { statements: 93, branches: 90, functions: 78, lines: 93 },
       },
     },
   },
