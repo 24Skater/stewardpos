@@ -252,3 +252,82 @@ describe('GET /api/receipts/search', () => {
     expect(searchOrders.mock.calls[0][0].limit).toBe(50);
   });
 });
+
+describe('POST /api/receipts/:id/start-return', () => {
+  const SALE = {
+    id: 'o1',
+    total: 30,
+    createdAt: 1,
+    customerEmail: 'a@b.c',
+    paymentMethod: 'Cash',
+    items: [
+      { id: 'oi-1', productId: 'p1', nameSnapshot: 'Mug', quantity: 3, unitPrice: 5 },
+      { id: 'oi-2', productId: 'p2', nameSnapshot: 'Tea', quantity: 1, unitPrice: 15 },
+    ],
+  };
+  const startReturn = () => request(app).post('/api/receipts/o1/start-return').set(auth());
+
+  it('offers every unit of a sale nothing has been returned from', async () => {
+    getOrderById.mockResolvedValue(SALE);
+
+    const { body } = await startReturn();
+
+    expect(body.data.hasReturnableItems).toBe(true);
+    expect(body.data.returnableItems.map((i: { returnableQuantity: number }) => i.returnableQuantity)).toEqual([3, 1]);
+    expect(body.data.order).toEqual({
+      id: 'o1',
+      createdAt: 1,
+      total: 30,
+      customerEmail: 'a@b.c',
+      customerPhone: undefined,
+      paymentMethod: 'Cash',
+    });
+  });
+
+  it('subtracts what completed returns already took back, line by line', async () => {
+    getOrderById.mockResolvedValue(SALE);
+    getReturnsByOrder.mockResolvedValue([
+      { status: 'completed', items: [{ originalOrderItemId: 'oi-1', returnQuantity: 2 }] },
+      { status: 'completed', items: [{ originalOrderItemId: 'oi-2', returnQuantity: 1 }] },
+      // Pending and rejected returns have not taken anything back yet.
+      { status: 'pending', items: [{ originalOrderItemId: 'oi-1', returnQuantity: 1 }] },
+      { status: 'rejected', items: [{ originalOrderItemId: 'oi-1', returnQuantity: 1 }] },
+    ]);
+
+    const { body } = await startReturn();
+
+    const [mug, tea] = body.data.returnableItems;
+    expect(mug).toMatchObject({ alreadyReturned: 2, returnableQuantity: 1, canReturn: true });
+    expect(tea).toMatchObject({ alreadyReturned: 1, returnableQuantity: 0, canReturn: false });
+    expect(body.data.existingReturns).toBe(4);
+  });
+
+  it('reports nothing returnable once everything has come back, never a negative quantity', async () => {
+    getOrderById.mockResolvedValue({ ...SALE, items: [SALE.items[1]] });
+    getReturnsByOrder.mockResolvedValue([
+      { status: 'completed', items: [{ originalOrderItemId: 'oi-2', returnQuantity: 2 }] },
+    ]);
+
+    const { body } = await startReturn();
+
+    expect(body.data.hasReturnableItems).toBe(false);
+    expect(body.data.returnableItems[0].returnableQuantity).toBe(0);
+  });
+
+  it('404s a receipt that does not exist', async () => {
+    getOrderById.mockResolvedValue(null);
+
+    expect((await startReturn()).status).toBe(404);
+  });
+});
+
+describe('GET /api/receipts/:id/history', () => {
+  it('returns the email send history for the receipt', async () => {
+    getReceiptEmailHistory.mockResolvedValue([{ id: 'e1', status: 'sent' }]);
+
+    const { body } = await request(app).get('/api/receipts/o1/history').set(auth());
+
+    expect(getReceiptEmailHistory).toHaveBeenCalledWith('o1');
+    expect(body.data).toEqual([{ id: 'e1', status: 'sent' }]);
+  });
+});

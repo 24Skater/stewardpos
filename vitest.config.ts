@@ -62,12 +62,15 @@ export default defineConfig({
        * same files read 66.6 / 77.9 / 38.5 / 66.6 (statements / branches /
        * functions / lines) on vitest 3 against 47.1 / 38.4 / 34.5 / 48.0 now:
        * a stricter count, not lost tests. The ratchet starts again from here.
+       *
+       * Ratcheted 2026-11-26 after the 80% coverage push: suite measured
+       * 89.1 / 83.8 / 81.9 / 90.0, floors set just under.
        */
       thresholds: {
-        statements: 47,
-        branches: 38,
-        functions: 34,
-        lines: 47,
+        statements: 88,
+        branches: 82,
+        functions: 80,
+        lines: 89,
 
         /**
          * The pure logic behind the register: change due, permission checks,

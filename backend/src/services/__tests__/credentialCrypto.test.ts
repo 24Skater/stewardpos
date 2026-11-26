@@ -130,3 +130,71 @@ describe('a changed key', () => {
     expect(() => withNewKey.decryptSecret(stored)).toThrow(/may have changed/i);
   });
 });
+
+describe('decryptCredentials', () => {
+  it('opens every encrypted secret in a bag and passes the rest through', async () => {
+    const mod = await loadModule();
+    const stored = mod.encryptCredentials({ secretKey: 'sk_live_1', legacy: '', enabled: true });
+
+    expect(mod.decryptCredentials({ ...stored, plain: 'pk_old' })).toEqual({
+      secretKey: 'sk_live_1',
+      legacy: '',
+      enabled: true,
+      plain: 'pk_old',
+    });
+  });
+});
+
+describe('warnIfCredentialsUnprotected', () => {
+  async function withLogger() {
+    const mod = await loadModule();
+    const { default: logger } = await import('../../utils/logger');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => logger);
+    return { mod, warn, error };
+  }
+
+  it('says nothing when there are no credentials, or none are strings', async () => {
+    const { mod, warn, error } = await withLogger();
+
+    mod.warnIfCredentialsUnprotected(null);
+    mod.warnIfCredentialsUnprotected(undefined);
+    mod.warnIfCredentialsUnprotected({ enabled: true, blank: '' });
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('says nothing when every stored secret is already encrypted', async () => {
+    const { mod, warn, error } = await withLogger();
+
+    mod.warnIfCredentialsUnprotected(mod.encryptCredentials({ secretKey: 'sk_live_1' }));
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('warns, counting only the plaintext ones, when a key exists but old values predate it', async () => {
+    const { mod, warn, error } = await withLogger();
+
+    mod.warnIfCredentialsUnprotected({
+      a: 'sk_live_plain',
+      b: 'sk_live_plain_2',
+      c: mod.encryptSecret('sk_live_enc'),
+    });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^2 payment credential\(s\) predate encryption/));
+  });
+
+  it('raises an error when secrets are in the clear and no key is configured', async () => {
+    delete process.env.CREDENTIALS_KEY;
+    const { mod, warn, error } = await withLogger();
+
+    mod.warnIfCredentialsUnprotected({ secretKey: 'sk_live_plain' });
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/CREDENTIALS_KEY is not set/));
+    expect(mod.encryptionAvailable()).toBe(false);
+  });
+});

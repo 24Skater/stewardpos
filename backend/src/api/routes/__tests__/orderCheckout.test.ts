@@ -24,6 +24,8 @@ const getRegisterById = vi.fn();
 const getRegisters = vi.fn();
 const getOpenDrawerSession = vi.fn();
 const getOpenShiftForRegister = vi.fn();
+const getPaymentAttemptById = vi.fn();
+const updatePaymentAttempt = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -45,6 +47,8 @@ vi.mock('../../../services/database', () => ({
       getRegisters,
       getOpenDrawerSession,
       getOpenShiftForRegister,
+      getPaymentAttemptById,
+      updatePaymentAttempt,
     }),
   },
 }));
@@ -478,5 +482,70 @@ describe('reading orders', () => {
     });
 
     expect((await request(app).get('/api/orders').set('Authorization', `Bearer ${token()}`)).status).toBe(403);
+  });
+});
+
+describe('binding a card payment attempt to the sale', () => {
+  const ATTEMPT_ID = '11111111-1111-4111-8111-111111111111';
+  const cardSale = () =>
+    request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Card', attemptId: ATTEMPT_ID });
+
+  it('records the sale and marks the attempt completed against it', async () => {
+    getPaymentAttemptById.mockResolvedValue({ id: ATTEMPT_ID, orderId: null, amountCents: 2000 });
+    updatePaymentAttempt.mockResolvedValue({});
+
+    const response = await cardSale();
+
+    expect(response.status).toBe(201);
+    expect(updatePaymentAttempt).toHaveBeenCalledWith(ATTEMPT_ID, { status: 'completed', orderId: 'o1' });
+  });
+
+  it('still records the sale when linking the attempt fails, since the money was taken', async () => {
+    getPaymentAttemptById.mockResolvedValue({ id: ATTEMPT_ID, orderId: null, amountCents: 2000 });
+    updatePaymentAttempt.mockRejectedValue(new Error('db down'));
+
+    expect((await cardSale()).status).toBe(201);
+  });
+
+  it('404s an attempt that does not exist, and records nothing', async () => {
+    getPaymentAttemptById.mockResolvedValue(null);
+
+    const response = await cardSale();
+
+    expect(response.status).toBe(404);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('refuses to bind one charge to a second sale', async () => {
+    getPaymentAttemptById.mockResolvedValue({ id: ATTEMPT_ID, orderId: 'o-earlier', amountCents: 2000 });
+
+    const response = await cardSale();
+
+    expect(response.status).toBe(409);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('refuses a sale whose card portion differs from what was actually charged', async () => {
+    // $20 of tea, but only $15 went through the terminal.
+    getPaymentAttemptById.mockResolvedValue({ id: ATTEMPT_ID, orderId: null, amountCents: 1500 });
+
+    const response = await cardSale();
+
+    expect(response.status).toBe(422);
+    expect(response.body.error).toContain('$15.00 was charged');
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('rejects an attempt id that is not a UUID', async () => {
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token()}`)
+      .send({ ...CART, paymentMethod: 'Card', attemptId: 'not-a-uuid' });
+
+    expect(response.status).toBe(400);
+    expect(getPaymentAttemptById).not.toHaveBeenCalled();
   });
 });
