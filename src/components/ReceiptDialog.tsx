@@ -135,35 +135,39 @@ export default function ReceiptDialog({
         <title>Receipt - ${orderId}</title>
         <style>
           @page { 
-            size: 80mm auto; 
-            margin: 5mm;
+            size: 80mm auto;
+            /* The printer already keeps its own unprintable edge; adding more here wasted ~8mm a side. */
+            margin: 0;
           }
           body { 
-            font-family: 'Courier New', monospace; 
-            font-size: 12px; 
-            max-width: 280px;
-            margin: 0 auto;
-            padding: 10px;
+            font-family: 'Courier New', monospace;
+            /* Thermal heads cannot print grey (it dithers to faint dots) and thin strokes fade, so print solid black bold. */
+            color: #000;
+            font-weight: bold;
+            font-size: 13px;
+            margin: 0;
+            /* NuPrint 210 fades past its right edge: keep ~5/16in (8mm) clear on the right only. */
+            padding: 1mm 8mm 1mm 0;
           }
           .header { text-align: center; margin-bottom: 15px; }
           .logo { max-height: 60px; max-width: 200px; margin-bottom: 10px; }
-          .store-name { font-size: 16px; font-weight: bold; }
-          .store-info { font-size: 11px; color: #666; }
-          .header-text { font-style: italic; margin-top: 10px; font-size: 11px; }
+          .store-name { font-size: 16px; }
+          .store-info { font-size: 12px; }
+          .header-text { font-style: italic; margin-top: 10px; font-size: 13px; }
           .separator { border-top: 1px dashed #000; margin: 10px 0; }
           .item { display: flex; justify-content: space-between; margin: 5px 0; }
-          .item-details { font-size: 10px; color: #666; margin-left: 10px; }
+          .item-details { font-size: 12px; margin-left: 10px; }
           .totals { margin-top: 10px; }
           .total-line { display: flex; justify-content: space-between; }
-          .grand-total { font-weight: bold; font-size: 14px; margin-top: 5px; }
-          .footer { text-align: center; margin-top: 15px; font-size: 11px; }
+          .grand-total { font-size: 15px; margin-top: 5px; }
+          .footer { text-align: center; margin-top: 15px; font-size: 13px; }
           .barcode { text-align: center; margin: 15px 0; }
           /* The barcode is an inline SVG in the copied markup. The rule that
              used to live here filled a 180x40 box with solid black — that was
              the placeholder, and it would now paint over the real symbol. */
           .barcode svg { height: 40px; width: auto; }
-          .barcode-text { font-size: 10px; margin-top: 5px; }
-          .footer-message { white-space: pre-line; color: #666; }
+          .barcode-text { font-size: 12px; margin-top: 5px; }
+          .footer-message { white-space: pre-line; }
         </style>
       </head>
       <body>
