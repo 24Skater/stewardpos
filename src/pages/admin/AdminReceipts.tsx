@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import Barcode from '@/components/Barcode';
+import { printReceipt } from '@/lib/print-receipt';
 import { adminApi, receiptsApi, returnsApi, type ReturnReasonCode } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays, subMonths } from 'date-fns';
@@ -117,6 +118,15 @@ export default function AdminReceipts() {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 25;
   const { toast } = useToast();
+  const receiptRef = useRef<HTMLDivElement>(null);
+
+  // Print just the receipt, not the whole admin page (which fed ~2ft of thermal paper).
+  const handlePrintReceipt = () => {
+    if (!receiptRef.current || !selectedReceipt) return;
+    if (!printReceipt(receiptRef.current, `Receipt - ${selectedReceipt.id.slice(0, 8).toUpperCase()}`)) {
+      toast({ title: 'Unable to open print window', variant: 'destructive' });
+    }
+  };
 
   useEffect(() => {
     loadReceipts();
@@ -581,7 +591,7 @@ export default function AdminReceipts() {
                   <TabsContent value="receipt" className="space-y-4">
                     {/* Receipt Preview */}
                     <Card>
-                      <CardContent className="pt-6 font-mono text-sm bg-white text-black rounded max-w-[320px] mx-auto">
+                      <CardContent ref={receiptRef} className="pt-6 font-mono text-sm bg-white text-black rounded max-w-[320px] mx-auto">
                         {/* Header with branding */}
                         <div className="text-center mb-4">
                           {settings.receiptShowLogo !== false && settings.receiptLogoUrl && (
@@ -685,7 +695,7 @@ export default function AdminReceipts() {
                         <RotateCcw className="h-4 w-4 mr-2" />
                         Start Return
                       </Button>
-                      <Button variant="outline" onClick={() => window.print()}>
+                      <Button variant="outline" onClick={handlePrintReceipt}>
                         <Printer className="h-4 w-4 mr-2" />
                         Print
                       </Button>

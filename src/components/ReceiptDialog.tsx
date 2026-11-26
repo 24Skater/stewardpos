@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { adminApi } from '@/lib/api';
 import { Mail, Phone, Printer } from "lucide-react";
 import Barcode from '@/components/Barcode';
+import { printReceipt } from '@/lib/print-receipt';
 
 interface ReceiptSettings {
   storeName?: string;
@@ -121,68 +122,9 @@ export default function ReceiptDialog({
   const handlePrint = () => {
     const printContent = receiptRef.current;
     if (!printContent) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
+    if (!printReceipt(printContent, `Receipt - ${orderId}`)) {
       toast({ title: "Unable to open print window", variant: "destructive" });
-      return;
     }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - ${orderId}</title>
-        <style>
-          @page { 
-            size: 80mm auto;
-            /* The printer already keeps its own unprintable edge; adding more here wasted ~8mm a side. */
-            margin: 0;
-          }
-          body { 
-            font-family: 'Courier New', monospace;
-            /* Thermal heads cannot print grey (it dithers to faint dots) and thin strokes fade, so print solid black bold. */
-            color: #000;
-            font-weight: bold;
-            font-size: 13px;
-            margin: 0;
-            /* NuPrint 210 fades past its right edge: keep ~5/16in (8mm) clear on the right only. */
-            padding: 1mm 8mm 1mm 0;
-          }
-          .header { text-align: center; margin-bottom: 15px; }
-          .logo { max-height: 60px; max-width: 200px; margin-bottom: 10px; }
-          .store-name { font-size: 16px; }
-          .store-info { font-size: 12px; }
-          .header-text { font-style: italic; margin-top: 10px; font-size: 13px; }
-          .separator { border-top: 1px dashed #000; margin: 10px 0; }
-          .item { display: flex; justify-content: space-between; margin: 5px 0; }
-          .item-details { font-size: 12px; margin-left: 10px; }
-          .totals { margin-top: 10px; }
-          .total-line { display: flex; justify-content: space-between; }
-          .grand-total { font-size: 15px; margin-top: 5px; }
-          .footer { text-align: center; margin-top: 15px; font-size: 13px; }
-          .barcode { text-align: center; margin: 15px 0; }
-          /* The barcode is an inline SVG in the copied markup. The rule that
-             used to live here filled a 180x40 box with solid black — that was
-             the placeholder, and it would now paint over the real symbol. */
-          .barcode svg { height: 40px; width: auto; }
-          .barcode-text { font-size: 12px; margin-top: 5px; }
-          .footer-message { white-space: pre-line; }
-        </style>
-      </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-    printWindow.focus();
-    
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
   };
 
   const formatAddress = () => {
