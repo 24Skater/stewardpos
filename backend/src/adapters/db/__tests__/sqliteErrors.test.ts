@@ -26,6 +26,8 @@ type Call = [name: string, run: (a: SQLiteAdapter) => Promise<unknown>];
 const RANGE = { from: 0, to: 1 };
 
 const WRAPPED: Call[] = [
+  ['incrementPromoCodeUsage', (a) => a.incrementPromoCodeUsage('x')],
+  ['getPromoCodeUsageByCustomer', (a) => a.getPromoCodeUsageByCustomer('x', 'y')],
   ['getUserByEmail', (a) => a.getUserByEmail('x')],
   ['updateUserLastLogin', (a) => a.updateUserLastLogin('x')],
   ['getAllProducts', (a) => a.getAllProducts()],
@@ -180,13 +182,8 @@ const WRAPPED: Call[] = [
 ];
 
 /**
- * BUG (SQLite, low severity): these eight build their transaction with
- * `const transaction = this.db.transaction(...)` *above* the `try`, so a
- * driver failure at that point (here, a closed connection) escapes as a raw
- * `TypeError: The database connection is not open` instead of the
- * `DatabaseError` every other method throws. Failures inside the transaction
- * body are still wrapped — see the constraint tests in the other sqlite*
- * suites.
+ * These eight build their transaction lazily inside the `try`, so a driver failure
+ * there (here, a closed connection) is a `DatabaseError`, not a raw `TypeError`.
  */
 const TRANSACTION_BUILT_OUTSIDE_TRY: Call[] = [
   ['createProduct', (a) => a.createProduct({ name: 'x' })],
@@ -201,7 +198,6 @@ const TRANSACTION_BUILT_OUTSIDE_TRY: Call[] = [
 
 const BEST_EFFORT: Call[] = [
   ['updateApiKeyLastUsed', (a) => a.updateApiKeyLastUsed('x')],
-  ['incrementPromoCodeUsage', (a) => a.incrementPromoCodeUsage('x')],
   ['markWebhookEventHandled', (a) => a.markWebhookEventHandled('x')],
   ['markRefundFailed', (a) => a.markRefundFailed('x', null)],
   ['touchRegisterCredentialLastUsed', (a) => a.touchRegisterCredentialLastUsed('x')],
@@ -222,7 +218,7 @@ describeSqlite('SQLite adapter failure handling', () => {
     await expect(outcome).rejects.not.toThrow(/connection is not open/);
   });
 
-  it.fails.each(TRANSACTION_BUILT_OUTSIDE_TRY)('%s surfaces a closed database as a DatabaseError (pinned bug)', async (_name, run) => {
+  it.each(TRANSACTION_BUILT_OUTSIDE_TRY)('%s surfaces a closed database as a DatabaseError', async (_name, run) => {
     h.adapter.close();
 
     await expect(run(h.adapter)).rejects.toBeInstanceOf(DatabaseError);
@@ -234,11 +230,10 @@ describeSqlite('SQLite adapter failure handling', () => {
     await expect(run(h.adapter)).resolves.toBeUndefined();
   });
 
-  it('reports a closed connection as unreachable, and a lost promo count as zero uses', async () => {
+  it('reports a closed connection as unreachable', async () => {
     h.adapter.close();
 
     expect(await h.adapter.testConnection()).toBe(false);
-    expect(await h.adapter.getPromoCodeUsageByCustomer('x', 'y')).toBe(0);
   });
 });
 

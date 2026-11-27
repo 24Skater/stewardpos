@@ -227,10 +227,7 @@ describe('Inventory edit and delete', () => {
     await waitFor(() => expect(lastToast()).toMatchObject({ description: 'in use' }));
   });
 
-  // BUG: Inventory.tsx:296 picks the dialog title from whether the product has
-  // a name, not whether it is new, so typing the first letter of a new
-  // product's name flips "New Product" to "Edit Product".
-  it.fails('keeps the "New Product" title while a new product is being named', async () => {
+  it('keeps the "New Product" title while a new product is being named', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /add product/i }));
 

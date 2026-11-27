@@ -309,6 +309,41 @@ describe('AdminDiscounts promo codes', () => {
     );
   });
 
+  it('round-trips promo dates in local time west of UTC', async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const startsAt = Date.UTC(2030, 0, 15, 3, 30); // 22:30 on Jan 14 in New York
+      const expiresAt = Date.UTC(2030, 0, 20, 15, 0);
+      m.promos.list.mockResolvedValue([promo({ id: 'tz', code: 'TZ', startsAt, expiresAt })]);
+      renderPage();
+      await screen.findByText('Military');
+      openTab(/promo codes/i);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit TZ' }));
+      expect((screen.getByLabelText('Start Date *') as HTMLInputElement).value).toBe('2030-01-14T22:30');
+      expect((screen.getByLabelText('End Date') as HTMLInputElement).value).toBe('2030-01-20T10:00');
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+      await waitFor(() => expect(m.promos.update).toHaveBeenCalled());
+      expect(m.promos.update.mock.calls[0][1]).toMatchObject({
+        startsAt: new Date(startsAt).toISOString(),
+        expiresAt: new Date(expiresAt).toISOString(),
+      });
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
+  });
+
+  it('counts only currently active promos in the summary card', async () => {
+    renderPage();
+    await screen.findByText('Military');
+
+    // PROMOS has one live code; the inactive, expired, scheduled and exhausted ones do not count.
+    expect(screen.getByText('Active Promo Codes').parentElement?.parentElement?.textContent).toBe('Active Promo Codes1');
+  });
+
   it('edits a promo and deletes another', async () => {
     renderPage();
     await screen.findByText('Military');

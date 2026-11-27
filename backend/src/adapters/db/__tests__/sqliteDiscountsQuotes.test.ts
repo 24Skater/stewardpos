@@ -95,6 +95,17 @@ describeSqlite('promo codes on SQLite', () => {
     expect(await h.adapter.deletePromoCode(created.id)).toBe(false);
   });
 
+  it('updates every restriction field, encoded as create does', async () => {
+    const created = await h.adapter.createPromoCode(promo);
+    const patch = {
+      minItems: 3, firstOrderOnly: true, specificCustomers: ['c1'], appliesTo: 'products',
+      applicableIds: ['p1'], excludedIds: ['p2'], buyQuantity: 2, getQuantity: 1, getProductId: 'p3',
+      customerGroups: ['vip'], priority: 7,
+    };
+
+    expect(await h.adapter.updatePromoCode(created.id, patch)).toMatchObject(patch);
+  });
+
   it('wraps a duplicate code as a DatabaseError', async () => {
     await h.adapter.createPromoCode(promo);
 

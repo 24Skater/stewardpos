@@ -218,12 +218,7 @@ describe('AdminExports date window', () => {
     expect(toasts.at(-1)).toMatchObject({ title: 'Export completed successfully' });
   }, TIMEOUT);
 
-  // BUG: AdminExports.filterByDateRange parses the end date with
-  // `new Date('YYYY-MM-DD')` — UTC midnight — and then calls the *local*
-  // setHours(23,59,59,999). West of UTC that lands on the previous local day,
-  // so a sale made on the evening of the end date (or, in fact, any time that
-  // day) is dropped from the export. The start date has the mirror problem.
-  it.fails('includes a sale from the evening of the end date, west of UTC', async () => {
+  it('includes a sale from the evening of the end date, west of UTC', async () => {
     const previousTz = process.env.TZ;
     process.env.TZ = 'America/New_York';
     try {
@@ -397,11 +392,7 @@ describe('AdminExports returns', () => {
     expect(rows(files[0].text)).toContain('"Lovelace, Ada",ada@shop.test,1,10');
   }, TIMEOUT);
 
-  // BUG: the "Returns by Customer" PDF button calls exportReturnsByReasonToPDF
-  // with by-customer rows (AdminExports.tsx, case 'returns-customer'). The PDF
-  // is titled "Returns by Reason" and its Reason/Count/Value/Percentage columns
-  // read keys the rows do not have, so every cell is blank or $0.00.
-  it.fails('by-customer PDF names the customers and their refunds', async () => {
+  it('by-customer PDF names the customers and their refunds', async () => {
     await renderLoaded();
     openTab(/returns/i);
 
@@ -409,6 +400,19 @@ describe('AdminExports returns', () => {
 
     await waitFor(() => expect(pdfDocs).toHaveLength(1));
     expect(pdfDocs[0].tables[0].body.flat()).toContain('Lovelace, Ada');
+  }, TIMEOUT);
+
+  it('reports a failed PDF export instead of claiming success', async () => {
+    await renderLoaded();
+    openTab(/returns/i);
+    vi.spyOn(pdfDocs, 'push').mockImplementation(() => {
+      throw new Error('pdf boom');
+    });
+
+    await exportAs('Export returns customer as PDF');
+
+    expect(toasts.map((t) => t.title)).toEqual(['Export failed']);
+    vi.restoreAllMocks();
   }, TIMEOUT);
 });
 

@@ -126,9 +126,7 @@ describe('generateSalesWoWReport', () => {
     ]);
   });
 
-  // BUG: the week key is "Week of Jan 5" with no year, so the same week in two
-  // different years is merged into one row and its revenue summed.
-  it.fails('keeps the same calendar week in different years apart', () => {
+  it('keeps the same calendar week in different years apart', () => {
     const report = generateSalesWoWReport([
       order({ createdAt: at(2025, 0, 5), total: 100 }), // a Sunday
       order({ createdAt: at(2020, 0, 5), total: 7 }), // also a Sunday

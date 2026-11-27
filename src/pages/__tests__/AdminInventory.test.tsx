@@ -365,6 +365,17 @@ describe('AdminInventory edit', () => {
     expect(m.products.variants.create).toHaveBeenCalledTimes(1);
   });
 
+  it('sends a base price of 0 (not NaN) when the edited base price is cleared', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Green Tea' }));
+
+    fireEvent.change(screen.getByLabelText('Base Price'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(lastToast()?.title).toBe('Product updated'));
+    expect(m.products.update).toHaveBeenCalledWith('p1', expect.objectContaining({ basePrice: 0 }));
+  });
+
   it('keeps an out-of-list category visible when editing', async () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Mug' }));

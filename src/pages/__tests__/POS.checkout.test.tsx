@@ -252,10 +252,7 @@ describe('the catalog', () => {
     expect(screen.queryByRole('button', { name: /^Hoodie,/ })).not.toBeInTheDocument();
   });
 
-  // BUG (POS.tsx:607-615): the search query is lower-cased but compared to the
-  // product barcode as-is, so any barcode containing capital letters (Code 39
-  // and SKU-style codes are upper-case) can never be found by searching for it.
-  it.fails('matches an alphanumeric product barcode typed exactly as printed', async () => {
+  it('matches an alphanumeric product barcode typed exactly as printed', async () => {
     productsQuery.data = [{ ...PRODUCTS[0], barcode: 'SHIRT-01' }, PRODUCTS[1]];
     renderRegister();
 
@@ -851,11 +848,7 @@ describe('store credit', () => {
     expect(getCredit).not.toHaveBeenCalled();
   });
 
-  // BUG (POS.tsx:1663): the "short" figure subtracts the tender from the full
-  // sale total, not from `amountDue`, so with store credit applied it
-  // overstates the shortfall by the credit amount. $22 sale, $10 credit,
-  // $5 cash: $7.00 is still owed, but the screen says "$17.00 short".
-  it.fails('shows the shortfall against what is still due after the credit', async () => {
+  it('shows the shortfall against what is still due after the credit', async () => {
     getCredit.mockResolvedValue(credit(10));
     const dialog = await openCheckout();
     await applyCredit(dialog);
@@ -1130,11 +1123,7 @@ describe('card payments on the terminal', () => {
     expect(charge).toHaveBeenCalledTimes(1);
   });
 
-  // BUG (POS.tsx:1768): while waiting for the card the panel shows
-  // `subtotal - discount`, ignoring tax and store credit — the same mistake
-  // the Complete Sale label's comment says was fixed there. A $20 item at 10%
-  // tax reads "$20.00" while the terminal is asked for $22.00.
-  it.fails('tells the customer the amount the card will actually be charged', async () => {
+  it('tells the customer the amount the card will actually be charged', async () => {
     const dialog = await startCardSale();
 
     expect(within(dialog).getByText(/Present card on the terminal/)).toHaveTextContent('$22.00');

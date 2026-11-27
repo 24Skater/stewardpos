@@ -272,28 +272,7 @@ describe('AdminSettings — payments', () => {
     await waitFor(() => expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ description: 'Error' })));
   });
 
-  it('lets a reader be picked from a discovery result shaped as { data: [...] }', async () => {
-    terminalApi.listReaders.mockResolvedValue({ data: [{ id: 'tmr_9', label: 'Counter', status: 'online' }] });
-    renderPage();
-    await screen.findByDisplayValue('Corner Store');
-    openTab('Payments');
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Discover Readers' }));
-    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith({ title: 'Found 1 reader(s)' }));
-    const picker = screen.getByRole('option', { name: 'Counter (online)' }).closest('select') as HTMLSelectElement;
-    fireEvent.change(picker, { target: { value: 'tmr_9' } });
-
-    expect(screen.getByLabelText('Reader ID')).toHaveValue('tmr_9');
-  });
-
-  /**
-   * BUG (AdminSettings.tsx:176): `apiClient.get` already unwraps the
-   * `{ success, data }` envelope, so `terminalApi.listReaders()` resolves to the
-   * reader array itself (backend/src/api/routes/terminal.ts:245 sends
-   * `data: readers`). The page then reads `.data` off that array, gets
-   * undefined, and always reports "Found 0 reader(s)" with no picker shown.
-   */
-  it.fails('finds the readers the server actually returns (an unwrapped array)', async () => {
+  it('finds the readers the server actually returns (an unwrapped array)', async () => {
     terminalApi.listReaders.mockResolvedValue([{ id: 'tmr_9', label: 'Counter', status: 'online' }]);
     renderPage();
     await screen.findByDisplayValue('Corner Store');

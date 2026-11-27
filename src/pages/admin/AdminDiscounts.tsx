@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
+const DATETIME_LOCAL = "yyyy-MM-dd'T'HH:mm";
 
 interface DiscountType {
   id: string;
@@ -228,7 +229,7 @@ export default function AdminDiscounts() {
     maxDiscount: '',
     maxUses: '',
     maxUsesPerCustomer: 1,
-    startsAt: new Date().toISOString().slice(0, 16),
+    startsAt: format(new Date(), DATETIME_LOCAL),
     expiresAt: '',
     firstOrderOnly: false,
     stackable: false,
@@ -433,7 +434,7 @@ export default function AdminDiscounts() {
       maxDiscount: '',
       maxUses: '',
       maxUsesPerCustomer: 1,
-      startsAt: new Date().toISOString().slice(0, 16),
+      startsAt: format(new Date(), DATETIME_LOCAL),
       expiresAt: '',
       firstOrderOnly: false,
       stackable: false,
@@ -454,8 +455,8 @@ export default function AdminDiscounts() {
       maxDiscount: pc.maxDiscount?.toString() || '',
       maxUses: pc.maxUses?.toString() || '',
       maxUsesPerCustomer: pc.maxUsesPerCustomer,
-      startsAt: new Date(pc.startsAt).toISOString().slice(0, 16),
-      expiresAt: pc.expiresAt ? new Date(pc.expiresAt).toISOString().slice(0, 16) : '',
+      startsAt: format(pc.startsAt, DATETIME_LOCAL),
+      expiresAt: pc.expiresAt ? format(pc.expiresAt, DATETIME_LOCAL) : '',
       firstOrderOnly: pc.firstOrderOnly,
       stackable: pc.stackable,
       isActive: pc.isActive,
@@ -567,7 +568,7 @@ export default function AdminDiscounts() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {promoCodes.filter(p => p.isActive && (!p.expiresAt || p.expiresAt > Date.now())).length}
+                {promoCodes.filter(p => getPromoStatus(p).label === 'Active').length}
               </div>
             </CardContent>
           </Card>

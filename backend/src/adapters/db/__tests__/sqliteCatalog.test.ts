@@ -278,12 +278,7 @@ describeSqlite('customers on SQLite', () => {
     expect(await h.adapter.archiveCustomer('missing', 'admin')).toBe(false);
   });
 
-  // BUG (SQLite): archiveCustomer selects `FROM orders WHERE customer_id = ?`,
-  // but SQLite's `orders` has no `customer_id` column (orders link to a
-  // customer by `customer_email`), so every archive of an existing customer
-  // throws "no such column: customer_id" and is reported as
-  // DatabaseError('Failed to archive customer').
-  it.fails('archives an existing customer into archived_customers', async () => {
+  it('archives an existing customer into archived_customers', async () => {
     const id = String((await h.adapter.createCustomer(ada)).id);
     const admin = await seedUser(h.adapter, 'admin@example.com');
 

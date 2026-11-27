@@ -30,6 +30,10 @@ vi.mock('better-sqlite3', () => ({
     prepare(sql: string) {
       return {
         get: (...args: unknown[]) => {
+          if (/RETURNING id/i.test(sql)) {
+            db.runs.push({ sql, args });
+            return { id: `hex-${db.runs.length}` };
+          }
           if (/COUNT\(\*\)/i.test(sql)) return { count: db.users };
           if (/FROM roles/i.test(sql)) return db.adminRole;
           if (/FROM products WHERE barcode/i.test(sql)) {
@@ -127,16 +131,16 @@ describe('Seeder on SQLite', () => {
     expect(db.closed).toBe(true);
   });
 
-  // BUG (services/seeder.ts, SQLite branch of seedAdminUser): user_roles.user_id
-  // is set to `result.lastInsertRowid` — SQLite's integer rowid — but users.id
-  // is a TEXT hex id. The admin's role row points at no user, so the seeded
-  // admin signs in with no role. On the ON CONFLICT DO UPDATE path (reseeding)
-  // lastInsertRowid is not even the admin's row. Same defect for
-  // product_variants.product_id in seedProducts.
-  it.fails('links the admin role to the admin user’s id, not to a rowid', async () => {
+  it('links the admin role to the admin user’s id, not to a rowid', async () => {
     await new Seeder().seed();
 
     const [userId] = inserts('user_roles')[0].args;
     expect(typeof userId).toBe('string');
+  });
+
+  it('links each variant to its product’s id, not to a rowid', async () => {
+    await new Seeder().seed();
+
+    expect(inserts('product_variants').every((s) => typeof s.args[0] === 'string')).toBe(true);
   });
 });

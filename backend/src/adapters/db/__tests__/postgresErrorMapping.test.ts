@@ -35,9 +35,6 @@ const BEST_EFFORT = new Set([
   'markRefundFailed',
 ]);
 
-/** Absorb failures but should not — see the `it.fails` cases below. */
-const KNOWN_SWALLOWS = new Set(['incrementPromoCodeUsage', 'getPromoCodeUsageByCustomer']);
-
 /** Not database calls, or no query to fail with these arguments. */
 const NOT_QUERIES = new Set(['constructor', 'close']);
 
@@ -75,7 +72,7 @@ const asyncMethods = Object.getOwnPropertyNames(PostgresAdapter.prototype).filte
   return typeof fn === 'function' && fn.constructor.name === 'AsyncFunction';
 });
 
-const mustThrow = asyncMethods.filter((n) => !BEST_EFFORT.has(n) && !KNOWN_SWALLOWS.has(n));
+const mustThrow = asyncMethods.filter((n) => !BEST_EFFORT.has(n));
 
 /** Methods that short-circuit on an empty payload need a real one to reach their query. */
 const ARGS: Record<string, unknown[]> = {
@@ -122,19 +119,11 @@ describe('a failing database', () => {
     expect(await adapter.testConnection()).toBe(false);
   });
 
-  // BUG: getPromoCodeUsageByCustomer returns 0 on a database error
-  // (PostgresAdapter.ts, `catch { ...; return 0; }`). Its only caller is the
-  // per-customer limit in POST /api/discounts/promos/validate, so when the
-  // count cannot be read the limit fails OPEN and a one-per-customer code
-  // validates for a customer who has already used it.
-  it.fails('getPromoCodeUsageByCustomer surfaces a failure rather than reporting zero uses', async () => {
+  it('getPromoCodeUsageByCustomer surfaces a failure rather than reporting zero uses', async () => {
     await expect(adapter.getPromoCodeUsageByCustomer(ID, 'c1')).rejects.toBeInstanceOf(DatabaseError);
   });
 
-  // BUG: incrementPromoCodeUsage swallows a failed UPDATE, so
-  // POST /api/discounts/promos/:id/use answers 200 while current_uses never
-  // moved, and a promo with maxUses can be redeemed past its cap.
-  it.fails('incrementPromoCodeUsage surfaces a failed increment', async () => {
+  it('incrementPromoCodeUsage surfaces a failed increment', async () => {
     await expect(adapter.incrementPromoCodeUsage(ID)).rejects.toBeInstanceOf(DatabaseError);
   });
 });

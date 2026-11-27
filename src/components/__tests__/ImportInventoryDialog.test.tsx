@@ -155,11 +155,7 @@ describe('ImportInventoryDialog', () => {
     click.mockRestore();
   });
 
-  // BUG: parseCSV (ImportInventoryDialog.tsx:47-51) splits on every comma, but
-  // exportToCSV (export-core.ts:90-91) quotes values containing commas. A file
-  // exported from this screen with a product named `Tea, Green` does not
-  // re-import: the name becomes `"Tea` and every later column shifts by one.
-  it.fails('re-imports a quoted product name that contains a comma', async () => {
+  it('re-imports a quoted product name that contains a comma', async () => {
     setup();
 
     upload(`${HEADER}\nn,"Tea, Green",Drinks,5,x,,,0,,,,3,Yes`);
@@ -170,12 +166,7 @@ describe('ImportInventoryDialog', () => {
     );
   });
 
-  // BUG: exportInventoryToCSV (export-utils.ts:797-798) writes `N/A` for a
-  // variant with no size/colour, and import (ImportInventoryDialog.tsx:72-73,
-  // 149-150) treats `N/A` as a literal size/colour. Re-importing an unedited
-  // export of a plain single-variant product (no SKU/barcode) fails to match
-  // its variant and creates a duplicate instead of updating the stock.
-  it.fails('matches a size-less variant when re-importing its own export', async () => {
+  it('matches a size-less variant when re-importing its own export', async () => {
     m.products.list.mockResolvedValue([
       { id: 'p9', name: 'Mug', category: 'Kitchen', basePrice: 8, variants: [{ id: 'v9', stock: 1, enabled: true }] },
     ]);
@@ -186,5 +177,14 @@ describe('ImportInventoryDialog', () => {
     await waitFor(() => expect(lastToast()?.title).toBe('Import successful'));
     expect(m.products.variants.create).not.toHaveBeenCalled();
     expect(m.products.variants.update).toHaveBeenCalledWith('p9', 'v9', expect.objectContaining({ stock: 4 }));
+  });
+
+  it('accepts an uppercase .CSV extension', async () => {
+    setup();
+
+    upload(`${HEADER}
+n,A,B,1,x,,,,,,,1,Yes`, 'INVENTORY.CSV');
+
+    await waitFor(() => expect(m.products.create).toHaveBeenCalled());
   });
 });

@@ -12,6 +12,18 @@ import { pdfDocs } from '@/test/fake-pdf-kit';
  * figures, not on the presence of a button.
  */
 
+const xlsx = vi.hoisted(() => ({ fail: false }));
+vi.mock('write-excel-file/browser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('write-excel-file/browser')>();
+  return {
+    ...actual,
+    default: (...args: Parameters<typeof actual.default>) => {
+      if (xlsx.fail) throw new Error('disk full');
+      return actual.default(...args);
+    },
+  };
+});
+
 vi.mock('jspdf', () => import('@/test/fake-pdf-kit').then((m) => m.jspdfModule));
 vi.mock('jspdf-autotable', () => import('@/test/fake-pdf-kit').then((m) => m.autoTableModule));
 
@@ -219,11 +231,7 @@ describe('AdminReceipts export', () => {
     );
   }, TIMEOUT);
 
-  // BUG: the receipts PDF hard-codes 'Steward · Register' as the store name
-  // (AdminReceipts.tsx, handleExportReceipts) even though the page has already
-  // loaded the store's settings, so every exported PDF is headed with the
-  // product name instead of the shop's.
-  it.fails('heads the PDF with the store name from settings', async () => {
+  it('heads the PDF with the store name from settings', async () => {
     await renderLoaded();
     await waitFor(() => expect(api.settings).toHaveBeenCalled());
 
@@ -231,6 +239,28 @@ describe('AdminReceipts export', () => {
 
     await waitFor(() => expect(pdfDocs).toHaveLength(1));
     expect(pdfDocs[0].texts).toContain('Corner Store');
+  }, TIMEOUT);
+
+  it('reports a failed Excel export instead of claiming success', async () => {
+    xlsx.fail = true;
+    await renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
+
+    await waitFor(() => expect(toasts.at(-1)).toMatchObject({ title: 'Export failed', description: 'disk full', variant: 'destructive' }));
+    expect(toasts.some((t) => t.title === 'Export complete')).toBe(false);
+    xlsx.fail = false;
+  }, TIMEOUT);
+
+  it('falls back to the default store name when settings have none', async () => {
+    api.settings.mockResolvedValue({ storeName: '', receiptShowBarcode: false });
+    await renderLoaded();
+    await waitFor(() => expect(api.settings).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'PDF' }));
+
+    await waitFor(() => expect(pdfDocs).toHaveLength(1));
+    expect(pdfDocs[0].texts).toContain('Steward · Register');
   }, TIMEOUT);
 
   it('refuses to export an empty list instead of writing a blank file', async () => {

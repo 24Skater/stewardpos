@@ -165,7 +165,7 @@ describe('QuickReturnDialog finding the sale', () => {
 
 describe('QuickReturnDialog choosing what came back', () => {
   it('caps each line at what was bought less what has already gone back', async () => {
-    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ productId: 'p1', variantId: 'v1', returnQuantity: 1 }] }]);
+    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ originalOrderItemId: 'a', productId: 'p1', variantId: 'v1', returnQuantity: 1 }] }]);
     await pickOrder();
 
     expect(screen.getByText('1 already returned')).toBeTruthy();
@@ -178,19 +178,15 @@ describe('QuickReturnDialog choosing what came back', () => {
   }, TIMEOUT);
 
   it('disables a line that has been returned in full', async () => {
-    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ productId: 'p2', returnQuantity: 1 }] }]);
+    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ originalOrderItemId: 'b', productId: 'p2', returnQuantity: 1 }] }]);
     await pickOrder();
 
     expect(checkboxes()[1]).toHaveProperty('disabled', true);
   }, TIMEOUT);
 
-  // BUG: QuickReturnDialog.selectOrder keys already-returned quantities by
-  // productId+variantId, not by order line. When the same product is rung on two
-  // lines, a return against one line is counted against both, so the second
-  // line — never returned — is blocked.
-  it.fails('counts a prior return only against the line it came from', async () => {
+  it('counts a prior return only against the line it came from', async () => {
     api.getOrder.mockResolvedValue({ ...ORDER, items: [line('a', 'p1', 1, 20), line('b', 'p1', 1, 20)] });
-    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ productId: 'p1', returnQuantity: 1 }] }]);
+    api.listByOrder.mockResolvedValue([{ id: 'r0', items: [{ originalOrderItemId: 'a', productId: 'p1', returnQuantity: 1 }] }]);
     await pickOrder();
 
     expect(checkboxes().filter((box) => !(box as HTMLButtonElement).disabled)).toHaveLength(1);
@@ -314,13 +310,7 @@ describe('QuickReturnDialog processing', () => {
     expect(api.processRefund).not.toHaveBeenCalled();
   }, TIMEOUT);
 
-  // BUG: QuickReturnDialog.processReturn computes the refund with taxRate = 0
-  // and passes that pre-tax figure as `amount` to processRefund. The server
-  // reprices the return including its share of the order's tax
-  // (backend/src/services/returnPricing.ts), so on any taxed order the refund
-  // is treated as *partial* and the customer is short the tax. The refund
-  // should be the server-priced return total (or omit `amount`).
-  it.fails('refunds the total the server priced the return at, tax included', async () => {
+  it('refunds the total the server priced the return at, tax included', async () => {
     api.getOrder.mockResolvedValue({ ...ORDER, subtotal: 100, taxTotal: 8, total: 108, items: [line('a', 'p1', 1, 100)] });
     api.create.mockResolvedValue({ id: 'ret-1', total: 108 });
     await pickOrder();

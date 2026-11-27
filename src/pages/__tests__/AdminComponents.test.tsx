@@ -224,14 +224,7 @@ describe('AdminComponents', () => {
     expect(within(panel()).getByText('No updates match your filters')).toBeInTheDocument();
   });
 
-  /**
-   * BUG (AdminComponents.tsx:568-572): the row's Update button calls
-   * `setSelectedPackages([name])` and then `handleUpdateSelected()` in the same
-   * handler. `handleUpdateSelected` reads `selectedPackages` from the render's
-   * closure — still empty — so with nothing previously ticked it toasts
-   * "No Packages Selected" and the confirmation never opens.
-   */
-  it.fails('a row Update button opens the confirmation for that package', async () => {
+  it('a row Update button opens the confirmation for that package', async () => {
     renderPage();
     await screen.findByText('express');
     await checkUpdates();
@@ -242,13 +235,7 @@ describe('AdminComponents', () => {
     expect(await screen.findByRole('dialog', {}, { timeout: 500 })).toBeInTheDocument();
   });
 
-  /**
-   * BUG (AdminComponents.tsx:113): `updateType` is only ever changed by the
-   * Updates tab's per-row button, so "Update Selected" after ticking backend
-   * packages on the Backend tab sends them with `type: 'frontend'` — the server
-   * would run the install in the wrong project.
-   */
-  it.fails('Update Selected for backend packages sends type "backend"', async () => {
+  it('Update Selected for backend packages sends type "backend"', async () => {
     renderPage();
     await screen.findByText('express');
     openTab(/^backend$/i);
@@ -260,7 +247,7 @@ describe('AdminComponents', () => {
     await waitFor(() => expect(componentsApi.update).toHaveBeenCalledWith(['express'], 'backend'), { timeout: 500 });
   });
 
-  it('warns when Update Selected is reached with nothing selected', async () => {
+  it('does not warn about an empty selection when a row Update is clicked', async () => {
     renderPage();
     await screen.findByText('express');
     await checkUpdates();
@@ -268,6 +255,7 @@ describe('AdminComponents', () => {
 
     fireEvent.click(within(rowFor('express')).getByRole('button', { name: /^update$/i }));
 
-    toastTitled('No Packages Selected');
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('No Packages Selected')).not.toBeInTheDocument();
   });
 });

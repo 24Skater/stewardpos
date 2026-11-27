@@ -112,13 +112,7 @@ describe('updateUser', () => {
     expect(await rolesOf(NIL)).toEqual([]);
   });
 
-  // BUG: updateUser (PostgresAdapter.ts) always runs
-  // `UPDATE users SET ${updates.join(', ')} WHERE ...`. With no scalar field in
-  // the patch — e.g. PUT /api/admin/users/:id with body `{ "roleIds": [...] }`,
-  // which updateUserSchema accepts — that is `UPDATE users SET  WHERE id = $1`,
-  // a syntax error, so the route 500s and the role change is lost. Changing only
-  // a user's roles is the ordinary admin action.
-  it.fails('changes only the roles when the patch carries nothing else', async () => {
+  it('changes only the roles when the patch carries nothing else', async () => {
     const id = await makeUser([roleA]);
 
     await h.adapter.updateUser(id, { roleIds: [roleB] });

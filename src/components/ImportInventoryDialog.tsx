@@ -43,20 +43,48 @@ export default function ImportInventoryDialog({
     toast({ title: 'Template downloaded' });
   };
 
+  /** Splits CSV text into records, honouring RFC 4180 quoting ("" escapes, commas and newlines in quotes). */
+  const splitRecords = (text: string): string[][] => {
+    const records: string[][] = [];
+    let record: string[] = [];
+    let field = '';
+    let inQuotes = false;
+
+    const endField = () => {
+      record.push(field.trim());
+      field = '';
+    };
+    const endRecord = () => {
+      endField();
+      if (record.some(value => value !== '')) records.push(record);
+      record = [];
+    };
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch !== '"') field += ch;
+        else if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else if (ch === '"') inQuotes = true;
+      else if (ch === ',') endField();
+      else if (ch === '\n') endRecord();
+      else if (ch !== '\r') field += ch;
+    }
+    endRecord();
+    return records;
+  };
+
   const parseCSV = (csvText: string) => {
-    const lines = csvText.split('\n').filter(line => line.trim());
-    const headers = lines[0].split(',').map(h => h.trim());
-    
-    const rows = lines.slice(1).map(line => {
-      const values = line.split(',').map(v => v.trim());
+    const [headers = [], ...lines] = splitRecords(csvText);
+
+    return lines.map(values => {
       const row: Record<string, unknown> = {};
       headers.forEach((header, index) => {
         row[header] = values[index] || '';
       });
       return row;
     });
-
-    return rows;
   };
 
   /** One CSV row's worth of variant, keyed by the exported column headings. */
@@ -66,11 +94,17 @@ export default function ImportInventoryDialog({
       return value === '' ? undefined : value;
     };
 
+    // The export writes 'N/A' for a missing size/colour; read it back as empty.
+    const sizeOrColor = (key: string) => {
+      const value = optional(key);
+      return value?.toUpperCase() === 'N/A' ? undefined : value;
+    };
+
     const override = optional('Price Override');
 
     return {
-      size: optional('Size'),
-      color: optional('Color'),
+      size: sizeOrColor('Size'),
+      color: sizeOrColor('Color'),
       priceDelta: parseFloat(String(row['Price Delta'] ?? '')) || 0,
       priceOverride: override === undefined ? undefined : parseFloat(override),
       sku: optional('SKU'),
@@ -174,7 +208,7 @@ export default function ImportInventoryDialog({
   };
 
   const handleFileUpload = async (file: File) => {
-    if (!file.name.endsWith('.csv')) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
       toast({
         title: 'Invalid file type',
         description: 'Please upload a CSV file',

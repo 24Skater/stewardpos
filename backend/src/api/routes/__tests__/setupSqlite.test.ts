@@ -20,7 +20,12 @@ const sqlite = vi.hoisted(() => ({
 
 const fakeDb = {
   prepare: (sql: string) => ({
-    get: () => {
+    get: (...args: unknown[]) => {
+      if (/RETURNING id/.test(sql)) {
+        sqlite.runs.push({ sql, args });
+        const conflict = /INSERT INTO users/.test(sql) && sqlite.emailTaken;
+        return conflict ? undefined : { id: `hex-${sqlite.runs.length}` };
+      }
       if (/sqlite_master/.test(sql)) return sqlite.usersTableExists ? { name: 'users' } : undefined;
       if (/COUNT\(\*\)/.test(sql)) return { count: sqlite.adminCount };
       if (/SELECT id FROM roles/.test(sql)) return sqlite.adminRole;
@@ -169,15 +174,7 @@ describe('POST /api/setup/complete on SQLite', () => {
     expect(runMigrations).not.toHaveBeenCalled();
   });
 
-  // BUG (routes/setup.ts, SQLite branch of POST /complete): the admin's
-  // user_roles row is written with `userResult.lastInsertRowid` (and, when the
-  // role was just created, `roleResult.lastInsertRowid`) — SQLite integer
-  // rowids — while users.id / roles.id are TEXT hex ids. The link matches
-  // nothing, so the founding admin has no role, getSetupState's join finds no
-  // admin, and rejectIfAlreadySetUp never closes these unauthenticated setup
-  // routes: anyone who can reach the API can run setup again and mint another
-  // administrator. Same defect as services/seeder.ts.
-  it.fails('links the admin role by the user’s id, not by a rowid', async () => {
+  it('links the admin role by the user’s id, not by a rowid', async () => {
     sqlite.adminRole = { id: 'role-hex' };
 
     await request(app).post('/api/setup/complete').send(SETUP);

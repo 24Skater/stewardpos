@@ -435,13 +435,14 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
         if (!role) {
           const roleResult = sqliteDb.prepare(
             `INSERT INTO roles (name, system_role, permissions)
-             VALUES (?, ?, ?)`
-          ).run(
+             VALUES (?, ?, ?)
+             RETURNING id`
+          ).get(
             'Administrator',
             'admin',
             JSON.stringify(fullPermissions())
           );
-          role = { id: roleResult.lastInsertRowid };
+          role = { id: roleResult.id };
         }
 
         // Create admin user. See the Postgres branch above — never upsert credentials
@@ -449,24 +450,25 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
         const userResult = sqliteDb.prepare(
           `INSERT INTO users (email, password_hash, name, status)
            VALUES (?, ?, ?, ?)
-           ON CONFLICT (email) DO NOTHING`
-        ).run(
+           ON CONFLICT (email) DO NOTHING
+           RETURNING id`
+        ).get(
           setupData.adminUser.email,
           passwordHash,
           setupData.adminUser.name,
           'active'
         );
 
-        if (userResult.changes === 0) {
+        if (!userResult) {
           return res.status(409).json({
             success: false,
             error: 'A user with that email address already exists.',
           });
         }
 
-        const userId = userResult.lastInsertRowid;
+        const userId = userResult.id;
 
-        // Assign admin role
+        // Assign admin role (ids are TEXT hex, not rowids)
         sqliteDb.prepare(
           `INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)`
         ).run(userId, role.id);

@@ -136,34 +136,30 @@ export function generateSalesMoMReport(orders: Order[]) {
 }
 
 export function generateSalesWoWReport(orders: Order[]) {
-  const weeklyData = new Map<string, { revenue: number; orders: number; items: number; startDate: Date }>();
-  
+  // Keyed by week-start date (includes the year) so the same week in different years stays apart.
+  const weeklyData = new Map<string, { week: string; revenue: number; orders: number; items: number; startDate: Date }>();
+
   orders.forEach(order => {
     const date = new Date(order.createdAt);
-    const weekLabel = getWeekLabel(date);
-    const startOfWeek = new Date(date);
-    startOfWeek.setDate(date.getDate() - date.getDay());
-    
-    const existing = weeklyData.get(weekLabel) || { revenue: 0, orders: 0, items: 0, startDate: startOfWeek };
+    const startOfWeek = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+    const key = String(startOfWeek.getTime());
+
+    const existing = weeklyData.get(key) || { week: getWeekLabel(date), revenue: 0, orders: 0, items: 0, startDate: startOfWeek };
     existing.revenue += order.total;
     existing.orders += 1;
     existing.items += order.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
-    weeklyData.set(weekLabel, existing);
+    weeklyData.set(key, existing);
   });
-  
-  return Array.from(weeklyData.entries())
-    .map(([week, data]) => ({
-      'Week': week,
+
+  return Array.from(weeklyData.values())
+    .sort((a, b) => b.startDate.getTime() - a.startDate.getTime())
+    .map(data => ({
+      'Week': data.week,
       'Total Revenue': data.revenue,
       'Order Count': data.orders,
       'Items Sold': data.items,
       'Avg Order Value': data.orders > 0 ? data.revenue / data.orders : 0,
-    }))
-    .sort((a, b) => {
-      const dateA = weeklyData.get(a.Week)?.startDate || new Date();
-      const dateB = weeklyData.get(b.Week)?.startDate || new Date();
-      return dateB.getTime() - dateA.getTime();
-    });
+    }));
 }
 
 export function generateSalesByCustomerReport(orders: Order[], customers: Customer[]) {
@@ -782,6 +778,28 @@ export async function exportReturnsByReasonToPDF(data: ExportRow[], settings?: S
   });
   
   doc.save(`returns-by-reason-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+export async function exportReturnsByCustomerToPDF(data: ExportRow[], settings?: Settings) {
+  const { jsPDFCtor, autoTable } = await loadPdfKit();
+  const doc = new jsPDFCtor();
+  const startY = createPDFHeader(doc, 'Returns by Customer Report',
+    `Generated: ${new Date().toLocaleDateString()}`, settings);
+
+  autoTable(doc, {
+    startY,
+    head: [['Customer', 'Email', 'Returns', 'Refunded']],
+    body: data.map(row => [
+      cellStr(row['Customer Name']),
+      cellStr(row.Email),
+      row['Total Returns'],
+      `$${cellNum(row['Total Refunded']).toFixed(2)}`,
+    ]),
+    theme: 'striped',
+    headStyles: { fillColor: [239, 68, 68] },
+  });
+
+  doc.save(`returns-by-customer-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 // ========== LEGACY EXPORTS ==========

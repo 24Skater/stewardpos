@@ -21,6 +21,7 @@ import {
   Store,
   ShieldAlert
 } from 'lucide-react';
+import { endOfDay, parseISO, startOfDay } from 'date-fns';
 import AdminLayout from '@/components/AdminLayout';
 import {
   customersApi,
@@ -63,6 +64,7 @@ import {
   exportServicesToPDF,
   exportReturnsToPDF,
   exportReturnsByReasonToPDF,
+  exportReturnsByCustomerToPDF,
 } from '@/lib/export-utils';
 import {
   exportRegisterReportToCSV,
@@ -261,11 +263,11 @@ export default function AdminExports() {
   const filterByDateRange = <T extends { createdAt: number }>(items: T[]) => {
     let filtered = items;
     if (startDate) {
-      const start = new Date(startDate).getTime();
+      const start = startOfDay(parseISO(startDate)).getTime();
       filtered = filtered.filter(item => item.createdAt >= start);
     }
     if (endDate) {
-      const end = new Date(endDate).setHours(23, 59, 59, 999);
+      const end = endOfDay(parseISO(endDate)).getTime();
       filtered = filtered.filter(item => item.createdAt <= end);
     }
     return filtered;
@@ -387,7 +389,7 @@ export default function AdminExports() {
         case 'sales-mom': {
           const data = generateSalesMoMReport(filteredOrders);
           if (format === 'pdf') {
-            exportSalesMoMToPDF(data);
+            await exportSalesMoMToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Month over Month', data }], 'sales-mom.xlsx'));
           } else {
@@ -399,7 +401,7 @@ export default function AdminExports() {
         case 'sales-wow': {
           const data = generateSalesWoWReport(filteredOrders);
           if (format === 'pdf') {
-            exportSalesWoWToPDF(data);
+            await exportSalesWoWToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Week over Week', data }], 'sales-wow.xlsx'));
           } else {
@@ -411,7 +413,7 @@ export default function AdminExports() {
         case 'sales-customer': {
           const data = generateSalesByCustomerReport(filteredOrders, customers);
           if (format === 'pdf') {
-            exportSalesByCustomerToPDF(data);
+            await exportSalesByCustomerToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Sales by Customer', data }], 'sales-by-customer.xlsx'));
           } else {
@@ -423,7 +425,7 @@ export default function AdminExports() {
         case 'sales-item': {
           const data = generateSalesByItemReport(filteredOrders);
           if (format === 'pdf') {
-            exportSalesByItemToPDF(data);
+            await exportSalesByItemToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Sales by Item', data }], 'sales-by-item.xlsx'));
           } else {
@@ -435,7 +437,7 @@ export default function AdminExports() {
         case 'trending': {
           const { productTrends, serviceTrends } = generateTrendingReport(filteredOrders, filteredQuotes);
           if (format === 'pdf') {
-            exportTrendingToPDF(productTrends, serviceTrends);
+            await exportTrendingToPDF(productTrends, serviceTrends);
           } else if (format === 'excel') {
             await wrote(exportToExcel([
               { name: 'Product Trends', data: productTrends },
@@ -451,7 +453,7 @@ export default function AdminExports() {
         case 'customer-list': {
           const data = generateCustomerListReport(customers);
           if (format === 'pdf') {
-            exportCustomerListToPDF(data);
+            await exportCustomerListToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Customers', data }], 'customers.xlsx'));
           } else {
@@ -508,7 +510,7 @@ export default function AdminExports() {
         case 'services-type': {
           const data = generateServicesByTypeReport(services);
           if (format === 'pdf') {
-            exportServicesToPDF(data);
+            await exportServicesToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Services', data }], 'services.xlsx'));
           } else {
@@ -553,7 +555,7 @@ export default function AdminExports() {
           const filteredReturns = filterByDateRange(returns);
           const data = generateReturnsReport(filteredReturns);
           if (format === 'pdf') {
-            exportReturnsToPDF(filteredReturns);
+            await exportReturnsToPDF(filteredReturns);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Returns', data }], 'returns.xlsx'));
           } else {
@@ -566,7 +568,7 @@ export default function AdminExports() {
           const filteredReturns = filterByDateRange(returns);
           const data = generateReturnsByCustomerReport(filteredReturns, customers);
           if (format === 'pdf') {
-            exportReturnsByReasonToPDF(data);
+            await exportReturnsByCustomerToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Returns by Customer', data }], 'returns-by-customer.xlsx'));
           } else {
@@ -590,7 +592,7 @@ export default function AdminExports() {
           const filteredReturns = filterByDateRange(returns);
           const data = generateReturnsByReasonReport(filteredReturns);
           if (format === 'pdf') {
-            exportReturnsByReasonToPDF(data);
+            await exportReturnsByReasonToPDF(data);
           } else if (format === 'excel') {
             await wrote(exportToExcel([{ name: 'Returns by Reason', data }], 'returns-by-reason.xlsx'));
           } else {

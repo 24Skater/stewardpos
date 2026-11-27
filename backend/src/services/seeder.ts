@@ -299,12 +299,13 @@ export class Seeder {
           `INSERT INTO users (email, password_hash, name, status, pin_hash, pin_set_at) 
            VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, name = excluded.name, status = excluded.status,
-             pin_hash = excluded.pin_hash, pin_set_at = excluded.pin_set_at, pin_failed_count = 0, pin_locked_until = NULL`
+             pin_hash = excluded.pin_hash, pin_set_at = excluded.pin_set_at, pin_failed_count = 0, pin_locked_until = NULL
+           RETURNING id`
         )
-        .run('admin@demo.local', passwordHash, 'Admin User', 'active', pinHash, Date.now());
+        .get('admin@demo.local', passwordHash, 'Admin User', 'active', pinHash, Date.now()) as { id: string } | undefined;
 
-      if (result.changes > 0) {
-        const userId = result.lastInsertRowid;
+      if (result) {
+        const userId = result.id;
         
         // Get admin role
         const role = this.sqliteDb
@@ -472,24 +473,25 @@ export class Seeder {
         const result = this.sqliteDb
           .prepare(
             `INSERT INTO products (name, description, category, base_price, barcode) 
-             VALUES (?, ?, ?, ?, ?)`
+             VALUES (?, ?, ?, ?, ?)
+             RETURNING id`
           )
-          .run(
+          .get(
             product.name,
             product.description,
             product.category,
             product.base_price,
             product.barcode
-          );
+          ) as { id: string } | undefined;
 
         // Add default variant only if product was inserted
-        if (result.lastInsertRowid) {
+        if (result) {
           this.sqliteDb
             .prepare(
               `INSERT OR IGNORE INTO product_variants (product_id, stock, enabled) 
                VALUES (?, 100, 1)`
             )
-            .run(result.lastInsertRowid);
+            .run(result.id);
         }
       }
     }

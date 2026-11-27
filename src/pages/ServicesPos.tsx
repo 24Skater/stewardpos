@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { quotesApi, servicesApi, customersApi } from '@/lib/api';
+import { useSettings } from '@/hooks/queries';
 import type {
   CreateQuoteRequest,
   QuoteItemInput,
@@ -62,6 +63,8 @@ export default function ServicesPos() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceDetails, setServiceDetails] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const { data: settings } = useSettings();
+  const taxRate = settings?.taxRateDefault ?? 0;
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -153,7 +156,6 @@ export default function ServicesPos() {
     }
 
     const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const taxRate = 0.08;
     const taxTotal = subtotal * taxRate;
     const total = subtotal + taxTotal;
 
@@ -225,7 +227,7 @@ interface ServiceField {
   };
 
   const totalAmount = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const taxAmount = totalAmount * 0.08;
+  const taxAmount = totalAmount * taxRate;
   const grandTotal = totalAmount + taxAmount;
 
   if (loading) {
@@ -332,7 +334,7 @@ interface ServiceField {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground mb-3">{service.description}</p>
-                    {service.basePrice && (
+                    {service.basePrice != null && (
                       <p className="text-lg font-bold text-primary">
                         ${service.basePrice.toFixed(2)}
                         {service.unitType && <span className="text-xs text-muted-foreground">/{service.unitType}</span>}
@@ -385,7 +387,7 @@ interface ServiceField {
               <span>${totalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span>Tax (8%)</span>
+              <span>Tax ({Number((taxRate * 100).toFixed(2))}%)</span>
               <span>${taxAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold">

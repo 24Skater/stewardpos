@@ -172,8 +172,8 @@ export default function AdminSettings() {
   const handleDiscoverReaders = async () => {
     setDiscoveringReaders(true);
     try {
-      const data = await terminalApi.listReaders();
-      const found = (data as unknown as { data?: Array<{ id: string; label: string; status: string }> }).data || [];
+      // apiClient.get already unwraps the {success,data} envelope.
+      const found = await terminalApi.listReaders();
       setReaders(found);
       toast({ title: `Found ${found.length} reader(s)` });
     } catch (error: unknown) {

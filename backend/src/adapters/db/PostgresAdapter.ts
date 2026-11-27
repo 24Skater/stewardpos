@@ -1708,10 +1708,13 @@ export class PostgresAdapter {
 
       values.push(id);
 
-      const result = await client.query(
-        `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-        values
-      );
+      // A roleIds-only patch has no columns to set; just load the row.
+      const result = updates.length > 0
+        ? await client.query(
+            `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+            values
+          )
+        : await client.query('SELECT * FROM users WHERE id = $1', [id]);
 
       if (result.rows.length === 0) {
         await client.query('ROLLBACK');
@@ -3615,6 +3618,17 @@ export class PostgresAdapter {
       if (data.expiresAt !== undefined) { fields.push(`expires_at = $${idx++}`); values.push(data.expiresAt ? new Date(data.expiresAt) : null); }
       if (data.isActive !== undefined) { fields.push(`is_active = $${idx++}`); values.push(data.isActive); }
       if (data.stackable !== undefined) { fields.push(`stackable = $${idx++}`); values.push(data.stackable); }
+      if (data.minItems !== undefined) { fields.push(`min_items = $${idx++}`); values.push(data.minItems); }
+      if (data.firstOrderOnly !== undefined) { fields.push(`first_order_only = $${idx++}`); values.push(data.firstOrderOnly); }
+      if (data.specificCustomers !== undefined) { fields.push(`specific_customers = $${idx++}`); values.push(data.specificCustomers); }
+      if (data.appliesTo !== undefined) { fields.push(`applies_to = $${idx++}`); values.push(data.appliesTo); }
+      if (data.applicableIds !== undefined) { fields.push(`applicable_ids = $${idx++}`); values.push(data.applicableIds); }
+      if (data.excludedIds !== undefined) { fields.push(`excluded_ids = $${idx++}`); values.push(data.excludedIds); }
+      if (data.buyQuantity !== undefined) { fields.push(`buy_quantity = $${idx++}`); values.push(data.buyQuantity); }
+      if (data.getQuantity !== undefined) { fields.push(`get_quantity = $${idx++}`); values.push(data.getQuantity); }
+      if (data.getProductId !== undefined) { fields.push(`get_product_id = $${idx++}`); values.push(data.getProductId); }
+      if (data.customerGroups !== undefined) { fields.push(`customer_groups = $${idx++}`); values.push(data.customerGroups); }
+      if (data.priority !== undefined) { fields.push(`priority = $${idx++}`); values.push(data.priority); }
 
       if (fields.length === 0) return this.getPromoCodeById(id);
 
@@ -3650,6 +3664,7 @@ export class PostgresAdapter {
       );
     } catch (error) {
       logger.error('Error incrementing promo code usage:', error);
+      throw new DatabaseError('Failed to increment promo code usage');
     }
   }
 
@@ -3662,7 +3677,7 @@ export class PostgresAdapter {
       return parseInt(result.rows[0].count);
     } catch (error) {
       logger.error('Error getting promo code usage by customer:', error);
-      return 0;
+      throw new DatabaseError('Failed to get promo code usage');
     }
   }
 

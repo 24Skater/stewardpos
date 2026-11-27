@@ -188,13 +188,7 @@ describe('updatePromoCode', () => {
     expect(await h.adapter.updatePromoCode('00000000-0000-0000-0000-00000000dead', { name: 'x' })).toBeNull();
   });
 
-  // BUG: updatePromoCode (PostgresAdapter.ts) has no branch for minItems,
-  // firstOrderOnly, specificCustomers, appliesTo, applicableIds, excludedIds,
-  // buyQuantity, getQuantity, getProductId, customerGroups or priority — all of
-  // which promoCodeSchema.partial() in routes/discounts.ts accepts on PUT. The
-  // route answers 200 and the change is silently dropped, so e.g. tightening a
-  // code to first-orders-only or restricting it to a customer never takes effect.
-  it.fails('saves a first-order-only restriction and a minimum item count', async () => {
+  it('saves a first-order-only restriction and a minimum item count', async () => {
     const p = await makePromo();
 
     const updated = await h.adapter.updatePromoCode(String(p.id), { firstOrderOnly: true, minItems: 3 });

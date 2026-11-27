@@ -29,6 +29,9 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastSpy, dismiss: vi.fn(), toasts: [] }),
 }));
 
+const taxSettings = vi.fn(() => ({ data: { taxRateDefault: 0.08 } }));
+vi.mock('@/hooks/queries', () => ({ useSettings: () => taxSettings() }));
+
 const ServicesPos = (await import('../ServicesPos')).default;
 
 // Radix Select reaches for pointer-capture and scrolling APIs jsdom lacks.
@@ -79,6 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listServices.mockResolvedValue(SERVICES);
   listCustomers.mockResolvedValue(CUSTOMERS);
+  taxSettings.mockReturnValue({ data: { taxRateDefault: 0.08 } });
 });
 
 describe('ServicesPos catalogue', () => {
@@ -163,6 +167,26 @@ describe('ServicesPos building a quote', () => {
     await addService('Stage Setup');
 
     expect(total('Subtotal')).toHaveTextContent('$0.00');
+  });
+
+  it('shows a $0 base price as a price rather than a stray "0"', async () => {
+    listServices.mockResolvedValue([{ ...SERVICES[0], id: 'free', name: 'Free Consult', description: 'Consult desc', basePrice: 0 }]);
+    await renderServices();
+
+    const description = await screen.findByText('Consult desc');
+
+    expect(description.parentElement?.textContent).toContain('$0.00');
+    expect(description.parentElement?.textContent).not.toContain('Consult desc0');
+  });
+
+  it('taxes the quote at the store rate from settings', async () => {
+    taxSettings.mockReturnValue({ data: { taxRateDefault: 0.1 } });
+    await renderServices();
+
+    await addService('Sound Engineer', { Location: 'Main Hall', 'Duration (hours)': '3' });
+
+    expect(total('Tax (10%)')).toHaveTextContent('$10.00');
+    expect(total('Total')).toHaveTextContent('$110.00');
   });
 
   it('removes a line from the quote', async () => {

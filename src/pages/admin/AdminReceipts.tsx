@@ -298,7 +298,7 @@ export default function AdminReceipts() {
     }
   };
 
-  const handleExportReceipts = (format: 'csv' | 'excel' | 'pdf') => {
+  const handleExportReceipts = async (format: 'csv' | 'excel' | 'pdf') => {
     if (receipts.length === 0) {
       toast({ title: 'No data to export', variant: 'destructive' });
       return;
@@ -318,20 +318,29 @@ export default function AdminReceipts() {
 
     const filename = `receipts-${format}-${Date.now()}`;
 
-    if (format === 'csv') {
-      exportToCSV(exportData, `${filename}.csv`);
-    } else if (format === 'excel') {
-      exportToExcel([{ name: 'Receipts', data: exportData }], `${filename}.xlsx`);
-    } else {
-      // For PDF, use existing orders PDF export
-      const receiptItems = receipts.flatMap((r) => r.items ?? []);
-      const timestamps = receipts.map((r) => r.createdAt);
-      exportOrdersToPDF(
-        receipts,
-        receiptItems,
-        { storeName: 'Steward · Register', storePhone: '' },
-        { start: Math.min(...timestamps), end: Math.max(...timestamps) }
-      );
+    try {
+      if (format === 'csv') {
+        exportToCSV(exportData, `${filename}.csv`);
+      } else if (format === 'excel') {
+        await exportToExcel([{ name: 'Receipts', data: exportData }], `${filename}.xlsx`);
+      } else {
+        // For PDF, use existing orders PDF export
+        const receiptItems = receipts.flatMap((r) => r.items ?? []);
+        const timestamps = receipts.map((r) => r.createdAt);
+        exportOrdersToPDF(
+          receipts,
+          receiptItems,
+          { storeName: settings.storeName || 'Steward · Register', storePhone: '' },
+          { start: Math.min(...timestamps), end: Math.max(...timestamps) }
+        );
+      }
+    } catch (error: unknown) {
+      toast({
+        title: 'Export failed',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+      return;
     }
 
     toast({ title: 'Export complete', description: `Downloaded ${format.toUpperCase()} file` });
