@@ -473,7 +473,7 @@ export default function AdminExports() {
             setLoading(null);
             return;
           }
-          const customerOrders = orders.filter(o => o.customerEmail === customer.email);
+          const customerOrders = orders.filter(o => (!!customer.email && o.customerEmail === customer.email) || (!!customer.phone && o.customerPhone === customer.phone));
           const customerQuotes = quotes.filter(q => q.customerId === customer.id);
           const { customer: customerInfo, transactions } = generateCustomerOrderHistoryReport(
             customer, customerOrders, customerQuotes
@@ -493,7 +493,7 @@ export default function AdminExports() {
         case 'customer-history-all': {
           const allHistories: ExportRow[] = [];
           customers.forEach(customer => {
-            const customerOrders = orders.filter(o => o.customerEmail === customer.email);
+            const customerOrders = orders.filter(o => (!!customer.email && o.customerEmail === customer.email) || (!!customer.phone && o.customerPhone === customer.phone));
             const customerQuotes = quotes.filter(q => q.customerId === customer.id);
             const { transactions } = generateCustomerOrderHistoryReport(customer, customerOrders, customerQuotes);
             transactions.forEach(t => allHistories.push({ ...t, 'Customer': customer.name }));

@@ -142,15 +142,18 @@ export default function AdminCustomers() {
       // Three independent reads, in parallel rather than one after another.
       // None depends on the others, so awaiting them in sequence made opening a
       // customer take three round trips instead of one.
-      const [quotesResponse, returnsResponse, ordersResponse] = await Promise.all([
+      const [quotesResponse, returnsResponse, byEmail, byPhone] = await Promise.all([
         quotesApi.listByCustomer(customer.id),
         returnsApi.listByCustomer(customer.id),
         customer.email ? ordersApi.listByCustomerEmail(customer.email) : Promise.resolve([]),
+        // Sales record the customer by email and phone; a phone-only customer has no email to match.
+        customer.phone ? ordersApi.listByCustomerPhone(customer.phone) : Promise.resolve([]),
       ]);
 
       setCustomerQuotes(quotesResponse);
       setCustomerReturns(returnsResponse);
-      setCustomerOrders(ordersResponse);
+      const merged = new Map([...byEmail, ...byPhone].map((o) => [o.id, o]));
+      setCustomerOrders([...merged.values()].sort((a, b) => b.createdAt - a.createdAt));
     } catch (error: unknown) {
       console.error('Error loading customer history:', error);
     } finally {

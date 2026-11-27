@@ -209,6 +209,19 @@ router.get('/customer/:email', requirePermission('orders', 'read'), async (req: 
 });
 
 /**
+ * GET /api/orders/customer-phone/:phone
+ * Orders recorded with this phone, for customers who gave no email.
+ */
+router.get('/customer-phone/:phone', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const orders = await db.getAdapter().getOrdersByCustomerPhone(req.params.phone);
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/orders/:id
  * Get order by ID
  */

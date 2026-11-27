@@ -2400,10 +2400,22 @@ export class SQLiteAdapter {
 
   // ===== Order Operations Extended =====
   async getOrdersByCustomerEmail(email: string): Promise<DbRow[]> {
+    return this.getOrdersByCustomerField('customer_email', email);
+  }
+
+  /** Exact match on the phone stored with the sale (the POS copies it from the customer record). */
+  async getOrdersByCustomerPhone(phone: string): Promise<DbRow[]> {
+    return this.getOrdersByCustomerField('customer_phone', phone);
+  }
+
+  private async getOrdersByCustomerField(
+    column: 'customer_email' | 'customer_phone',
+    value: string
+  ): Promise<DbRow[]> {
     try {
       const orders = this.db
-        .prepare('SELECT * FROM orders WHERE customer_email = ? ORDER BY created_at DESC')
-        .all(email) as DbRow[];
+        .prepare(`SELECT * FROM orders WHERE ${column} = ? ORDER BY created_at DESC`)
+        .all(value) as DbRow[];
 
       return orders.map((order) => {
         const items = this.db
@@ -2429,7 +2441,7 @@ export class SQLiteAdapter {
         };
       });
     } catch (error) {
-      logger.error('Error getting orders by customer email:', error);
+      logger.error(`Error getting orders by ${column}:`, error);
       throw new DatabaseError('Failed to get orders');
     }
   }

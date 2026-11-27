@@ -63,6 +63,7 @@ const WRAPPED: Call[] = [
   ['updateQuoteStatus', (a) => a.updateQuoteStatus('x', 'sent')],
   ['deleteQuote', (a) => a.deleteQuote('x')],
   ['getOrdersByCustomerEmail', (a) => a.getOrdersByCustomerEmail('x')],
+  ['getOrdersByCustomerPhone', (a) => a.getOrdersByCustomerPhone('x')],
   ['getAllApiKeys', (a) => a.getAllApiKeys()],
   ['getApiKeyById', (a) => a.getApiKeyById('x')],
   ['getApiKeyByPrefix', (a) => a.getApiKeyByPrefix('x')],

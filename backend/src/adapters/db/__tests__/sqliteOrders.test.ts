@@ -144,6 +144,15 @@ describeSqlite('createOrder on SQLite', () => {
     expect(ada.map((o) => o.id)).toEqual([recent.id, old.id]);
     expect((ada[1].items as unknown[]).length).toBe(1);
   });
+
+  it('finds orders by the phone recorded with the sale', async () => {
+    const byPhone = await sell(h, { customerPhone: '2025550100' });
+    await sell(h, { customerPhone: '2025550199' });
+
+    const found = await h.adapter.getOrdersByCustomerPhone('2025550100');
+
+    expect(found.map((o) => o.id)).toEqual([byPhone.id]);
+  });
 });
 
 describeSqlite('searchOrders on SQLite', () => {

@@ -16,6 +16,8 @@ export const ordersApi = {
   get: (id: string) => apiClient.get<Order>(`/api/orders/${id}`),
   listByCustomerEmail: (email: string) =>
     apiClient.get<Order[]>(`/api/orders/customer/${encodeURIComponent(email)}`),
+  listByCustomerPhone: (phone: string) =>
+    apiClient.get<Order[]>(`/api/orders/customer-phone/${encodeURIComponent(phone)}`),
   /**
    * `overrideToken` carries a manager-override grant (`registersApi.requestOverride`)
    * as `X-Override-Token`, for a sale a discount past its approval threshold

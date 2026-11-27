@@ -2457,10 +2457,22 @@ export class PostgresAdapter {
 
   // ===== Order Operations Extended =====
   async getOrdersByCustomerEmail(email: string): Promise<DbRow[]> {
+    return this.getOrdersByCustomerField('customer_email', email);
+  }
+
+  /** Exact match on the phone stored with the sale (the POS copies it from the customer record). */
+  async getOrdersByCustomerPhone(phone: string): Promise<DbRow[]> {
+    return this.getOrdersByCustomerField('customer_phone', phone);
+  }
+
+  private async getOrdersByCustomerField(
+    column: 'customer_email' | 'customer_phone',
+    value: string
+  ): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
-        `SELECT * FROM orders WHERE customer_email = $1 ORDER BY created_at DESC`,
-        [email]
+        `SELECT * FROM orders WHERE ${column} = $1 ORDER BY created_at DESC`,
+        [value]
       );
 
       const orderIds = result.rows.map(o => o.id);
@@ -2486,7 +2498,7 @@ export class PostgresAdapter {
         items: itemsMap.get(order.id) || [],
       }));
     } catch (error) {
-      logger.error('Error getting orders by customer email:', error);
+      logger.error(`Error getting orders by ${column}:`, error);
       throw new DatabaseError('Failed to get orders');
     }
   }
