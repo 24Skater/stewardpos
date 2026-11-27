@@ -70,7 +70,7 @@ const registerHourlySchema = rangeSchema
 /** Zod failures are 400s, not 500s. */
 function badRequest(error: unknown): Error {
   if (error instanceof z.ZodError) {
-    return new ValidationError(error.errors[0].message);
+    return new ValidationError(error.issues[0].message);
   }
   return error as Error;
 }

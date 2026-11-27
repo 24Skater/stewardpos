@@ -94,7 +94,7 @@ router.post('/:code/redeem', requirePermission('orders', 'write'), async (req: A
     res.json({ success: true, data: redeemed });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

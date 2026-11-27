@@ -134,7 +134,7 @@ describe('passwordSchema', () => {
     const result = passwordSchema.safeParse('abc123');
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toMatch(/at least 12 characters/);
+      expect(result.error.issues[0].message).toMatch(/at least 12 characters/);
     }
   });
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
+import { partialUpdate } from '../../utils/zod';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -39,7 +40,7 @@ const createCustomerSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-const updateCustomerSchema = createCustomerSchema.partial();
+const updateCustomerSchema = partialUpdate(createCustomerSchema);
 
 /**
  * GET /api/customers
@@ -103,7 +104,7 @@ router.post('/', requirePermission('customers', 'write'), async (req: AuthReques
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -134,7 +135,7 @@ router.put('/:id', requirePermission('customers', 'write'), async (req: AuthRequ
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -230,7 +231,7 @@ router.post('/:id/archive', requirePermission('customers', 'write'), async (req:
     });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

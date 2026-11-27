@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
+import { partialUpdate } from '../../utils/zod';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -43,7 +44,7 @@ const createQuoteSchema = z.object({
   expiresAt: z.number().optional(),
 });
 
-const updateQuoteSchema = createQuoteSchema.partial();
+const updateQuoteSchema = partialUpdate(createQuoteSchema);
 
 const updateStatusSchema = z.object({
   status: z.enum(['draft', 'sent', 'accepted', 'rejected', 'completed', 'cancelled']),
@@ -129,7 +130,7 @@ router.post('/', requirePermission('services', 'write'), async (req: AuthRequest
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -159,7 +160,7 @@ router.put('/:id', requirePermission('services', 'write'), async (req: AuthReque
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -189,7 +190,7 @@ router.put('/:id/status', requirePermission('services', 'write'), async (req: Au
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
