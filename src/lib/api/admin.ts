@@ -17,7 +17,8 @@ export interface CreateUserRequest {
   status?: 'active' | 'inactive';
 }
 
-export type UpdateUserRequest = Partial<CreateUserRequest>;
+/** `canOverride` is update-only: the create endpoint does not take it. */
+export type UpdateUserRequest = Partial<CreateUserRequest> & { canOverride?: boolean };
 
 /** Body of `PUT /api/admin/users/:id/pin`. */
 export interface SetPinRequest {
