@@ -612,7 +612,7 @@ export default function POS() {
 
       return (
         product.name.toLowerCase().includes(query) ||
-        Boolean(product.barcode?.includes(query))
+        Boolean(product.barcode?.toLowerCase().includes(query))
       );
     });
   }, [products, searchQuery, selectedCategory]);
@@ -1660,7 +1660,7 @@ export default function POS() {
                 >
                   {changeDue === null ? (
                     <span className="text-sm font-medium">
-                      ${(calculateTotals().total - (parseFloat(cashTendered) || 0)).toFixed(2)} short
+                      ${(amountDue - (parseFloat(cashTendered) || 0)).toFixed(2)} short
                     </span>
                   ) : (
                     <>
@@ -1765,7 +1765,7 @@ export default function POS() {
                     <span className="font-medium">Waiting for card...</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Present card on the terminal · ${(calculateSubtotal() - getTotalDiscount()).toFixed(2)}
+                    Present card on the terminal · ${amountDue.toFixed(2)}
                   </p>
                   <Button variant="outline" size="sm" onClick={handleCancelTerminal}>
                     Cancel

@@ -118,11 +118,11 @@ jobs:
         working-directory: ./backend
         run: npm run migrate
 
-      - name: Unit tests
-        working-directory: ./backend
-        run: npm run test:coverage
-
-      # Adapter SQL against the migrated Postgres above. These BLOCK: the
+      # Unit + adapter integration tests in ONE coverage run. Measuring them
+      # separately reported ~47% because the adapters (covered only by the
+      # integration suites) counted as untested; the real figure was ~63%.
+      #
+      # Adapter SQL runs against the migrated Postgres above. These BLOCK: the
       # adapters were the least-covered code in the repo (0.17%) because route
       # tests mock them, and the very first integration test written found an
       # unescaped LIKE wildcard that made a search for "%" return the whole
@@ -131,13 +131,13 @@ jobs:
       # The harness refuses to run unless DB_NAME contains "test", so a stray
       # environment cannot point these at real data.
       #
-      # `test:integration` runs with --no-file-parallelism: these share one
-      # database and several touch global state (the settings singleton, the
+      # `test:all` runs with --no-file-parallelism: the integration files share
+      # one database and several touch global state (the settings singleton, the
       # one-open-drawer index), so running the files concurrently makes them
       # collide with each other rather than test anything.
-      - name: Adapter integration tests
+      - name: Unit + adapter integration tests (coverage)
         working-directory: ./backend
-        run: npm run test:integration
+        run: npm run test:all
 
       # `npm run build` is tsc. This is the step that was failing on 341 type errors
       # while CI reported green, which left the published image stale.

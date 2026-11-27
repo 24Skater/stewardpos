@@ -601,7 +601,8 @@ export class SQLiteAdapter {
   }
 
   async createProduct(product: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       // Insert product
       const now = Date.now();
       const productResult = this.db
@@ -672,7 +673,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       logger.error('Error creating product:', error);
       throw new DatabaseError('Failed to create product');
@@ -747,7 +748,8 @@ export class SQLiteAdapter {
 
   // Order Operations
   async createOrder(order: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       // Insert order
       const now = Date.now();
       const orderResult = this.db
@@ -892,7 +894,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       // A stock conflict is the caller's problem: keep it a 400.
       if (error instanceof ValidationError) throw error;
@@ -1197,7 +1199,8 @@ export class SQLiteAdapter {
   }
 
   async archiveCustomer(id: string, archivedBy: string, reason?: string): Promise<boolean> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       // Get customer data
       const customer = this.db
         .prepare('SELECT * FROM customers WHERE id = ?')
@@ -1225,46 +1228,32 @@ export class SQLiteAdapter {
         .all(id) as DbRow[];
 
       for (const quote of quotes) {
+        // Line items live in their own table; fold them into the archive's `items` JSON.
+        const items = this.db.prepare('SELECT * FROM quote_items WHERE quote_id = ?').all(quote.id);
         this.db.prepare(
-          `INSERT INTO archived_quotes 
-           (id, customer_id, quote_number, status, items, subtotal, tax, total, notes, 
-            valid_until, created_at, updated_at, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO archived_quotes
+           (id, customer_id, status, items, subtotal, tax, total, notes, valid_until, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
-          quote.id, quote.customer_id, quote.quote_number, quote.status, quote.items,
-          quote.subtotal, quote.tax, quote.total, quote.notes, quote.valid_until,
-          quote.created_at, quote.updated_at, quote.created_by
+          quote.id, quote.customer_id, quote.status, JSON.stringify(items),
+          quote.subtotal, quote.tax_total, quote.total, quote.notes,
+          quote.expires_at, quote.created_at
         );
       }
 
-      // Archive associated orders
-      const orders = this.db
-        .prepare('SELECT * FROM orders WHERE customer_id = ?')
-        .all(id) as DbRow[];
-
-      for (const order of orders) {
-        this.db.prepare(
-          `INSERT INTO archived_orders 
-           (id, customer_id, order_number, status, items, subtotal, tax, discount, total, 
-            payment_method, notes, created_at, updated_at, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          order.id, order.customer_id, order.order_number, order.status, order.items,
-          order.subtotal, order.tax, order.discount, order.total, order.payment_method,
-          order.notes, order.created_at, order.updated_at, order.created_by
-        );
-      }
+      // Orders are left alone (as in PostgresAdapter): they are the sales ledger and
+      // carry customer_email as a snapshot, so they survive the customer row.
 
       // Delete from original tables
+      this.db.prepare('DELETE FROM quote_items WHERE quote_id IN (SELECT id FROM quotes WHERE customer_id = ?)').run(id);
       this.db.prepare('DELETE FROM quotes WHERE customer_id = ?').run(id);
-      this.db.prepare('DELETE FROM orders WHERE customer_id = ?').run(id);
       this.db.prepare('DELETE FROM customers WHERE id = ?').run(id);
 
       return true;
     });
 
     try {
-      const result = transaction();
+      const result = transaction()();
       if (result) {
         logger.info(`Customer ${id} archived successfully`);
       }
@@ -1276,7 +1265,8 @@ export class SQLiteAdapter {
   }
 
   async permanentDeleteCustomer(id: string): Promise<boolean> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       // Check if customer exists and get their email (needed for orders lookup)
       const customer = this.db
         .prepare('SELECT id, email FROM customers WHERE id = ?')
@@ -1336,7 +1326,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      const result = transaction();
+      const result = transaction()();
       if (result) {
         logger.info(`Customer ${id} permanently deleted`);
       }
@@ -1565,7 +1555,8 @@ export class SQLiteAdapter {
   }
 
   async createUser(user: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       const now = Date.now();
       const result = this.db
         .prepare(
@@ -1598,7 +1589,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       logger.error('Error creating user:', error);
       throw new DatabaseError('Failed to create user');
@@ -1606,7 +1597,8 @@ export class SQLiteAdapter {
   }
 
   async updateUser(id: string, user: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM users WHERE id = ?')
         .get(id) as any;
@@ -1676,7 +1668,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       logger.error('Error updating user:', error);
       throw new DatabaseError('Failed to update user');
@@ -2242,7 +2234,8 @@ export class SQLiteAdapter {
   }
 
   async createQuote(quote: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       const now = Date.now();
       const quoteResult = this.db
         .prepare(
@@ -2312,7 +2305,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       logger.error('Error creating quote:', error);
       throw new DatabaseError('Failed to create quote');
@@ -2320,7 +2313,8 @@ export class SQLiteAdapter {
   }
 
   async updateQuote(id: string, quote: Record<string, unknown>): Promise<Record<string, unknown> | null> {
-    const transaction = this.db.transaction(() => {
+    // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
+    const transaction = () => this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM quotes WHERE id = ?')
         .get(id) as any;
@@ -2368,7 +2362,7 @@ export class SQLiteAdapter {
     });
 
     try {
-      return transaction();
+      return transaction()();
     } catch (error) {
       logger.error('Error updating quote:', error);
       throw new DatabaseError('Failed to update quote');
@@ -3525,6 +3519,17 @@ export class SQLiteAdapter {
       if (data.expiresAt !== undefined) { fields.push('expires_at = ?'); values.push(data.expiresAt ? new Date(data.expiresAt).getTime() : null); }
       if (data.isActive !== undefined) { fields.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
       if (data.stackable !== undefined) { fields.push('stackable = ?'); values.push(data.stackable ? 1 : 0); }
+      if (data.minItems !== undefined) { fields.push('min_items = ?'); values.push(data.minItems); }
+      if (data.firstOrderOnly !== undefined) { fields.push('first_order_only = ?'); values.push(data.firstOrderOnly ? 1 : 0); }
+      if (data.specificCustomers !== undefined) { fields.push('specific_customers = ?'); values.push(JSON.stringify(data.specificCustomers || [])); }
+      if (data.appliesTo !== undefined) { fields.push('applies_to = ?'); values.push(data.appliesTo); }
+      if (data.applicableIds !== undefined) { fields.push('applicable_ids = ?'); values.push(JSON.stringify(data.applicableIds || [])); }
+      if (data.excludedIds !== undefined) { fields.push('excluded_ids = ?'); values.push(JSON.stringify(data.excludedIds || [])); }
+      if (data.buyQuantity !== undefined) { fields.push('buy_quantity = ?'); values.push(data.buyQuantity); }
+      if (data.getQuantity !== undefined) { fields.push('get_quantity = ?'); values.push(data.getQuantity); }
+      if (data.getProductId !== undefined) { fields.push('get_product_id = ?'); values.push(data.getProductId); }
+      if (data.customerGroups !== undefined) { fields.push('customer_groups = ?'); values.push(JSON.stringify(data.customerGroups || [])); }
+      if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority); }
 
       if (fields.length === 0) return this.getPromoCodeById(id);
 
@@ -3557,6 +3562,7 @@ export class SQLiteAdapter {
       ).run(Date.now(), id);
     } catch (error) {
       logger.error('Error incrementing promo code usage:', error);
+      throw new DatabaseError('Failed to increment promo code usage');
     }
   }
 
@@ -3568,7 +3574,7 @@ export class SQLiteAdapter {
       return result?.count || 0;
     } catch (error) {
       logger.error('Error getting promo code usage by customer:', error);
-      return 0;
+      throw new DatabaseError('Failed to get promo code usage');
     }
   }
 

@@ -293,7 +293,7 @@ export default function Inventory() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-foreground">
-              {currentProduct?.name ? "Edit Product" : "New Product"}
+              {products.some(p => p.id === currentProduct?.id) ? "Edit Product" : "New Product"}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               Configure product details and variants

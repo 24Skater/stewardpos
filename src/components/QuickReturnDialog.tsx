@@ -51,8 +51,7 @@ const refundMethods = [
 
 /** A line item on a previous return against this order. */
 interface ExistingReturnItem {
-  productId: string;
-  variantId?: string;
+  originalOrderItemId?: string;
   returnQuantity: number;
 }
 
@@ -137,16 +136,16 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
       for (const ret of returnsResponse) {
         if (ret.items) {
           for (const item of ret.items) {
-            const key = item.productId + (item.variantId || '');
-            alreadyReturnedMap[key] = (alreadyReturnedMap[key] || 0) + item.returnQuantity;
+            if (!item.originalOrderItemId) continue;
+            alreadyReturnedMap[item.originalOrderItemId] =
+              (alreadyReturnedMap[item.originalOrderItemId] || 0) + item.returnQuantity;
           }
         }
       }
       
       // Set up return items
       setReturnItems(orderResponse.items.map(item => {
-        const key = item.productId + (item.variantId || '');
-        const alreadyReturned = alreadyReturnedMap[key] || 0;
+        const alreadyReturned = alreadyReturnedMap[item.id] || 0;
         return {
           ...item,
           returnQuantity: Math.max(0, item.quantity - alreadyReturned),
@@ -209,8 +208,18 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     return getSelectedItems().reduce((sum, item) => sum + (item.unitPrice * item.returnQuantity), 0);
   };
 
+  // Mirrors the server's pricing (returnPricing.ts): the order's tax apportioned
+  // by share of its subtotal. The server's figure is what is actually refunded.
+  const estimateTax = (subtotal: number) =>
+    order && order.subtotal > 0 ? Math.round(((order.taxTotal ?? 0) * subtotal * 100) / order.subtotal) / 100 : 0;
+
+  const estimateRefundTotal = () => {
+    const subtotal = calculateRefundTotal();
+    return subtotal + estimateTax(subtotal);
+  };
+
   const needsApproval = () => {
-    return refundMethod === 'cash' && calculateRefundTotal() > APPROVAL_THRESHOLD;
+    return refundMethod === 'cash' && estimateRefundTotal() > APPROVAL_THRESHOLD;
   };
 
   const processReturn = async () => {
@@ -226,9 +235,8 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
     let createdReturnId: string | null = null;
     try {
       const subtotal = calculateRefundTotal();
-      const taxRate = 0; // Could get from settings
-      const taxTotal = subtotal * taxRate;
-      const total = subtotal + taxTotal;
+      const taxTotal = estimateTax(subtotal);
+      const estimatedTotal = subtotal + taxTotal;
 
       // Create return
       const returnData = {
@@ -251,7 +259,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
         })),
         subtotal,
         taxTotal,
-        total,
+        total: estimatedTotal,
         refundMethod,
         reasonCode,
         reasonDetails: reasonDetails || undefined,
@@ -263,6 +271,8 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
 
       const returnId = createResponse.id;
       createdReturnId = returnId;
+      // The server reprices the return (tax included); refund and gate on its figure.
+      const total = Number(createResponse.total ?? estimatedTotal);
 
       // Auto-approve if under threshold for cash, or any amount for card/store credit
       const shouldAutoApprove = refundMethod !== 'cash' || total <= APPROVAL_THRESHOLD;
@@ -523,7 +533,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
               </div>
               <div className="flex justify-between text-lg font-bold">
                 <span>Refund Total:</span>
-                <span className="text-green-600">${calculateRefundTotal().toFixed(2)}</span>
+                <span className="text-green-600">${estimateRefundTotal().toFixed(2)}</span>
               </div>
               {needsApproval() && (
                 <div className="flex items-center gap-2 text-amber-600 text-sm mt-2">
@@ -555,7 +565,7 @@ export default function QuickReturnDialog({ open, onClose, onComplete }: QuickRe
                 disabled={getSelectedItems().length === 0 || processing}
                 className="bg-orange-600 hover:bg-orange-700"
               >
-                {processing ? 'Processing...' : needsApproval() ? 'Submit for Approval' : `Refund $${calculateRefundTotal().toFixed(2)}`}
+                {processing ? 'Processing...' : needsApproval() ? 'Submit for Approval' : `Refund $${estimateRefundTotal().toFixed(2)}`}
               </Button>
             </>
           )}

@@ -351,3 +351,89 @@ describe('refund transactions', () => {
     expect(refund.completed_at).toBeTruthy();
   });
 });
+
+describe('refund reversal and return refund status', () => {
+  async function cardOrder(total: number) {
+    const order = await h.adapter.createOrder({
+      items: [],
+      subtotal: total,
+      discountTotal: 0,
+      taxTotal: 0,
+      total,
+      paymentMethod: 'Card',
+      payments: [{ method: 'card', amount: total }],
+    });
+    orderIds.push(String(order.id));
+    return order;
+  }
+
+  it('marks only the refund with that processor id as failed, and clears its completion time', async () => {
+    const order = await cardOrder(9);
+    const make = (processorTransactionId: string) =>
+      h.adapter.createRefundTransaction({
+        orderId: order.id,
+        returnId: null,
+        transactionType: 'refund',
+        amount: 9,
+        paymentMethod: 'card',
+        processorTransactionId,
+        processedBy: cashier,
+      });
+    const target = await make(`re_${mark}_a`);
+    const bystander = await make(`re_${mark}_b`);
+
+    await h.adapter.markRefundFailed(`re_${mark}_a`, 'insufficient_funds');
+
+    const { rows } = await h.query(
+      'SELECT id, status, failure_reason, completed_at FROM refund_transactions WHERE id = ANY($1)',
+      [[target.id, bystander.id]]
+    );
+    const byId = Object.fromEntries(rows.map((r) => [String(r.id), r]));
+    expect(byId[String(target.id)]).toMatchObject({ status: 'failed', failure_reason: 'insufficient_funds', completed_at: null });
+    expect(byId[String(bystander.id)]).toMatchObject({ status: 'completed', failure_reason: null });
+    expect(byId[String(bystander.id)].completed_at).toBeTruthy();
+  });
+
+  it('updates a return’s refund fields without blanking the ones it was not given', async () => {
+    const order = await cardOrder(30);
+    const ret = await h.adapter.createReturn({
+      originalOrderId: order.id,
+      returnNumber: `${mark}-RS`,
+      status: 'approved',
+      subtotal: 30,
+      taxTotal: 0,
+      total: 30,
+      items: [],
+    });
+    returnIds.push(String(ret.id));
+    const processedAt = Date.UTC(2026, 0, 2, 3, 4, 5);
+
+    await h.adapter.updateReturnRefundStatus(String(ret.id), {
+      refundStatus: 'completed',
+      refundMethod: 'store_credit',
+      refundProcessedAt: processedAt,
+      storeCreditCode: `${mark}-SC`,
+      storeCreditAmount: 30,
+    });
+    const after = await h.adapter.updateReturnRefundStatus(String(ret.id), { refundStatus: 'reversed' });
+
+    const { rows } = await h.query(
+      'SELECT refund_status, refund_method, refund_processed_at, store_credit_code, store_credit_amount FROM returns WHERE id = $1',
+      [ret.id]
+    );
+    expect(rows[0]).toMatchObject({
+      refund_status: 'reversed',
+      refund_method: 'store_credit',
+      store_credit_code: `${mark}-SC`,
+    });
+    expect(Number(rows[0].store_credit_amount)).toBe(30);
+    expect(new Date(rows[0].refund_processed_at as string).getTime()).toBe(processedAt);
+    expect(after).toMatchObject({ id: ret.id });
+  });
+
+  it('returns null for a return that does not exist', async () => {
+    expect(
+      await h.adapter.updateReturnRefundStatus('00000000-0000-0000-0000-00000000dead', { refundStatus: 'completed' })
+    ).toBeNull();
+  });
+});

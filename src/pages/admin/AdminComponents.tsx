@@ -24,7 +24,11 @@ export default function AdminComponents() {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [updateType, setUpdateType] = useState<'frontend' | 'backend'>('frontend');
+  // Backend/Frontend tabs set the type; on All/Updates the row's own type decides.
+  const packageType = (name: string | undefined) =>
+    updates.find(u => u.name === name)?.type ?? components.find(c => c.name === name)?.type;
+  const updateType: 'frontend' | 'backend' =
+    (selectedType === 'all' ? packageType(selectedPackages[0]) : selectedType) ?? 'frontend';
   const [session, setSession] = useState<AuthSession | null>(null);
   const { toast } = useToast();
 
@@ -545,8 +549,7 @@ export default function AdminComponents() {
                               variant="outline"
                               onClick={() => {
                                 setSelectedPackages([update.name]);
-                                setUpdateType(update.type);
-                                handleUpdateSelected();
+                                setUpdateDialogOpen(true);
                               }}
                               disabled={isUpdating}
                             >

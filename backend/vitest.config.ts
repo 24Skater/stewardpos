@@ -42,15 +42,16 @@ export default defineConfig({
        * about code that was never covered in the first place. Raise them when
        * the real number moves up; that is the ratchet working.
        *
-       * Two things about the global numbers, which look low:
-       *
-       * CI measures coverage with `test:coverage`, which **excludes** the
-       * integration suites. `src/adapters/db` is covered almost entirely by
-       * those, so it reports ~0.1% here — 4,000-odd lines of adapter dragging
-       * the average down by construction, not by neglect. It is deliberately
-       * not given a threshold of its own: a floor on a directory whose tests
-       * do not run in this job would either be meaninglessly low or block on
-       * something this job cannot see.
+       * The global floors are for the FULL run CI does (`test:all`: unit +
+       * Postgres integration + SQLite, on Linux), which measured
+       * 94.9 / 85.9 / 96.4 / 95.3 on 2026-11-26. Two local runs read lower and
+       * will trip them, by construction rather than regression:
+       *   - `test:coverage` excludes the integration suites, so the Postgres
+       *     adapter counts as untested;
+       *   - on Windows, better-sqlite3 has no native binding, so the sqlite*
+       *     suites skip and SQLiteAdapter counts as untested.
+       * To reproduce CI's number on Windows, run `test:all` inside a Linux
+       * node:22 container against a migrated `*test*` Postgres.
        *
        * The per-directory and per-file floors below are where the real signal
        * is. A glob-matched file is checked against its glob *and* still counts
@@ -61,10 +62,10 @@ export default defineConfig({
        * then setting it back. A gate nobody has watched fail is not a gate.
        */
       thresholds: {
-        statements: 30,
-        branches: 30,
-        functions: 30,
-        lines: 30,
+        statements: 94,
+        branches: 85,
+        functions: 95,
+        lines: 94,
 
         // The layers this job genuinely exercises.
         'src/api/middleware/**': { statements: 87, branches: 75, functions: 90, lines: 87 },

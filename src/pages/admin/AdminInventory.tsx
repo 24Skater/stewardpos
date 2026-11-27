@@ -299,7 +299,7 @@ export default function AdminInventory() {
           name: editingProduct.name,
           description: editingProduct.description,
           category: editingProduct.category,
-          basePrice: editingProduct.basePrice,
+          basePrice: editingProduct.basePrice || 0,
           barcode: editingProduct.barcode,
           image: uploadedImage || editingProduct.image,
         };
