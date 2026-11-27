@@ -4,11 +4,13 @@ import { Input } from "@/components/ui/input";
 import ProductCard from "@/components/ProductCard";
 import Cart from "@/components/Cart";
 import VariantPicker from "@/components/VariantPicker";
+import CustomerPicker from "@/components/CustomerPicker";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { discountsApi, ordersApi, storeCreditsApi, terminalApi } from "@/lib/api";
 import type {
   CartItem,
   CreateOrderRequest,
+  Customer,
   DiscountType as ApiDiscountType,
   Order,
   PaymentMethodsConfig,
@@ -261,6 +263,13 @@ export default function POS() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  // A picked customer wins over a typed email; orders link to customers by email/phone.
+  const customerFields = () => {
+    const email = (selectedCustomer ? selectedCustomer.email ?? "" : customerEmail).trim();
+    const phone = selectedCustomer?.phone?.trim();
+    return { ...(email ? { customerEmail: email } : {}), ...(phone ? { customerPhone: phone } : {}) };
+  };
   const [variantPickerOpen, setVariantPickerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
@@ -788,7 +797,7 @@ export default function POS() {
           ? { cashTendered: parseFloat(cashTendered) }
           : {}),
         // Customer information is optional - only include if provided and not empty
-        ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
+        ...customerFields(),
       };
 
       const response = await createOrder.mutateAsync({ body: orderData, overrideToken });
@@ -816,6 +825,7 @@ export default function POS() {
       setCashTendered('');
       setAppliedCredit(null);
       setCustomerEmail("");
+      setSelectedCustomer(null);
       setAppliedDiscounts([]);
       // Reset to first enabled payment method for next sale
       if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
@@ -997,7 +1007,7 @@ export default function POS() {
         appliedDiscounts: toDiscountRequests(appliedDiscounts),
         paymentMethod: 'Card',
         ...(buildPayments('Card') ? { payments: buildPayments('Card') } : {}),
-        ...(customerEmail && customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
+        ...customerFields(),
         cardTransactionId: chargeId,
         ...(cardReceipt ? { cardReceipt } : {}),
         ...(chargeAttemptRef.current ? { attemptId: chargeAttemptRef.current } : {}),
@@ -1029,6 +1039,7 @@ export default function POS() {
       setCashTendered('');
       setAppliedCredit(null);
       setCustomerEmail('');
+      setSelectedCustomer(null);
       setAppliedDiscounts([]);
       if (paymentMethods.cash?.enabled !== false) setSelectedPaymentMethod('Cash');
       else if (paymentMethods.zelle?.enabled) setSelectedPaymentMethod('Zelle');
@@ -1500,9 +1511,10 @@ export default function POS() {
 
             {/* Customer Tab */}
             <TabsContent value="customer" className="mt-4 space-y-4">
-              <div className="space-y-2">
+              <CustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} />
+              {!selectedCustomer && <div className="space-y-2">
                 <Label htmlFor="email" className="text-foreground">
-                  Customer Email <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
+                  Or just an email for the receipt <span className="text-muted-foreground text-xs font-normal">(Optional)</span>
                 </Label>
                 <Input
                   id="email"
@@ -1515,7 +1527,7 @@ export default function POS() {
                 <p className="text-xs text-muted-foreground">
                   Leave blank to complete sale without customer information
                 </p>
-              </div>
+              </div>}
             </TabsContent>
           </Tabs>
 

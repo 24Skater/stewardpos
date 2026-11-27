@@ -190,8 +190,8 @@ export class Seeder {
         // POS screen needs the store's tax rate, branding, and which tenders are
         // enabled, and reads them from settings. Payment-processor keys are
         // stripped from that response server-side, so this grants a cashier
-        // store configuration, not credentials. `customers.read` lets them
-        // attach a sale to an existing customer.
+        // store configuration, not credentials. `customers` read/write lets them
+        // attach a sale to an existing customer or add a new one at the till.
         name: 'Standard',
         system_role: 'standard',
         permissions: JSON.stringify({
@@ -201,7 +201,7 @@ export class Seeder {
           settings: { read: true, write: false, delete: false },
           users: { read: false, write: false, delete: false },
           services: { read: true, write: false, delete: false },
-          customers: { read: true, write: false, delete: false },
+          customers: { read: true, write: true, delete: false },
           orders: { read: true, write: true, delete: false },
           returns: { read: true, write: false, delete: false },
           discounts: { read: true, write: false, delete: false },
