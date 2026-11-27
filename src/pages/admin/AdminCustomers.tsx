@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import PhoneInput from '@/components/PhoneInput';
+import { formatPhone, phoneDigits } from '@/lib/phone';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -165,7 +167,7 @@ export default function AdminCustomers() {
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.email?.toLowerCase().includes(search.toLowerCase()) ||
     c.org?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.toLowerCase().includes(search.toLowerCase())
+    (!!phoneDigits(search) && !!c.phone?.includes(phoneDigits(search)))
   );
 
   const canWrite = hasPermission(session, 'customers', 'write');
@@ -407,7 +409,7 @@ export default function AdminCustomers() {
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.org || '—'}</TableCell>
                     <TableCell>{customer.email || '—'}</TableCell>
-                    <TableCell>{customer.phone || '—'}</TableCell>
+                    <TableCell>{formatPhone(customer.phone) || '—'}</TableCell>
                     <TableCell>
                       {customer.city && customer.state 
                         ? `${customer.city}, ${customer.state}` 
@@ -488,12 +490,10 @@ export default function AdminCustomers() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone</Label>
-                    <Input
+                    <PhoneInput
                       id="phone"
-                      type="tel"
                       value={editingCustomer.phone || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
-                      placeholder="(555) 123-4567"
+                      onChange={(phone) => setEditingCustomer({ ...editingCustomer, phone })}
                     />
                   </div>
                 </div>
@@ -657,7 +657,7 @@ export default function AdminCustomers() {
                     </div>
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Phone</label>
-                      <p>{viewingCustomer.phone || '—'}</p>
+                      <p>{formatPhone(viewingCustomer.phone) || '—'}</p>
                     </div>
                   </div>
 

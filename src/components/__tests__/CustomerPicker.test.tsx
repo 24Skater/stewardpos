@@ -58,6 +58,24 @@ describe('CustomerPicker', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Dup');
   });
 
+  it('formats the phone as typed, saves bare digits, and blocks a half-typed number', async () => {
+    const onSelect = vi.fn();
+    create.mockResolvedValue({ id: 'c4', name: 'Dee' } as Customer);
+    render(<CustomerPicker selected={null} onSelect={onSelect} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /new/i }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dee' } });
+    const phone = screen.getByLabelText(/phone/i);
+    fireEvent.change(phone, { target: { value: '202-53x' } });
+    expect(phone).toHaveValue('(202) 53');
+    expect(screen.getByRole('button', { name: /add customer/i })).toBeDisabled();
+
+    fireEvent.change(phone, { target: { value: '(202) 538-1154' } });
+    fireEvent.click(screen.getByRole('button', { name: /add customer/i }));
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalledWith({ name: 'Dee', phone: '2025381154' }));
+  });
+
   it('shows the selected customer and can remove them from the sale', async () => {
     const onSelect = vi.fn();
     render(<CustomerPicker selected={ada} onSelect={onSelect} />);

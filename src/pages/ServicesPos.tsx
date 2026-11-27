@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import PhoneInput from '@/components/PhoneInput';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -59,6 +60,7 @@ export default function ServicesPos() {
   const [cart, setCart] = useState<ServiceCartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [serviceDetailsOpen, setServiceDetailsOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [serviceDetails, setServiceDetails] = useState<Record<string, string>>({});
@@ -132,13 +134,14 @@ export default function ServicesPos() {
       const response = await customersApi.create({
         name: formData.get('name') as string,
         email: formData.get('email') as string,
-        phone: formData.get('phone') as string,
+        phone: newCustomerPhone,
         org: formData.get('org') as string,
       });
 
       setCustomers([...customers, response]);
       setSelectedCustomer(response);
       setNewCustomerOpen(false);
+      setNewCustomerPhone('');
       toast({ title: 'Customer created' });
     } catch (error: unknown) {
       toast({
@@ -428,7 +431,7 @@ interface ServiceField {
               </div>
               <div>
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" type="tel" />
+                <PhoneInput id="phone" value={newCustomerPhone} onChange={setNewCustomerPhone} />
               </div>
             </div>
             <DialogFooter className="mt-6">

@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label";
 import { customersApi } from "@/lib/api";
 import type { Customer } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { formatPhone, phoneDigits, PHONE_DIGITS } from "@/lib/phone";
+import PhoneInput from "@/components/PhoneInput";
 import { UserPlus, UserRound, X, Loader2 } from "lucide-react";
 
 const MAX_RESULTS = 8;
@@ -34,18 +36,24 @@ export default function CustomerPicker({ selected, onSelect }: CustomerPickerPro
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
+    // Phones are stored as bare digits, so "(202) 538" has to match "202538...".
+    const digits = phoneDigits(q);
     return customers
-      .filter((c) => [c.name, c.email, c.phone].some((field) => field?.toLowerCase().includes(q)))
+      .filter((c) => [c.name, c.email].some((field) => field?.toLowerCase().includes(q)) || (!!digits && !!c.phone?.includes(digits)))
       .slice(0, MAX_RESULTS);
   }, [customers, query]);
 
   const startCreate = () => {
-    // Seed the form from what was typed: an @ means an email, otherwise a name.
+    // Seed the form from what was typed: an @ is an email, all digits a phone, otherwise a name.
     const typed = query.trim();
-    setDraft(typed.includes("@") ? { name: "", email: typed, phone: "" } : { name: typed, email: "", phone: "" });
+    if (typed.includes("@")) setDraft({ name: "", email: typed, phone: "" });
+    else if (/^[\d\s().+-]+$/.test(typed)) setDraft({ name: "", email: "", phone: phoneDigits(typed) });
+    else setDraft({ name: typed, email: "", phone: "" });
     setSaveError(null);
     setCreating(true);
   };
+
+  const phoneIncomplete = draft.phone.length > 0 && draft.phone.length < PHONE_DIGITS;
 
   const saveCustomer = async () => {
     setSaving(true);
@@ -54,7 +62,7 @@ export default function CustomerPicker({ selected, onSelect }: CustomerPickerPro
       const created = await customersApi.create({
         name: draft.name.trim(),
         ...(draft.email.trim() ? { email: draft.email.trim() } : {}),
-        ...(draft.phone.trim() ? { phone: draft.phone.trim() } : {}),
+        ...(draft.phone ? { phone: draft.phone } : {}),
       });
       setCustomers((prev) => [created, ...prev]);
       setCreating(false);
@@ -73,7 +81,7 @@ export default function CustomerPicker({ selected, onSelect }: CustomerPickerPro
         <div className="min-w-0">
           <p className="font-medium text-foreground">{selected.name}</p>
           {selected.email && <p className="truncate text-sm text-muted-foreground">{selected.email}</p>}
-          {selected.phone && <p className="text-sm text-muted-foreground">{selected.phone}</p>}
+          {selected.phone && <p className="text-sm text-muted-foreground">{formatPhone(selected.phone)}</p>}
         </div>
         <Button variant="ghost" size="sm" onClick={() => onSelect(null)} aria-label="Remove customer from sale">
           <X className="h-4 w-4" />
@@ -105,19 +113,19 @@ export default function CustomerPicker({ selected, onSelect }: CustomerPickerPro
         </div>
         <div className="space-y-1">
           <Label htmlFor="new-customer-phone">Phone <span className="text-xs text-muted-foreground">(optional)</span></Label>
-          <Input
+          <PhoneInput
             id="new-customer-phone"
-            type="tel"
             value={draft.phone}
-            onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+            onChange={(phone) => setDraft({ ...draft, phone })}
           />
+          {phoneIncomplete && <p className="text-xs text-destructive">Enter all 10 digits, or leave it blank.</p>}
         </div>
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setCreating(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button size="sm" onClick={saveCustomer} disabled={saving || !draft.name.trim()}>
+          <Button size="sm" onClick={saveCustomer} disabled={saving || !draft.name.trim() || phoneIncomplete}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Add customer
           </Button>
@@ -156,7 +164,7 @@ export default function CustomerPicker({ selected, onSelect }: CustomerPickerPro
               >
                 <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="font-medium">{c.name}</span>
-                <span className="truncate text-sm text-muted-foreground">{c.email || c.phone}</span>
+                <span className="truncate text-sm text-muted-foreground">{c.email || formatPhone(c.phone)}</span>
               </button>
             </li>
           ))}

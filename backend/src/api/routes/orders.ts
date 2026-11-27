@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/authorize';
 import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
 import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
+import { normalizePhone } from '../../utils/phone';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -144,8 +145,10 @@ const createOrderSchema = z.object({
     (val) => (val === '' || val === null || val === undefined ? undefined : val),
     z.string().email().optional()
   ),
+  // Normalised so it matches the customer record, but never rejected: a card
+  // may already be charged by the time the order is written.
   customerPhone: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    (val) => (val === '' || val === null || val === undefined ? undefined : normalizePhone(val) || undefined),
     z.string().optional()
   ),
   cardTransactionId: z.string().optional(),

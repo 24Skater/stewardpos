@@ -4,6 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import { partialUpdate } from '../../utils/zod';
+import { phoneSchema } from '../../utils/phone';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -30,7 +31,7 @@ const createCustomerSchema = z.object({
   name: z.string().min(1),
   org: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  phone: phoneSchema.optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
