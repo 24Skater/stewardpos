@@ -267,6 +267,39 @@ describe('DELETE /api/admin/users/:id', () => {
   });
 });
 
+describe('admin lockout', () => {
+  beforeEach(() => {
+    getAllRoles.mockResolvedValue([{ id: 'r-admin', name: 'Admin', systemRole: 'admin' }]);
+    getAllUsers.mockResolvedValue([
+      { id: 'u1', status: 'active', roleIds: ['r-admin'] },
+      { id: 'u2', status: 'active', roleIds: [] },
+    ]);
+  });
+
+  it('refuses deactivating your own account', async () => {
+    const response = await request(app).put('/api/admin/users/u1').set(auth()).send({ status: 'inactive' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatch(/deactivate your own/);
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it('refuses deleting your own account', async () => {
+    const response = await request(app).delete('/api/admin/users/u1').set(auth());
+
+    expect(response.status).toBe(409);
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('still lets you deactivate someone else', async () => {
+    updateUser.mockResolvedValue({ id: 'u2', email: PERSON.email, name: PERSON.name });
+
+    const response = await request(app).put('/api/admin/users/u2').set(auth()).send({ status: 'inactive' });
+
+    expect(response.status).toBe(200);
+  });
+});
+
 describe('roles', () => {
   it('lists them', async () => {
     expect((await request(app).get('/api/admin/roles').set(auth())).body.data).toHaveLength(1);

@@ -1540,6 +1540,7 @@ export class SQLiteAdapter {
           roles,
           pinSetAt: u.pin_set_at == null ? null : Number(u.pin_set_at),
           pinLockedUntil: u.pin_locked_until == null ? null : Number(u.pin_locked_until),
+          canOverride: Boolean(u.can_override),
           // See the Postgres adapter: the password lockout's counterpart,
           // so the admin screen can offer both unlocks.
           passwordLockedUntil:

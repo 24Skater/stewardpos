@@ -1616,6 +1616,7 @@ export class PostgresAdapter {
         roles: u.roles || [],
         pinSetAt: u.pin_set_at ? new Date(u.pin_set_at).getTime() : null,
         pinLockedUntil: u.pin_locked_until ? new Date(u.pin_locked_until).getTime() : null,
+        canOverride: Boolean(u.can_override),
         // The password lockout's counterpart to pinLockedUntil, so the admin
         // screen can offer the unlock for one exactly as it does for the other.
         passwordLockedUntil: u.password_locked_until

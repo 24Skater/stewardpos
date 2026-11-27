@@ -466,6 +466,8 @@ export interface User {
   /** Epoch ms while the account is locked out of password sign-in, else null. */
   passwordLockedUntil?: number | null;
   lastLoginAt?: number;
+  /** May approve a manager override at the till. */
+  canOverride?: boolean;
   createdAt: number;
 }
 

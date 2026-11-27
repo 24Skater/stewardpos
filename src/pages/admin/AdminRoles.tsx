@@ -19,6 +19,7 @@ import { getCurrentSession, hasAnyRole, hasPermission, type AuthSession } from '
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 import CashierPinManager from '@/components/admin/CashierPinManager';
+import UserManager from '@/components/admin/UserManager';
 
 interface Role {
   id: string;
@@ -52,6 +53,8 @@ const MODULE_HINTS: Partial<Record<keyof RolePermissions, string>> = {
 
 export default function AdminRoles() {
   const [roles, setRoles] = useState<Role[]>([]);
+  // Bumped when a user is added or changed, so the PIN list picks them up.
+  const [pinListKey, setPinListKey] = useState(0);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -223,8 +226,8 @@ export default function AdminRoles() {
       <div className="p-8">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Roles & Permissions</h1>
-            <p className="text-muted-foreground">Manage user roles and access permissions</p>
+            <h1 className="text-3xl font-bold text-foreground">Roles & Users</h1>
+            <p className="text-muted-foreground">Manage staff accounts, their roles, and what each role can do</p>
           </div>
           {isAdmin && (
             <Button onClick={handleAddRole}>
@@ -424,7 +427,14 @@ export default function AdminRoles() {
           </DialogContent>
         </Dialog>
 
-        {canManagePins && <CashierPinManager />}
+        <UserManager
+          roles={roles}
+          currentUserId={session?.user.id}
+          canEdit={canManagePins}
+          onChanged={() => setPinListKey((k) => k + 1)}
+        />
+
+        {canManagePins && <CashierPinManager key={pinListKey} />}
       </div>
     </AdminLayout>
   );

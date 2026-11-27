@@ -12,6 +12,7 @@ import { Seeder } from '../../services/seeder';
 import { setPin, clearPin } from '../../services/pins';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../../utils/errors';
 import { partialUpdate } from '../../utils/zod';
+import { lockoutProblem, type UserChange } from '../../services/adminLockout';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import {
@@ -122,6 +123,20 @@ router.post('/users', requirePermission('users', 'write'), async (req: AuthReque
   }
 });
 
+/** Refuse a change that would leave nobody able to administer the store. */
+async function refuseLockout(req: AuthRequest, change: UserChange): Promise<void> {
+  const adapter = db.getAdapter();
+  const [users, roles] = await Promise.all([adapter.getAllUsers(), adapter.getAllRoles()]);
+  const adminRoleIds = new Set(roles.filter((r) => r.systemRole === 'admin').map((r) => String(r.id)));
+  const problem = lockoutProblem(
+    users.map((u) => ({ id: String(u.id), status: String(u.status), roleIds: (u.roleIds as string[]) ?? [] })),
+    adminRoleIds,
+    req.user?.id,
+    change
+  );
+  if (problem) throw new ConflictError(problem);
+}
+
 /**
  * PUT /api/admin/users/:id
  * Update user
@@ -131,6 +146,10 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     const { id } = req.params;
     const userData = updateUserSchema.parse(req.body);
     const adapter = db.getAdapter();
+
+    if (userData.status !== undefined || userData.roleIds !== undefined) {
+      await refuseLockout(req, { id, status: userData.status, roleIds: userData.roleIds });
+    }
 
     const updateData: Record<string, unknown> = { ...userData };
 
@@ -362,6 +381,7 @@ router.delete('/users/:id', requirePermission('users', 'delete'), async (req: Au
   try {
     const { id } = req.params;
     const adapter = db.getAdapter();
+    await refuseLockout(req, { id, deleted: true });
     const deleted = await adapter.deleteUser(id);
 
     if (!deleted) {
