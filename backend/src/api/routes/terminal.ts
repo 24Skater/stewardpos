@@ -63,7 +63,7 @@ const chargeSchema = z.object({
       })
     )
     .min(1, 'A card payment needs something to sell'),
-  appliedDiscounts: z.array(z.record(z.unknown())).optional().default([]),
+  appliedDiscounts: z.array(z.record(z.string(), z.unknown())).optional().default([]),
   /** Resolved server-side; the credit's share comes off the card, not the sale. */
   storeCreditCode: z.string().optional(),
   currency: z.string().default('USD'),
@@ -74,7 +74,7 @@ const chargeSchema = z.object({
 router.post('/charge', requirePermission('orders', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const parsed = chargeSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0].message);
 
     const { items, appliedDiscounts, storeCreditCode, currency, readerId, description } =
       parsed.data;

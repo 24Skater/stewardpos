@@ -11,6 +11,7 @@ import {
 import { Seeder } from '../../services/seeder';
 import { setPin, clearPin } from '../../services/pins';
 import { ValidationError, NotFoundError, ForbiddenError, ConflictError } from '../../utils/errors';
+import { partialUpdate } from '../../utils/zod';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import {
@@ -114,7 +115,7 @@ router.post('/users', requirePermission('users', 'write'), async (req: AuthReque
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -167,7 +168,7 @@ router.put('/users/:id', requirePermission('users', 'write'), async (req: AuthRe
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -220,7 +221,7 @@ router.put('/users/:id/pin', requirePermission('users', 'write'), async (req: Au
     res.json({ success: true, data: { id, pinSet: true } });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -402,7 +403,7 @@ const createRoleSchema = z.object({
   ),
 });
 
-const updateRoleSchema = createRoleSchema.partial();
+const updateRoleSchema = partialUpdate(createRoleSchema);
 
 /**
  * GET /api/admin/roles
@@ -441,7 +442,7 @@ router.post('/roles', requirePermission('users', 'write'), async (req: AuthReque
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -474,7 +475,7 @@ router.put('/roles/:id', requirePermission('users', 'write'), async (req: AuthRe
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -532,7 +533,7 @@ const updateSettingsSchema = z.object({
   // defended against at read time: a store that stores `"5"` and sees no change
   // to its low-stock list has been given no reason why.
   config: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .refine(
       (config) => {
@@ -771,7 +772,7 @@ router.put('/settings', requirePermission('settings', 'write'), async (req: Auth
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -833,7 +834,7 @@ router.get('/audit', requirePermission('settings', 'read'), async (req: AuthRequ
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

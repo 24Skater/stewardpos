@@ -277,7 +277,7 @@ try {
 } catch (error) {
   console.error('❌ Configuration validation failed:');
   if (error instanceof z.ZodError) {
-    error.errors.forEach((err) => {
+    error.issues.forEach((err) => {
       console.error(`  - ${err.path.join('.')}: ${err.message}`);
     });
   } else if (error instanceof Error) {

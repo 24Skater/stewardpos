@@ -156,7 +156,7 @@ const createOrderSchema = z.object({
    * field by field, and inventing or reformatting any of them would defeat the
    * point of printing them.
    */
-  cardReceipt: z.record(z.unknown()).optional(),
+  cardReceipt: z.record(z.string(), z.unknown()).optional(),
   /**
    * The payment attempt this sale is settling, from `POST /api/terminal/charge`.
    *
@@ -261,7 +261,7 @@ router.post('/quote', requirePermission('orders', 'write'), async (req: AuthRequ
     res.json({ success: true, data: priced });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')));
+      next(new ValidationError(error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')));
     } else {
       next(error);
     }
@@ -513,8 +513,8 @@ router.post('/', requirePermission('orders', 'write'), async (req: AuthRequest, 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      logger.error('Order validation error', { issues: error.errors });
-      const errorMessage = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      logger.error('Order validation error', { issues: error.issues });
+      const errorMessage = error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
       next(new ValidationError(errorMessage));
     } else {
       next(error);

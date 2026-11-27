@@ -77,7 +77,7 @@ const createReturnSchema = z.object({
    */
   returnType: z
     .enum(['return', 'exchange', 'void'], {
-      errorMap: () => ({ message: 'returnType must be "return" or "void"' }),
+      error: 'returnType must be "return" or "void"',
     })
     .default('return')
     .refine((value) => value !== 'exchange', {
@@ -353,7 +353,7 @@ router.post('/', requirePermission('returns', 'write'), async (req: AuthRequest,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -389,7 +389,7 @@ router.put('/:id/status', requirePermission('returns', 'write'), async (req: Aut
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -550,7 +550,7 @@ router.post('/:id/process-refund', requirePermission('returns', 'write'), async 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

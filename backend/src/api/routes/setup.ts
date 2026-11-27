@@ -171,7 +171,7 @@ router.post('/test-database', rejectIfAlreadySetUp, async (req: Request, res: Re
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -518,7 +518,7 @@ router.post('/complete', rejectIfAlreadySetUp, async (req: Request, res: Respons
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

@@ -59,7 +59,7 @@ const dismissSchema = z.object({
 router.get('/', requirePermission('reports', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const parsed = querySchema.safeParse(req.query);
-    if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0].message);
 
     const grace =
       parsed.data.withinMinutes !== undefined
@@ -194,7 +194,7 @@ router.post('/:id/refund', requirePermission('returns', 'write'), async (req: Au
 router.post('/:id/dismiss', requirePermission('reports', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const parsed = dismissSchema.safeParse(req.body);
-    if (!parsed.success) throw new ValidationError(parsed.error.errors[0].message);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0].message);
 
     const attempt = await loadAttempt(req.params.id);
     const dbAdapter = db.getAdapter();

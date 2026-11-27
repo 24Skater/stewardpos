@@ -154,7 +154,7 @@ router.post('/', async (req: AuthRequest, res: Response, next: NextFunction) => 
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -188,7 +188,7 @@ router.put('/:id', async (req: AuthRequest, res: Response, next: NextFunction) =
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

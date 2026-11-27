@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
+import { partialUpdate } from '../../utils/zod';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -195,7 +196,7 @@ router.post('/types', requirePermission('discounts', 'write'), async (req: AuthR
     res.status(201).json({ success: true, data: created });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -207,7 +208,7 @@ router.post('/types', requirePermission('discounts', 'write'), async (req: AuthR
  */
 router.put('/types/:id', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const data = discountTypeSchema.partial().parse(req.body);
+    const data = partialUpdate(discountTypeSchema).parse(req.body);
     const adapter = db.getAdapter();
     const updated = await adapter.updateDiscountType(req.params.id, data);
     if (!updated) {
@@ -217,7 +218,7 @@ router.put('/types/:id', requirePermission('discounts', 'write'), async (req: Au
     res.json({ success: true, data: updated });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -289,7 +290,7 @@ router.post('/promos', requirePermission('discounts', 'write'), async (req: Auth
     res.status(201).json({ success: true, data: created });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -301,7 +302,7 @@ router.post('/promos', requirePermission('discounts', 'write'), async (req: Auth
  */
 router.put('/promos/:id', requirePermission('discounts', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const data = promoCodeSchema.partial().parse(req.body);
+    const data = partialUpdate(promoCodeSchema).parse(req.body);
     const adapter = db.getAdapter();
     const updated = await adapter.updatePromoCode(req.params.id, data);
     if (!updated) {
@@ -311,7 +312,7 @@ router.put('/promos/:id', requirePermission('discounts', 'write'), async (req: A
     res.json({ success: true, data: updated });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -440,7 +441,7 @@ router.post('/promos/validate', requirePermission('orders', 'write'), async (req
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -510,7 +511,7 @@ router.post('/employee', authorize(['admin']), async (req: AuthRequest, res: Res
     res.status(201).json({ success: true, data: created });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }
@@ -571,7 +572,7 @@ router.post('/usage', requirePermission('orders', 'write'), async (req: AuthRequ
     res.status(201).json({ success: true, data: logged });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors[0].message));
+      next(new ValidationError(error.issues[0].message));
     } else {
       next(error);
     }

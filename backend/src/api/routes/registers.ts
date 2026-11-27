@@ -459,7 +459,7 @@ const listQuerySchema = z.object({
 function asValidationError(error: unknown): unknown {
   if (error instanceof z.ZodError) {
     return new ValidationError(
-      error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+      error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
     );
   }
   return error;

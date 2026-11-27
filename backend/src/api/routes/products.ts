@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError } from '../../utils/errors';
+import { partialUpdate } from '../../utils/zod';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -48,10 +49,10 @@ const createProductSchema = z.object({
   // violation and surfaced as a 500 - the caller was told the server broke when
   // it had simply left out a mandatory field.
   category: z
-    // Both messages, because Zod uses `required_error` when the field is absent
+    // Both messages, because Zod uses `error` when the field is absent or not a string
     // and the `min` message only when it is present but empty. Setting one
     // leaves the other as a bare "Required".
-    .string({ required_error: 'A product needs a category' })
+    .string({ error: 'A product needs a category' })
     .min(1, 'A product needs a category'),
   basePrice: z.number().min(0),
   image: z.string().optional(),
@@ -102,7 +103,7 @@ router.get('/', requirePermission('inventory', 'read'), async (req: Request, res
     if (error instanceof z.ZodError) {
       next(
         new ValidationError(
-          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+          error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
         )
       );
     } else {
@@ -234,7 +235,7 @@ router.post('/', requirePermission('inventory', 'write'), async (req: AuthReques
     if (error instanceof z.ZodError) {
       next(
         new ValidationError(
-          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+          error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
         )
       );
     } else {
@@ -271,7 +272,7 @@ router.put('/:id', requirePermission('inventory', 'write'), async (req: AuthRequ
     if (error instanceof z.ZodError) {
       next(
         new ValidationError(
-          error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
+          error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')
         )
       );
     } else {
@@ -331,7 +332,7 @@ const createVariantSchema = z.object({
   lowStockThreshold: z.number().int().min(0).nullable().optional(),
 });
 
-const updateVariantSchema = createVariantSchema.partial();
+const updateVariantSchema = partialUpdate(createVariantSchema);
 
 /**
  * POST /api/products/:id/variants
@@ -357,7 +358,7 @@ router.post('/:id/variants', requirePermission('inventory', 'write'), async (req
     res.status(201).json({ success: true, data: variant });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
+      next(new ValidationError(error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
     } else {
       next(error);
     }
@@ -388,7 +389,7 @@ router.put('/:id/variants/:variantId', requirePermission('inventory', 'write'), 
     res.json({ success: true, data: variant });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      next(new ValidationError(error.errors.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
+      next(new ValidationError(error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join(', ')));
     } else {
       next(error);
     }
