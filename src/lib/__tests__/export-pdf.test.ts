@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 
 /**
  * The PDF and spreadsheet exporters, actually executed.
@@ -60,6 +60,9 @@ const workbookBlobs: Blob[] = [];
  * Only the browser's download plumbing is stubbed, which jsdom does not
  * implement: the workbook is genuinely built, zipped and handed over.
  */
+// write-excel-file removes its download anchor on a 100ms timer; let it fire before jsdom is torn down.
+afterAll(() => new Promise((resolve) => setTimeout(resolve, 150)));
+
 beforeAll(() => {
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
