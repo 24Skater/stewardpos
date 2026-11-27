@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Palette } from 'lucide-react';
 import type { Settings } from '@/lib/api';
 import { brandProperties, isBrandColor } from '@/lib/brand-theme';
+import ImageUploadField from './ImageUploadField';
 
 interface BrandingSettingsProps {
   settings: Settings;
@@ -85,28 +86,25 @@ export default function BrandingSettings({ settings, onChange }: BrandingSetting
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL</Label>
-              <Input
-                id="logoUrl"
-                value={settings.logoUrl ?? ''}
-                onChange={(e) => onChange({ logoUrl: e.target.value })}
-                placeholder="https://… or /uploads/logo.png"
-              />
-              <p className="text-xs text-muted-foreground">Shown in the register header.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="iconUrl">Favicon URL</Label>
-              <Input
-                id="iconUrl"
-                value={settings.iconUrl ?? ''}
-                onChange={(e) => onChange({ iconUrl: e.target.value })}
-                placeholder="https://… or /uploads/icon.png"
-              />
-              <p className="text-xs text-muted-foreground">Shown in the browser tab.</p>
-            </div>
+          <div className="space-y-4">
+            <ImageUploadField
+              id="logoUrl"
+              label="Logo"
+              kind="logo"
+              value={settings.logoUrl}
+              onChange={(logoUrl) => onChange({ logoUrl })}
+              placeholder="Upload an image, or paste https://…"
+              hint="Shown in the register header."
+            />
+            <ImageUploadField
+              id="iconUrl"
+              label="Favicon"
+              kind="icon"
+              value={settings.iconUrl}
+              onChange={(iconUrl) => onChange({ iconUrl })}
+              placeholder="Upload an image, or paste https://…"
+              hint="Shown in the browser tab. A small square image works best."
+            />
           </div>
         </CardContent>
       </Card>
@@ -133,15 +131,15 @@ export default function BrandingSettings({ settings, onChange }: BrandingSetting
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="receiptLogoUrl">Receipt logo URL</Label>
-            <Input
-              id="receiptLogoUrl"
-              value={settings.receiptLogoUrl ?? ''}
-              onChange={(e) => onChange({ receiptLogoUrl: e.target.value })}
-              placeholder="https://… or /uploads/receipt-logo.png"
-            />
-          </div>
+          <ImageUploadField
+            id="receiptLogoUrl"
+            label="Receipt logo"
+            kind="logo"
+            value={settings.receiptLogoUrl}
+            onChange={(receiptLogoUrl) => onChange({ receiptLogoUrl })}
+            placeholder="Upload an image, or paste https://…"
+            hint="Thermal printers print in black only; a high-contrast black-and-white logo prints best."
+          />
 
           <div className="space-y-2">
             <Label htmlFor="receiptHeaderText">Header text</Label>
