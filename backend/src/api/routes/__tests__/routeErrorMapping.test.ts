@@ -158,6 +158,7 @@ const FAILS: Row[] = [
   { method: 'delete', path: '/api/customers/c1/permanent', adapterMethod: 'permanentDeleteCustomer', arrange: { getCustomerById: { id: 'c1', name: 'Ann' } } },
   { method: 'get', path: '/api/orders', adapterMethod: 'getAllOrders' },
   { method: 'get', path: '/api/orders/customer/a@b.c', adapterMethod: 'getOrdersByCustomerEmail' },
+  { method: 'get', path: '/api/orders/customer-phone/5550100', adapterMethod: 'getOrdersByCustomerPhone' },
   { method: 'get', path: '/api/receipts', adapterMethod: 'getAllOrders' },
   { method: 'get', path: '/api/receipts/search?query=tea', adapterMethod: 'searchOrders' },
   { method: 'get', path: '/api/receipts/o1/history', adapterMethod: 'getReceiptEmailHistory' },

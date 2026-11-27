@@ -148,16 +148,21 @@ describe('POST /api/customers', () => {
 
 describe('PUT /api/customers/:id', () => {
   it('updates only what was sent', async () => {
-    await request(app).put('/api/customers/c1').set(auth()).send({ phone: '555-0100' });
+    await request(app).put('/api/customers/c1').set(auth()).send({ phone: '(202) 555-0100' });
 
-    expect(updateCustomer).toHaveBeenCalledWith('c1', expect.objectContaining({ phone: '555-0100' }));
+    expect(updateCustomer).toHaveBeenCalledWith('c1', expect.objectContaining({ phone: '2025550100' }));
+  });
+
+  it('refuses a phone that is not 10 digits', async () => {
+    expect((await request(app).put('/api/customers/c1').set(auth()).send({ phone: '555-0100' })).status).toBe(400);
+    expect(updateCustomer).not.toHaveBeenCalled();
   });
 
   it('404s for one that does not exist', async () => {
     updateCustomer.mockResolvedValue(null);
 
     expect(
-      (await request(app).put('/api/customers/nope').set(auth()).send({ phone: '1' })).status
+      (await request(app).put('/api/customers/nope').set(auth()).send({ phone: '2025550100' })).status
     ).toBe(404);
   });
 });

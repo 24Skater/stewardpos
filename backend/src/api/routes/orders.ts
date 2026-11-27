@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/authorize';
 import { resolveCallerRegister, readOverrideToken } from '../middleware/registerContext';
 import { SHIFT_REQUIRED, OVERRIDE_REQUIRED } from '../middleware/registerErrorCodes';
 import { ValidationError, NotFoundError, ConflictError, UnprocessableEntityError } from '../../utils/errors';
+import { normalizePhone } from '../../utils/phone';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
@@ -144,8 +145,10 @@ const createOrderSchema = z.object({
     (val) => (val === '' || val === null || val === undefined ? undefined : val),
     z.string().email().optional()
   ),
+  // Normalised so it matches the customer record, but never rejected: a card
+  // may already be charged by the time the order is written.
   customerPhone: z.preprocess(
-    (val) => (val === '' || val === null || val === undefined ? undefined : val),
+    (val) => (val === '' || val === null || val === undefined ? undefined : normalizePhone(val) || undefined),
     z.string().optional()
   ),
   cardTransactionId: z.string().optional(),
@@ -203,6 +206,19 @@ router.get('/customer/:email', requirePermission('orders', 'read'), async (req: 
       success: true,
       data: orders,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/orders/customer-phone/:phone
+ * Orders recorded with this phone, for customers who gave no email.
+ */
+router.get('/customer-phone/:phone', requirePermission('orders', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const orders = await db.getAdapter().getOrdersByCustomerPhone(req.params.phone);
+    res.json({ success: true, data: orders });
   } catch (error) {
     next(error);
   }

@@ -15,7 +15,7 @@ const api = vi.hoisted(() => ({
   },
   quotes: { listByCustomer: vi.fn() },
   returns: { listByCustomer: vi.fn() },
-  orders: { listByCustomerEmail: vi.fn() },
+  orders: { listByCustomerEmail: vi.fn(), listByCustomerPhone: vi.fn() },
   session: { current: null as unknown },
   toasts: [] as { title?: string; description?: string }[],
 }));
@@ -101,6 +101,7 @@ beforeEach(() => {
   api.quotes.listByCustomer.mockResolvedValue([]);
   api.returns.listByCustomer.mockResolvedValue([]);
   api.orders.listByCustomerEmail.mockResolvedValue([]);
+  api.orders.listByCustomerPhone.mockResolvedValue([]);
 });
 
 describe('AdminCustomers list', () => {
@@ -267,6 +268,21 @@ describe('AdminCustomers detail view', () => {
     expect(within(dialog).getByText('2 return(s)')).toBeTruthy();
     expect(within(dialog).getByText('Prefers email')).toBeTruthy();
     expect(api.orders.listByCustomerEmail).toHaveBeenCalledWith('ada@example.com');
+  });
+
+  it('also finds sales recorded by phone, listing a sale matched both ways once', async () => {
+    const both = { id: 'o1', createdAt: 1, total: 10, paymentMethod: 'cash', items: [] };
+    const phoneOnly = { id: 'o2', createdAt: 2, total: 5, paymentMethod: 'cash', items: [] };
+    api.orders.listByCustomerEmail.mockResolvedValue([both]);
+    api.orders.listByCustomerPhone.mockResolvedValue([phoneOnly, both]);
+    renderPage();
+    const row = (await screen.findByText('Ada Lovelace')).closest('tr') as HTMLElement;
+
+    fireEvent.click(within(row).getAllByRole('button')[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText(/POS Orders \(2\)/)).toBeTruthy();
+    expect(api.orders.listByCustomerPhone).toHaveBeenCalledWith('555-0101');
   });
 
   it('shows each history tab', async () => {
