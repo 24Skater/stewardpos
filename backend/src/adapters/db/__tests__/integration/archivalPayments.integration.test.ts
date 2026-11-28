@@ -136,7 +136,7 @@ describe('archiving a customer', () => {
 
     const { rows } = await h.query('SELECT * FROM archived_quotes WHERE id = $1', [quote.id]);
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0].tax)).toBe(6.4);
+    expect(Number(rows[0].tax_cents)).toBe(640);
     // To the second: the source column stores whole seconds, so the archived
     // expiry differs by sub-second precision. Immaterial for a quote, which
     // expires on a day, but worth asserting deliberately rather than rounding

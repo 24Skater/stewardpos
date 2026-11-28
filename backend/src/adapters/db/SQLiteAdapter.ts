@@ -1461,11 +1461,11 @@ export class SQLiteAdapter {
         const items = this.db.prepare('SELECT * FROM quote_items WHERE quote_id = ?').all(quote.id);
         this.db.prepare(
           `INSERT INTO archived_quotes
-           (id, customer_id, status, items, subtotal, tax, total, notes, valid_until, created_at)
+           (id, customer_id, status, items, subtotal_cents, tax_cents, total_cents, notes, valid_until, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
           quote.id, quote.customer_id, quote.status, JSON.stringify(items),
-          quote.subtotal, quote.tax_total, quote.total, quote.notes,
+          quote.subtotal_cents, quote.tax_total_cents, quote.total_cents, quote.notes,
           quote.expires_at, quote.created_at
         );
       }
@@ -2345,9 +2345,9 @@ export class SQLiteAdapter {
           customerName: q.customer_name,
           customerEmail: q.customer_email,
           status: q.status,
-          subtotal: q.subtotal,
-          taxTotal: q.tax_total,
-          total: q.total,
+          subtotal: centsToDollars(q.subtotal_cents),
+          taxTotal: centsToDollars(q.tax_total_cents),
+          total: centsToDollars(q.total_cents),
           notes: q.notes,
           createdAt: q.created_at,
           expiresAt: q.expires_at,
@@ -2358,8 +2358,8 @@ export class SQLiteAdapter {
             serviceName: i.service_name,
             description: i.description,
             quantity: i.quantity,
-            unitPrice: i.unit_price,
-            lineTotal: i.line_total,
+            unitPrice: centsToDollars(i.unit_price_cents),
+            lineTotal: centsToDollars(i.line_total_cents),
           })),
         };
       });
@@ -2399,9 +2399,9 @@ export class SQLiteAdapter {
         customerName: q.customer_name,
         customerEmail: q.customer_email,
         status: q.status,
-        subtotal: q.subtotal,
-        taxTotal: q.tax_total,
-        total: q.total,
+        subtotal: centsToDollars(q.subtotal_cents),
+        taxTotal: centsToDollars(q.tax_total_cents),
+        total: centsToDollars(q.total_cents),
         notes: q.notes,
         createdAt: q.created_at,
         expiresAt: q.expires_at,
@@ -2412,8 +2412,8 @@ export class SQLiteAdapter {
           serviceName: i.service_name,
           description: i.description,
           quantity: i.quantity,
-          unitPrice: i.unit_price,
-          lineTotal: i.line_total,
+          unitPrice: centsToDollars(i.unit_price_cents),
+          lineTotal: centsToDollars(i.line_total_cents),
         })),
       };
     } catch (error) {
@@ -2450,9 +2450,9 @@ export class SQLiteAdapter {
           customerName: q.customer_name,
           customerEmail: q.customer_email,
           status: q.status,
-          subtotal: q.subtotal,
-          taxTotal: q.tax_total,
-          total: q.total,
+          subtotal: centsToDollars(q.subtotal_cents),
+          taxTotal: centsToDollars(q.tax_total_cents),
+          total: centsToDollars(q.total_cents),
           notes: q.notes,
           createdAt: q.created_at,
           expiresAt: q.expires_at,
@@ -2463,8 +2463,8 @@ export class SQLiteAdapter {
             serviceName: i.service_name,
             description: i.description,
             quantity: i.quantity,
-            unitPrice: i.unit_price,
-            lineTotal: i.line_total,
+            unitPrice: centsToDollars(i.unit_price_cents),
+            lineTotal: centsToDollars(i.line_total_cents),
           })),
         };
       });
@@ -2480,15 +2480,15 @@ export class SQLiteAdapter {
       const now = Date.now();
       const quoteResult = this.db
         .prepare(
-          `INSERT INTO quotes (customer_id, status, subtotal, tax_total, total, notes, created_at, expires_at)
+          `INSERT INTO quotes (customer_id, status, subtotal_cents, tax_total_cents, total_cents, notes, created_at, expires_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           quote.customerId,
           quote.status || 'draft',
-          quote.subtotal,
-          quote.taxTotal || 0,
-          quote.total,
+          toCents(Number(quote.subtotal)),
+          toCents(Number(quote.taxTotal || 0)),
+          toCents(Number(quote.total)),
           quote.notes,
           now,
           quote.expiresAt
@@ -2503,7 +2503,7 @@ export class SQLiteAdapter {
         for (const item of asRows(quote.items)) {
           const itemResult = this.db
             .prepare(
-              `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+              `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price_cents, line_total_cents)
                VALUES (?, ?, ?, ?, ?, ?)`
             )
             .run(
@@ -2511,8 +2511,8 @@ export class SQLiteAdapter {
               item.serviceId,
               item.description,
               item.quantity,
-              item.unitPrice,
-              item.lineTotal
+              toCents(Number(item.unitPrice)),
+              toCents(Number(item.lineTotal))
             );
 
           const newItem = this.db
@@ -2525,8 +2525,8 @@ export class SQLiteAdapter {
             serviceId: newItem.service_id,
             description: newItem.description,
             quantity: newItem.quantity,
-            unitPrice: newItem.unit_price,
-            lineTotal: newItem.line_total,
+            unitPrice: centsToDollars(newItem.unit_price_cents),
+            lineTotal: centsToDollars(newItem.line_total_cents),
           });
         }
       }
@@ -2535,9 +2535,9 @@ export class SQLiteAdapter {
         id: newQuote.id,
         customerId: newQuote.customer_id,
         status: newQuote.status,
-        subtotal: newQuote.subtotal,
-        taxTotal: newQuote.tax_total,
-        total: newQuote.total,
+        subtotal: centsToDollars(newQuote.subtotal_cents),
+        taxTotal: centsToDollars(newQuote.tax_total_cents),
+        total: centsToDollars(newQuote.total_cents),
         notes: newQuote.notes,
         createdAt: newQuote.created_at,
         expiresAt: newQuote.expires_at,
@@ -2569,9 +2569,9 @@ export class SQLiteAdapter {
           `UPDATE quotes SET
              customer_id = COALESCE(?, customer_id),
              status = COALESCE(?, status),
-             subtotal = COALESCE(?, subtotal),
-             tax_total = COALESCE(?, tax_total),
-             total = COALESCE(?, total),
+             subtotal_cents = COALESCE(?, subtotal_cents),
+             tax_total_cents = COALESCE(?, tax_total_cents),
+             total_cents = COALESCE(?, total_cents),
              notes = COALESCE(?, notes),
              expires_at = COALESCE(?, expires_at)
            WHERE id = ?`
@@ -2579,9 +2579,9 @@ export class SQLiteAdapter {
         .run(
           quote.customerId,
           quote.status,
-          quote.subtotal,
-          quote.taxTotal,
-          quote.total,
+          toCentsOrNull(quote.subtotal),
+          toCentsOrNull(quote.taxTotal),
+          toCentsOrNull(quote.total),
           quote.notes,
           quote.expiresAt,
           id
@@ -2592,10 +2592,10 @@ export class SQLiteAdapter {
         for (const item of asRows(quote.items)) {
           this.db
             .prepare(
-              `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+              `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price_cents, line_total_cents)
                VALUES (?, ?, ?, ?, ?, ?)`
             )
-            .run(id, item.serviceId, item.description, item.quantity, item.unitPrice, item.lineTotal);
+            .run(id, item.serviceId, item.description, item.quantity, toCents(Number(item.unitPrice)), toCents(Number(item.lineTotal)));
         }
       }
 
@@ -3683,16 +3683,16 @@ export class SQLiteAdapter {
       const id = crypto.randomUUID();
       this.db.prepare(
         `INSERT INTO discount_types (
-          id, name, description, code, discount_type, discount_value,
-          min_purchase, max_discount, applies_to, applicable_ids,
-          requires_approval, approval_threshold, requires_employee_id,
+          id, name, description, code, discount_type, discount_value_scaled,
+          min_purchase_cents, max_discount_cents, applies_to, applicable_ids,
+          requires_approval, approval_threshold_cents, requires_employee_id,
           display_order, color, icon, show_in_pos, is_active, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
-        id, data.name, data.description, data.code, data.discountType, data.discountValue,
-        data.minPurchase || 0, data.maxDiscount, data.appliesTo || 'all', 
+        id, data.name, data.description, data.code, data.discountType, toCents(Number(data.discountValue)),
+        toCents(Number(data.minPurchase || 0)), toCentsOrNull(data.maxDiscount), data.appliesTo || 'all', 
         JSON.stringify(data.applicableIds || []),
-        data.requiresApproval ? 1 : 0, data.approvalThreshold, data.requiresEmployeeId ? 1 : 0,
+        data.requiresApproval ? 1 : 0, toCentsOrNull(data.approvalThreshold), data.requiresEmployeeId ? 1 : 0,
         data.displayOrder || 0, data.color || 'gray', data.icon, 
         data.showInPos !== false ? 1 : 0, data.isActive !== false ? 1 : 0,
         Date.now(), Date.now()
@@ -3713,13 +3713,13 @@ export class SQLiteAdapter {
       if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
       if (data.code !== undefined) { fields.push('code = ?'); values.push(data.code); }
       if (data.discountType !== undefined) { fields.push('discount_type = ?'); values.push(data.discountType); }
-      if (data.discountValue !== undefined) { fields.push('discount_value = ?'); values.push(data.discountValue); }
-      if (data.minPurchase !== undefined) { fields.push('min_purchase = ?'); values.push(data.minPurchase); }
-      if (data.maxDiscount !== undefined) { fields.push('max_discount = ?'); values.push(data.maxDiscount); }
+      if (data.discountValue !== undefined) { fields.push('discount_value_scaled = ?'); values.push(toCentsOrNull(data.discountValue)); }
+      if (data.minPurchase !== undefined) { fields.push('min_purchase_cents = ?'); values.push(toCentsOrNull(data.minPurchase)); }
+      if (data.maxDiscount !== undefined) { fields.push('max_discount_cents = ?'); values.push(toCentsOrNull(data.maxDiscount)); }
       if (data.appliesTo !== undefined) { fields.push('applies_to = ?'); values.push(data.appliesTo); }
       if (data.applicableIds !== undefined) { fields.push('applicable_ids = ?'); values.push(JSON.stringify(data.applicableIds)); }
       if (data.requiresApproval !== undefined) { fields.push('requires_approval = ?'); values.push(data.requiresApproval ? 1 : 0); }
-      if (data.approvalThreshold !== undefined) { fields.push('approval_threshold = ?'); values.push(data.approvalThreshold); }
+      if (data.approvalThreshold !== undefined) { fields.push('approval_threshold_cents = ?'); values.push(toCentsOrNull(data.approvalThreshold)); }
       if (data.requiresEmployeeId !== undefined) { fields.push('requires_employee_id = ?'); values.push(data.requiresEmployeeId ? 1 : 0); }
       if (data.displayOrder !== undefined) { fields.push('display_order = ?'); values.push(data.displayOrder); }
       if (data.color !== undefined) { fields.push('color = ?'); values.push(data.color); }
@@ -3758,13 +3758,13 @@ export class SQLiteAdapter {
       description: row.description,
       code: row.code,
       discountType: row.discount_type,
-      discountValue: row.discount_value,
-      minPurchase: row.min_purchase || 0,
-      maxDiscount: row.max_discount,
+      discountValue: centsToDollars(row.discount_value_scaled),
+      minPurchase: centsToDollars(row.min_purchase_cents || 0),
+      maxDiscount: centsToDollarsOrNull(row.max_discount_cents),
       appliesTo: row.applies_to,
       applicableIds: row.applicable_ids ? JSON.parse(row.applicable_ids) : [],
       requiresApproval: Boolean(row.requires_approval),
-      approvalThreshold: row.approval_threshold,
+      approvalThreshold: centsToDollarsOrNull(row.approval_threshold_cents),
       requiresEmployeeId: Boolean(row.requires_employee_id),
       displayOrder: row.display_order,
       color: row.color,
@@ -3818,18 +3818,18 @@ export class SQLiteAdapter {
       const id = crypto.randomUUID();
       this.db.prepare(
         `INSERT INTO promo_codes (
-          id, code, name, description, discount_type, discount_value,
+          id, code, name, description, discount_type, discount_value_scaled,
           buy_quantity, get_quantity, get_product_id,
-          min_purchase, max_discount, min_items,
+          min_purchase_cents, max_discount_cents, min_items,
           applies_to, applicable_ids, excluded_ids,
           first_order_only, specific_customers, customer_groups,
           max_uses, max_uses_per_customer, current_uses,
           starts_at, expires_at, stackable, priority, is_active, created_by, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
-        id, data.code.toUpperCase(), data.name, data.description, data.discountType, data.discountValue,
+        id, data.code.toUpperCase(), data.name, data.description, data.discountType, toCents(Number(data.discountValue)),
         data.buyQuantity, data.getQuantity, data.getProductId,
-        data.minPurchase || 0, data.maxDiscount, data.minItems || 0,
+        toCents(Number(data.minPurchase || 0)), toCentsOrNull(data.maxDiscount), data.minItems || 0,
         data.appliesTo || 'all', JSON.stringify(data.applicableIds || []), JSON.stringify(data.excludedIds || []),
         data.firstOrderOnly ? 1 : 0, JSON.stringify(data.specificCustomers || []), JSON.stringify(data.customerGroups || []),
         data.maxUses, data.maxUsesPerCustomer || 1, 0,
@@ -3853,9 +3853,9 @@ export class SQLiteAdapter {
       if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
       if (data.description !== undefined) { fields.push('description = ?'); values.push(data.description); }
       if (data.discountType !== undefined) { fields.push('discount_type = ?'); values.push(data.discountType); }
-      if (data.discountValue !== undefined) { fields.push('discount_value = ?'); values.push(data.discountValue); }
-      if (data.minPurchase !== undefined) { fields.push('min_purchase = ?'); values.push(data.minPurchase); }
-      if (data.maxDiscount !== undefined) { fields.push('max_discount = ?'); values.push(data.maxDiscount); }
+      if (data.discountValue !== undefined) { fields.push('discount_value_scaled = ?'); values.push(toCentsOrNull(data.discountValue)); }
+      if (data.minPurchase !== undefined) { fields.push('min_purchase_cents = ?'); values.push(toCentsOrNull(data.minPurchase)); }
+      if (data.maxDiscount !== undefined) { fields.push('max_discount_cents = ?'); values.push(toCentsOrNull(data.maxDiscount)); }
       if (data.maxUses !== undefined) { fields.push('max_uses = ?'); values.push(data.maxUses); }
       if (data.maxUsesPerCustomer !== undefined) { fields.push('max_uses_per_customer = ?'); values.push(data.maxUsesPerCustomer); }
       if (data.startsAt !== undefined) { fields.push('starts_at = ?'); values.push(new Date(data.startsAt).getTime()); }
@@ -3928,12 +3928,12 @@ export class SQLiteAdapter {
       name: row.name,
       description: row.description,
       discountType: row.discount_type,
-      discountValue: row.discount_value,
+      discountValue: centsToDollars(row.discount_value_scaled),
       buyQuantity: row.buy_quantity,
       getQuantity: row.get_quantity,
       getProductId: row.get_product_id,
-      minPurchase: row.min_purchase || 0,
-      maxDiscount: row.max_discount,
+      minPurchase: centsToDollars(row.min_purchase_cents || 0),
+      maxDiscount: centsToDollarsOrNull(row.max_discount_cents),
       minItems: row.min_items || 0,
       appliesTo: row.applies_to,
       applicableIds: row.applicable_ids ? JSON.parse(row.applicable_ids) : [],
@@ -3998,13 +3998,13 @@ export class SQLiteAdapter {
         // Update
         this.db.prepare(
           `UPDATE employee_discounts SET
-            discount_percentage = ?, max_discount_amount = ?,
-            requires_manager_approval_above = ?, allowed_categories = ?,
+            discount_percentage = ?, max_discount_amount_cents = ?,
+            requires_manager_approval_above_cents = ?, allowed_categories = ?,
             is_active = ?, approved_by = ?, approved_at = ?, updated_at = ?
           WHERE user_id = ?`
         ).run(
-          data.discountPercentage || 10, data.maxDiscountAmount,
-          data.requiresManagerApprovalAbove, JSON.stringify(data.allowedCategories || []),
+          data.discountPercentage || 10, toCentsOrNull(data.maxDiscountAmount),
+          toCentsOrNull(data.requiresManagerApprovalAbove), JSON.stringify(data.allowedCategories || []),
           data.isActive !== false ? 1 : 0, data.approvedBy, data.approvedAt, Date.now(),
           data.userId
         );
@@ -4013,13 +4013,13 @@ export class SQLiteAdapter {
         const id = crypto.randomUUID();
         this.db.prepare(
           `INSERT INTO employee_discounts (
-            id, user_id, discount_percentage, max_discount_amount,
-            requires_manager_approval_above, allowed_categories,
+            id, user_id, discount_percentage, max_discount_amount_cents,
+            requires_manager_approval_above_cents, allowed_categories,
             is_active, approved_by, approved_at, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
-          id, data.userId, data.discountPercentage || 10, data.maxDiscountAmount,
-          data.requiresManagerApprovalAbove, JSON.stringify(data.allowedCategories || []),
+          id, data.userId, data.discountPercentage || 10, toCentsOrNull(data.maxDiscountAmount),
+          toCentsOrNull(data.requiresManagerApprovalAbove), JSON.stringify(data.allowedCategories || []),
           data.isActive !== false ? 1 : 0, data.approvedBy, data.approvedAt, Date.now(), Date.now()
         );
       }
@@ -4048,10 +4048,10 @@ export class SQLiteAdapter {
       userName: row.user_name,
       userEmail: row.user_email,
       discountPercentage: row.discount_percentage,
-      maxDiscountAmount: row.max_discount_amount,
-      currentMonthUsage: row.current_month_usage || 0,
+      maxDiscountAmount: centsToDollarsOrNull(row.max_discount_amount_cents),
+      currentMonthUsage: centsToDollars(row.current_month_usage_cents || 0),
       lastResetAt: row.last_reset_at,
-      requiresManagerApprovalAbove: row.requires_manager_approval_above,
+      requiresManagerApprovalAbove: centsToDollarsOrNull(row.requires_manager_approval_above_cents),
       allowedCategories: row.allowed_categories ? JSON.parse(row.allowed_categories) : [],
       isActive: Boolean(row.is_active),
       approvedBy: row.approved_by,
@@ -4106,8 +4106,8 @@ export class SQLiteAdapter {
         discountCode: r.discount_code,
         discountName: r.discount_name,
         discountType: r.discount_type,
-        discountValue: r.discount_value,
-        discountAmount: r.discount_amount,
+        discountValue: centsToDollarsOrNull(r.discount_value_scaled),
+        discountAmount: centsToDollars(r.discount_amount_cents),
         manualReason: r.manual_reason,
         customerId: r.customer_id,
         customerEmail: r.customer_email,
@@ -4132,18 +4132,25 @@ export class SQLiteAdapter {
         `INSERT INTO discount_usage (
           id, order_id, quote_id, discount_source,
           discount_type_id, promo_code_id, employee_discount_id,
-          discount_code, discount_name, discount_type, discount_value, discount_amount,
+          discount_code, discount_name, discount_type, discount_value_scaled, discount_amount_cents,
           manual_reason, customer_id, customer_email,
           requires_approval, approved_by, approval_status, applied_by, applied_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, data.orderId, data.quoteId, data.discountSource,
         data.discountTypeId, data.promoCodeId, data.employeeDiscountId,
-        data.discountCode, data.discountName, data.discountType, data.discountValue, data.discountAmount,
+        data.discountCode, data.discountName, data.discountType, toCentsOrNull(data.discountValue), toCents(Number(data.discountAmount)),
         data.manualReason, data.customerId, data.customerEmail,
         data.requiresApproval ? 1 : 0, data.approvedBy, data.approvalStatus || 'none', data.appliedBy, Date.now()
       );
-      return this.db.prepare('SELECT * FROM discount_usage WHERE id = ?').get(id);
+      const { discount_value_scaled, discount_amount_cents, ...rest } = this.db
+        .prepare('SELECT * FROM discount_usage WHERE id = ?')
+        .get(id) as DbRow;
+      return {
+        ...rest,
+        discount_value: centsToDollarsOrNull(discount_value_scaled),
+        discount_amount: centsToDollars(discount_amount_cents),
+      };
     } catch (error) {
       logger.error('Error logging discount usage:', error);
       throw new DatabaseError('Failed to log discount usage');
@@ -4167,30 +4174,30 @@ export class SQLiteAdapter {
       const result = this.db.prepare(
         `SELECT
           COUNT(*) as total_discounts,
-          COALESCE(SUM(discount_amount), 0) as total_discount_amount,
+          COALESCE(SUM(discount_amount_cents), 0) as total_discount_amount,
           SUM(CASE WHEN discount_source = 'promo_code' THEN 1 ELSE 0 END) as promo_code_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'promo_code' THEN discount_amount ELSE 0 END), 0) as promo_code_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'promo_code' THEN discount_amount_cents ELSE 0 END), 0) as promo_code_amount,
           SUM(CASE WHEN discount_source = 'quick_discount' THEN 1 ELSE 0 END) as quick_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'quick_discount' THEN discount_amount ELSE 0 END), 0) as quick_discount_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'quick_discount' THEN discount_amount_cents ELSE 0 END), 0) as quick_discount_amount,
           SUM(CASE WHEN discount_source = 'employee' THEN 1 ELSE 0 END) as employee_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'employee' THEN discount_amount ELSE 0 END), 0) as employee_discount_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'employee' THEN discount_amount_cents ELSE 0 END), 0) as employee_discount_amount,
           SUM(CASE WHEN discount_source = 'manual' THEN 1 ELSE 0 END) as manual_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'manual' THEN discount_amount ELSE 0 END), 0) as manual_discount_amount
+          COALESCE(SUM(CASE WHEN discount_source = 'manual' THEN discount_amount_cents ELSE 0 END), 0) as manual_discount_amount
         FROM discount_usage
         WHERE 1=1 ${whereClause}`
       ).get(...params) as any;
 
       return {
         totalDiscounts: result.total_discounts || 0,
-        totalDiscountAmount: result.total_discount_amount || 0,
+        totalDiscountAmount: centsToDollars(result.total_discount_amount || 0),
         promoCodeCount: result.promo_code_count || 0,
-        promoCodeAmount: result.promo_code_amount || 0,
+        promoCodeAmount: centsToDollars(result.promo_code_amount || 0),
         quickDiscountCount: result.quick_discount_count || 0,
-        quickDiscountAmount: result.quick_discount_amount || 0,
+        quickDiscountAmount: centsToDollars(result.quick_discount_amount || 0),
         employeeDiscountCount: result.employee_discount_count || 0,
-        employeeDiscountAmount: result.employee_discount_amount || 0,
+        employeeDiscountAmount: centsToDollars(result.employee_discount_amount || 0),
         manualDiscountCount: result.manual_discount_count || 0,
-        manualDiscountAmount: result.manual_discount_amount || 0,
+        manualDiscountAmount: centsToDollars(result.manual_discount_amount || 0),
       };
     } catch (error) {
       logger.error('Error getting discount stats:', error);
