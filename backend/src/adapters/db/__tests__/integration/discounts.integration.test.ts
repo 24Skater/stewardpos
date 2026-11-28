@@ -184,6 +184,6 @@ describe('discount usage', () => {
       discount.id,
     ]);
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0].discount_amount)).toBe(2.5);
+    expect(Number(rows[0].discount_amount_cents)).toBe(250);
   });
 });

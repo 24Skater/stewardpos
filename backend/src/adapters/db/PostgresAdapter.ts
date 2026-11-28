@@ -1543,16 +1543,16 @@ export class PostgresAdapter {
 
         await client.query(
           `INSERT INTO archived_quotes
-           (id, customer_id, status, items, subtotal, tax, total, notes, valid_until, created_at)
+           (id, customer_id, status, items, subtotal_cents, tax_cents, total_cents, notes, valid_until, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             quote.id,
             quote.customer_id,
             quote.status,
             JSON.stringify(itemsResult.rows),
-            quote.subtotal,
-            quote.tax_total,
-            quote.total,
+            quote.subtotal_cents,
+            quote.tax_total_cents,
+            quote.total_cents,
             quote.notes,
             quote.expires_at,
             quote.created_at,
@@ -2402,8 +2402,8 @@ export class PostgresAdapter {
             serviceName: item.service_name,
             description: item.description,
             quantity: parseFloat(item.quantity),
-            unitPrice: parseFloat(item.unit_price),
-            lineTotal: parseFloat(item.line_total),
+            unitPrice: centsToDollars(item.unit_price_cents),
+            lineTotal: centsToDollars(item.line_total_cents),
           });
         });
       }
@@ -2414,9 +2414,9 @@ export class PostgresAdapter {
         customerName: q.customer_name,
         customerEmail: q.customer_email,
         status: q.status,
-        subtotal: parseFloat(q.subtotal),
-        taxTotal: parseFloat(q.tax_total),
-        total: parseFloat(q.total),
+        subtotal: centsToDollars(q.subtotal_cents),
+        taxTotal: centsToDollars(q.tax_total_cents),
+        total: centsToDollars(q.total_cents),
         notes: q.notes,
         createdAt: new Date(q.created_at).getTime(),
         expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
@@ -2458,9 +2458,9 @@ export class PostgresAdapter {
         customerName: q.customer_name,
         customerEmail: q.customer_email,
         status: q.status,
-        subtotal: parseFloat(q.subtotal),
-        taxTotal: parseFloat(q.tax_total),
-        total: parseFloat(q.total),
+        subtotal: centsToDollars(q.subtotal_cents),
+        taxTotal: centsToDollars(q.tax_total_cents),
+        total: centsToDollars(q.total_cents),
         notes: q.notes,
         createdAt: new Date(q.created_at).getTime(),
         expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
@@ -2471,8 +2471,8 @@ export class PostgresAdapter {
           serviceName: item.service_name,
           description: item.description,
           quantity: parseFloat(item.quantity),
-          unitPrice: parseFloat(item.unit_price),
-          lineTotal: parseFloat(item.line_total),
+          unitPrice: centsToDollars(item.unit_price_cents),
+          lineTotal: centsToDollars(item.line_total_cents),
         })),
       };
     } catch (error) {
@@ -2517,8 +2517,8 @@ export class PostgresAdapter {
             serviceName: item.service_name,
             description: item.description,
             quantity: parseFloat(item.quantity),
-            unitPrice: parseFloat(item.unit_price),
-            lineTotal: parseFloat(item.line_total),
+            unitPrice: centsToDollars(item.unit_price_cents),
+            lineTotal: centsToDollars(item.line_total_cents),
           });
         });
       }
@@ -2529,9 +2529,9 @@ export class PostgresAdapter {
         customerName: q.customer_name,
         customerEmail: q.customer_email,
         status: q.status,
-        subtotal: parseFloat(q.subtotal),
-        taxTotal: parseFloat(q.tax_total),
-        total: parseFloat(q.total),
+        subtotal: centsToDollars(q.subtotal_cents),
+        taxTotal: centsToDollars(q.tax_total_cents),
+        total: centsToDollars(q.total_cents),
         notes: q.notes,
         createdAt: new Date(q.created_at).getTime(),
         expiresAt: q.expires_at ? new Date(q.expires_at).getTime() : null,
@@ -2549,15 +2549,15 @@ export class PostgresAdapter {
       await client.query('BEGIN');
 
       const quoteResult = await client.query(
-        `INSERT INTO quotes (customer_id, status, subtotal, tax_total, total, notes, expires_at)
+        `INSERT INTO quotes (customer_id, status, subtotal_cents, tax_total_cents, total_cents, notes, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
           quote.customerId,
           quote.status || 'draft',
-          quote.subtotal,
-          quote.taxTotal || 0,
-          quote.total,
+          toCents(Number(quote.subtotal)),
+          toCents(Number(quote.taxTotal || 0)),
+          toCents(Number(quote.total)),
           quote.notes,
           quote.expiresAt ? new Date(quote.expiresAt as string) : null,
         ]
@@ -2569,7 +2569,7 @@ export class PostgresAdapter {
       if (Array.isArray(quote.items) && quote.items.length > 0) {
         for (const item of asRows(quote.items)) {
           const itemResult = await client.query(
-            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price_cents, line_total_cents)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
             [
@@ -2587,8 +2587,8 @@ export class PostgresAdapter {
             serviceId: itemResult.rows[0].service_id,
             description: itemResult.rows[0].description,
             quantity: parseFloat(itemResult.rows[0].quantity),
-            unitPrice: parseFloat(itemResult.rows[0].unit_price),
-            lineTotal: parseFloat(itemResult.rows[0].line_total),
+            unitPrice: centsToDollars(itemResult.rows[0].unit_price_cents),
+            lineTotal: centsToDollars(itemResult.rows[0].line_total_cents),
           });
         }
       }
@@ -2599,9 +2599,9 @@ export class PostgresAdapter {
         id: newQuote.id,
         customerId: newQuote.customer_id,
         status: newQuote.status,
-        subtotal: parseFloat(newQuote.subtotal),
-        taxTotal: parseFloat(newQuote.tax_total),
-        total: parseFloat(newQuote.total),
+        subtotal: centsToDollars(newQuote.subtotal_cents),
+        taxTotal: centsToDollars(newQuote.tax_total_cents),
+        total: centsToDollars(newQuote.total_cents),
         notes: newQuote.notes,
         createdAt: new Date(newQuote.created_at).getTime(),
         expiresAt: newQuote.expires_at ? new Date(newQuote.expires_at).getTime() : null,
@@ -2625,9 +2625,9 @@ export class PostgresAdapter {
         `UPDATE quotes SET
            customer_id = COALESCE($1, customer_id),
            status = COALESCE($2, status),
-           subtotal = COALESCE($3, subtotal),
-           tax_total = COALESCE($4, tax_total),
-           total = COALESCE($5, total),
+           subtotal_cents = COALESCE($3, subtotal_cents),
+           tax_total_cents = COALESCE($4, tax_total_cents),
+           total_cents = COALESCE($5, total_cents),
            notes = COALESCE($6, notes),
            expires_at = COALESCE($7, expires_at)
          WHERE id = $8
@@ -2635,9 +2635,9 @@ export class PostgresAdapter {
         [
           quote.customerId,
           quote.status,
-          quote.subtotal,
-          quote.taxTotal,
-          quote.total,
+          toCentsOrNull(quote.subtotal),
+          toCentsOrNull(quote.taxTotal),
+          toCentsOrNull(quote.total),
           quote.notes,
           quote.expiresAt ? new Date(quote.expiresAt as string) : null,
           id,
@@ -2654,9 +2654,9 @@ export class PostgresAdapter {
         await client.query('DELETE FROM quote_items WHERE quote_id = $1', [id]);
         for (const item of asRows(quote.items)) {
           await client.query(
-            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price, line_total)
+            `INSERT INTO quote_items (quote_id, service_id, description, quantity, unit_price_cents, line_total_cents)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [id, item.serviceId, item.description, item.quantity, item.unitPrice, item.lineTotal]
+            [id, item.serviceId, item.description, item.quantity, toCents(Number(item.unitPrice)), toCents(Number(item.lineTotal))]
           );
         }
       }
@@ -3792,16 +3792,16 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `INSERT INTO discount_types (
-          name, description, code, discount_type, discount_value,
-          min_purchase, max_discount, applies_to, applicable_ids,
-          requires_approval, approval_threshold, requires_employee_id,
+          name, description, code, discount_type, discount_value_scaled,
+          min_purchase_cents, max_discount_cents, applies_to, applicable_ids,
+          requires_approval, approval_threshold_cents, requires_employee_id,
           display_order, color, icon, show_in_pos, is_active
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING *`,
         [
-          data.name, data.description, data.code, data.discountType, data.discountValue,
-          data.minPurchase || 0, data.maxDiscount, data.appliesTo || 'all', data.applicableIds || [],
-          data.requiresApproval || false, data.approvalThreshold, data.requiresEmployeeId || false,
+          data.name, data.description, data.code, data.discountType, toCents(Number(data.discountValue)),
+          toCents(Number(data.minPurchase || 0)), toCentsOrNull(data.maxDiscount), data.appliesTo || 'all', data.applicableIds || [],
+          data.requiresApproval || false, toCentsOrNull(data.approvalThreshold), data.requiresEmployeeId || false,
           data.displayOrder || 0, data.color || 'gray', data.icon, data.showInPos !== false, data.isActive !== false
         ]
       );
@@ -3822,13 +3822,13 @@ export class PostgresAdapter {
       if (data.description !== undefined) { fields.push(`description = $${idx++}`); values.push(data.description); }
       if (data.code !== undefined) { fields.push(`code = $${idx++}`); values.push(data.code); }
       if (data.discountType !== undefined) { fields.push(`discount_type = $${idx++}`); values.push(data.discountType); }
-      if (data.discountValue !== undefined) { fields.push(`discount_value = $${idx++}`); values.push(data.discountValue); }
-      if (data.minPurchase !== undefined) { fields.push(`min_purchase = $${idx++}`); values.push(data.minPurchase); }
-      if (data.maxDiscount !== undefined) { fields.push(`max_discount = $${idx++}`); values.push(data.maxDiscount); }
+      if (data.discountValue !== undefined) { fields.push(`discount_value_scaled = $${idx++}`); values.push(toCentsOrNull(data.discountValue)); }
+      if (data.minPurchase !== undefined) { fields.push(`min_purchase_cents = $${idx++}`); values.push(toCentsOrNull(data.minPurchase)); }
+      if (data.maxDiscount !== undefined) { fields.push(`max_discount_cents = $${idx++}`); values.push(toCentsOrNull(data.maxDiscount)); }
       if (data.appliesTo !== undefined) { fields.push(`applies_to = $${idx++}`); values.push(data.appliesTo); }
       if (data.applicableIds !== undefined) { fields.push(`applicable_ids = $${idx++}`); values.push(data.applicableIds); }
       if (data.requiresApproval !== undefined) { fields.push(`requires_approval = $${idx++}`); values.push(data.requiresApproval); }
-      if (data.approvalThreshold !== undefined) { fields.push(`approval_threshold = $${idx++}`); values.push(data.approvalThreshold); }
+      if (data.approvalThreshold !== undefined) { fields.push(`approval_threshold_cents = $${idx++}`); values.push(toCentsOrNull(data.approvalThreshold)); }
       if (data.requiresEmployeeId !== undefined) { fields.push(`requires_employee_id = $${idx++}`); values.push(data.requiresEmployeeId); }
       if (data.displayOrder !== undefined) { fields.push(`display_order = $${idx++}`); values.push(data.displayOrder); }
       if (data.color !== undefined) { fields.push(`color = $${idx++}`); values.push(data.color); }
@@ -3869,13 +3869,13 @@ export class PostgresAdapter {
       description: row.description,
       code: row.code,
       discountType: row.discount_type,
-      discountValue: parseFloat(row.discount_value),
-      minPurchase: parseFloat(row.min_purchase || 0),
-      maxDiscount: row.max_discount ? parseFloat(row.max_discount) : null,
+      discountValue: centsToDollars(row.discount_value_scaled),
+      minPurchase: centsToDollars(row.min_purchase_cents || 0),
+      maxDiscount: centsToDollarsOrNull(row.max_discount_cents),
       appliesTo: row.applies_to,
       applicableIds: row.applicable_ids || [],
       requiresApproval: row.requires_approval,
-      approvalThreshold: row.approval_threshold ? parseFloat(row.approval_threshold) : null,
+      approvalThreshold: centsToDollarsOrNull(row.approval_threshold_cents),
       requiresEmployeeId: row.requires_employee_id,
       displayOrder: row.display_order,
       color: row.color,
@@ -3925,9 +3925,9 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `INSERT INTO promo_codes (
-          code, name, description, discount_type, discount_value,
+          code, name, description, discount_type, discount_value_scaled,
           buy_quantity, get_quantity, get_product_id,
-          min_purchase, max_discount, min_items,
+          min_purchase_cents, max_discount_cents, min_items,
           applies_to, applicable_ids, excluded_ids,
           first_order_only, specific_customers, customer_groups,
           max_uses, max_uses_per_customer,
@@ -3935,9 +3935,9 @@ export class PostgresAdapter {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
         RETURNING *`,
         [
-          data.code.toUpperCase(), data.name, data.description, data.discountType, data.discountValue,
+          data.code.toUpperCase(), data.name, data.description, data.discountType, toCents(Number(data.discountValue)),
           data.buyQuantity, data.getQuantity, data.getProductId,
-          data.minPurchase || 0, data.maxDiscount, data.minItems || 0,
+          toCents(Number(data.minPurchase || 0)), toCentsOrNull(data.maxDiscount), data.minItems || 0,
           data.appliesTo || 'all', data.applicableIds || [], data.excludedIds || [],
           data.firstOrderOnly || false, data.specificCustomers || [], data.customerGroups || [],
           data.maxUses, data.maxUsesPerCustomer || 1,
@@ -3962,9 +3962,9 @@ export class PostgresAdapter {
       if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
       if (data.description !== undefined) { fields.push(`description = $${idx++}`); values.push(data.description); }
       if (data.discountType !== undefined) { fields.push(`discount_type = $${idx++}`); values.push(data.discountType); }
-      if (data.discountValue !== undefined) { fields.push(`discount_value = $${idx++}`); values.push(data.discountValue); }
-      if (data.minPurchase !== undefined) { fields.push(`min_purchase = $${idx++}`); values.push(data.minPurchase); }
-      if (data.maxDiscount !== undefined) { fields.push(`max_discount = $${idx++}`); values.push(data.maxDiscount); }
+      if (data.discountValue !== undefined) { fields.push(`discount_value_scaled = $${idx++}`); values.push(toCentsOrNull(data.discountValue)); }
+      if (data.minPurchase !== undefined) { fields.push(`min_purchase_cents = $${idx++}`); values.push(toCentsOrNull(data.minPurchase)); }
+      if (data.maxDiscount !== undefined) { fields.push(`max_discount_cents = $${idx++}`); values.push(toCentsOrNull(data.maxDiscount)); }
       if (data.maxUses !== undefined) { fields.push(`max_uses = $${idx++}`); values.push(data.maxUses); }
       if (data.maxUsesPerCustomer !== undefined) { fields.push(`max_uses_per_customer = $${idx++}`); values.push(data.maxUsesPerCustomer); }
       if (data.startsAt !== undefined) { fields.push(`starts_at = $${idx++}`); values.push(new Date(data.startsAt)); }
@@ -4041,12 +4041,12 @@ export class PostgresAdapter {
       name: row.name,
       description: row.description,
       discountType: row.discount_type,
-      discountValue: parseFloat(row.discount_value),
+      discountValue: centsToDollars(row.discount_value_scaled),
       buyQuantity: row.buy_quantity,
       getQuantity: row.get_quantity,
       getProductId: row.get_product_id,
-      minPurchase: parseFloat(row.min_purchase || 0),
-      maxDiscount: row.max_discount ? parseFloat(row.max_discount) : null,
+      minPurchase: centsToDollars(row.min_purchase_cents || 0),
+      maxDiscount: centsToDollarsOrNull(row.max_discount_cents),
       minItems: row.min_items || 0,
       appliesTo: row.applies_to,
       applicableIds: row.applicable_ids || [],
@@ -4107,14 +4107,14 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `INSERT INTO employee_discounts (
-          user_id, discount_percentage, max_discount_amount,
-          requires_manager_approval_above, allowed_categories,
+          user_id, discount_percentage, max_discount_amount_cents,
+          requires_manager_approval_above_cents, allowed_categories,
           is_active, approved_by, approved_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8 / 1000.0))
         ON CONFLICT (user_id) DO UPDATE SET
           discount_percentage = EXCLUDED.discount_percentage,
-          max_discount_amount = EXCLUDED.max_discount_amount,
-          requires_manager_approval_above = EXCLUDED.requires_manager_approval_above,
+          max_discount_amount_cents = EXCLUDED.max_discount_amount_cents,
+          requires_manager_approval_above_cents = EXCLUDED.requires_manager_approval_above_cents,
           allowed_categories = EXCLUDED.allowed_categories,
           is_active = EXCLUDED.is_active,
           approved_by = EXCLUDED.approved_by,
@@ -4122,8 +4122,8 @@ export class PostgresAdapter {
           updated_at = NOW()
         RETURNING *`,
         [
-          data.userId, data.discountPercentage || 10, data.maxDiscountAmount,
-          data.requiresManagerApprovalAbove, data.allowedCategories || [],
+          data.userId, data.discountPercentage || 10, toCentsOrNull(data.maxDiscountAmount),
+          toCentsOrNull(data.requiresManagerApprovalAbove), data.allowedCategories || [],
           data.isActive !== false, data.approvedBy, data.approvedAt
         ]
       );
@@ -4154,10 +4154,10 @@ export class PostgresAdapter {
       userName: row.user_name,
       userEmail: row.user_email,
       discountPercentage: parseFloat(row.discount_percentage),
-      maxDiscountAmount: row.max_discount_amount ? parseFloat(row.max_discount_amount) : null,
-      currentMonthUsage: parseFloat(row.current_month_usage || 0),
+      maxDiscountAmount: centsToDollarsOrNull(row.max_discount_amount_cents),
+      currentMonthUsage: centsToDollars(row.current_month_usage_cents || 0),
       lastResetAt: row.last_reset_at ? new Date(row.last_reset_at).getTime() : null,
-      requiresManagerApprovalAbove: row.requires_manager_approval_above ? parseFloat(row.requires_manager_approval_above) : null,
+      requiresManagerApprovalAbove: centsToDollarsOrNull(row.requires_manager_approval_above_cents),
       allowedCategories: row.allowed_categories || [],
       isActive: row.is_active,
       approvedBy: row.approved_by,
@@ -4213,8 +4213,8 @@ export class PostgresAdapter {
         discountCode: r.discount_code,
         discountName: r.discount_name,
         discountType: r.discount_type,
-        discountValue: r.discount_value ? parseFloat(r.discount_value) : null,
-        discountAmount: parseFloat(r.discount_amount),
+        discountValue: centsToDollarsOrNull(r.discount_value_scaled),
+        discountAmount: centsToDollars(r.discount_amount_cents),
         manualReason: r.manual_reason,
         customerId: r.customer_id,
         customerEmail: r.customer_email,
@@ -4238,7 +4238,7 @@ export class PostgresAdapter {
         `INSERT INTO discount_usage (
           order_id, quote_id, discount_source,
           discount_type_id, promo_code_id, employee_discount_id,
-          discount_code, discount_name, discount_type, discount_value, discount_amount,
+          discount_code, discount_name, discount_type, discount_value_scaled, discount_amount_cents,
           manual_reason, customer_id, customer_email,
           requires_approval, approved_by, approval_status, applied_by
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
@@ -4246,12 +4246,17 @@ export class PostgresAdapter {
         [
           data.orderId, data.quoteId, data.discountSource,
           data.discountTypeId, data.promoCodeId, data.employeeDiscountId,
-          data.discountCode, data.discountName, data.discountType, data.discountValue, data.discountAmount,
+          data.discountCode, data.discountName, data.discountType, toCentsOrNull(data.discountValue), toCents(Number(data.discountAmount)),
           data.manualReason, data.customerId, data.customerEmail,
           data.requiresApproval || false, data.approvedBy, data.approvalStatus || 'none', data.appliedBy
         ]
       );
-      return result.rows[0];
+      const { discount_value_scaled, discount_amount_cents, ...rest } = result.rows[0];
+      return {
+        ...rest,
+        discount_value: centsToDollarsOrNull(discount_value_scaled),
+        discount_amount: centsToDollars(discount_amount_cents),
+      };
     } catch (error) {
       logger.error('Error logging discount usage:', error);
       throw new DatabaseError('Failed to log discount usage');
@@ -4275,15 +4280,15 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `SELECT
           COUNT(*) as total_discounts,
-          COALESCE(SUM(discount_amount), 0) as total_discount_amount,
+          COALESCE(SUM(discount_amount_cents), 0) as total_discount_amount,
           COUNT(CASE WHEN discount_source = 'promo_code' THEN 1 END) as promo_code_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'promo_code' THEN discount_amount ELSE 0 END), 0) as promo_code_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'promo_code' THEN discount_amount_cents ELSE 0 END), 0) as promo_code_amount,
           COUNT(CASE WHEN discount_source = 'quick_discount' THEN 1 END) as quick_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'quick_discount' THEN discount_amount ELSE 0 END), 0) as quick_discount_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'quick_discount' THEN discount_amount_cents ELSE 0 END), 0) as quick_discount_amount,
           COUNT(CASE WHEN discount_source = 'employee' THEN 1 END) as employee_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'employee' THEN discount_amount ELSE 0 END), 0) as employee_discount_amount,
+          COALESCE(SUM(CASE WHEN discount_source = 'employee' THEN discount_amount_cents ELSE 0 END), 0) as employee_discount_amount,
           COUNT(CASE WHEN discount_source = 'manual' THEN 1 END) as manual_discount_count,
-          COALESCE(SUM(CASE WHEN discount_source = 'manual' THEN discount_amount ELSE 0 END), 0) as manual_discount_amount
+          COALESCE(SUM(CASE WHEN discount_source = 'manual' THEN discount_amount_cents ELSE 0 END), 0) as manual_discount_amount
         FROM discount_usage
         WHERE 1=1 ${whereClause}`,
         params
@@ -4292,15 +4297,15 @@ export class PostgresAdapter {
       const stats = result.rows[0];
       return {
         totalDiscounts: parseInt(stats.total_discounts),
-        totalDiscountAmount: parseFloat(stats.total_discount_amount),
+        totalDiscountAmount: centsToDollars(stats.total_discount_amount),
         promoCodeCount: parseInt(stats.promo_code_count),
-        promoCodeAmount: parseFloat(stats.promo_code_amount),
+        promoCodeAmount: centsToDollars(stats.promo_code_amount),
         quickDiscountCount: parseInt(stats.quick_discount_count),
-        quickDiscountAmount: parseFloat(stats.quick_discount_amount),
+        quickDiscountAmount: centsToDollars(stats.quick_discount_amount),
         employeeDiscountCount: parseInt(stats.employee_discount_count),
-        employeeDiscountAmount: parseFloat(stats.employee_discount_amount),
+        employeeDiscountAmount: centsToDollars(stats.employee_discount_amount),
         manualDiscountCount: parseInt(stats.manual_discount_count),
-        manualDiscountAmount: parseFloat(stats.manual_discount_amount),
+        manualDiscountAmount: centsToDollars(stats.manual_discount_amount),
       };
     } catch (error) {
       logger.error('Error getting discount stats:', error);
