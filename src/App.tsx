@@ -38,6 +38,7 @@ const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
 const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
 const AdminAudit = lazy(() => import("./pages/admin/AdminAudit"));
 const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
+const AdminTemplates = lazy(() => import("./pages/admin/AdminTemplates"));
 const AdminComponents = lazy(() => import("./pages/admin/AdminComponents"));
 const AdminQuotes = lazy(() => import("./pages/admin/AdminQuotes"));
 const AdminApiKeys = lazy(() => import("./pages/admin/AdminApiKeys"));
@@ -92,6 +93,7 @@ const App = () => (
               <Route path="/admin/quotes" element={<RequireAuth permission={{ domain: "services", action: "read" }}><AdminQuotes /></RequireAuth>} />
               <Route path="/admin/settings" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminSettings /></RequireAuth>} />
               <Route path="/admin/roles" element={<RequireAuth permission={{ domain: "users", action: "read" }}><AdminRoles /></RequireAuth>} />
+              <Route path="/admin/templates" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminTemplates /></RequireAuth>} />
               <Route path="/admin/messages" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminMessages /></RequireAuth>} />
               <Route path="/admin/audit"element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminAudit /></RequireAuth>} />
               <Route path="/admin/components" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminComponents /></RequireAuth>} />

@@ -101,6 +101,24 @@ export interface MessageLogEntry {
   createdAt: number;
 }
 
+export type TemplateChannel = 'email' | 'sms';
+
+export interface MessageTemplate {
+  key: string;
+  channel: TemplateChannel;
+  subject: string;
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+  vars: string[];
+}
+
+export interface TemplatePreview {
+  subject: string;
+  text: string;
+  html?: string;
+}
+
 export interface AuditQuery {
   limit?: number;
   offset?: number;
@@ -166,6 +184,14 @@ export const adminApi = {
     /** Sends through the saved provider; resolves with the real outcome, including `failed`. */
     test: (to: string) =>
       apiClient.post<EmailTestResult>('/api/admin/email/test', { to }),
+  },
+
+  templates: {
+    list: () => apiClient.get<MessageTemplate[]>('/api/admin/templates'),
+    save: (key: string, channel: TemplateChannel, body: { subject: string; body: string; enabled: boolean }) =>
+      apiClient.put<unknown>(`/api/admin/templates/${key}/${channel}`, body),
+    preview: (key: string, channel: TemplateChannel, body: { subject: string; body: string; enabled: boolean }) =>
+      apiClient.post<TemplatePreview>(`/api/admin/templates/${key}/${channel}/preview`, body),
   },
 
   sms: {

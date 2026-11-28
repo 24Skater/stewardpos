@@ -23,6 +23,7 @@ import {
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import { sendEmail } from '../../services/email';
+import { TEMPLATE_KEYS, getTemplate, renderParts } from '../../services/templates';
 import { phoneSchema } from '../../utils/phone';
 import { sendSms } from '../../services/sms';
 import componentsRoutes from './components';
@@ -856,6 +857,59 @@ router.post('/email/test', requirePermission('settings', 'write'), async (req: A
     } else {
       next(error);
     }
+  }
+});
+
+const templateParamsSchema = z.object({
+  key: z.enum(Object.keys(TEMPLATE_KEYS) as [string, ...string[]]),
+  channel: z.enum(['email', 'sms']),
+});
+const templateBodySchema = z.object({
+  subject: z.string().max(255),
+  body: z.string().min(1).max(10000),
+  enabled: z.boolean(),
+});
+
+function forwardError(error: unknown, next: NextFunction): void {
+  next(error instanceof z.ZodError ? new ValidationError(error.issues[0].message) : error);
+}
+
+/** GET /api/admin/templates - every key and channel, stored or default, with its variables. */
+router.get('/templates', requirePermission('settings', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const data = [];
+    for (const [key, def] of Object.entries(TEMPLATE_KEYS)) {
+      for (const channel of ['email', 'sms'] as const) {
+        data.push({ ...(await getTemplate(key, channel)), vars: def.vars });
+      }
+    }
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** PUT /api/admin/templates/:key/:channel */
+router.put('/templates/:key/:channel', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { key, channel } = templateParamsSchema.parse(req.params);
+    const body = templateBodySchema.parse(req.body);
+    await db.getAdapter().upsertMessageTemplate({ key, channel, ...body });
+    await audit(req, { action: 'update', entity: 'settings', entityId: `template:${key}:${channel}`, after: body });
+    res.json({ success: true, data: { key, channel, ...body } });
+  } catch (error) {
+    forwardError(error, next);
+  }
+});
+
+/** POST /api/admin/templates/:key/:channel/preview - renders the draft with sample data; sends nothing. */
+router.post('/templates/:key/:channel/preview', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { key, channel } = templateParamsSchema.parse(req.params);
+    const { subject, body } = templateBodySchema.pick({ subject: true, body: true }).parse(req.body);
+    res.json({ success: true, data: renderParts(channel, subject, body, TEMPLATE_KEYS[key].sample) });
+  } catch (error) {
+    forwardError(error, next);
   }
 });
 

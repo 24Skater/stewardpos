@@ -6,6 +6,8 @@ import {
   DbRow,
   asRows,
   mapMessageLogRow,
+  mapMessageTemplateRow,
+  type MessageTemplateRow,
   type MessageLogEntry,
   type PaymentAttempt,
   type PaymentAttemptCreate,
@@ -3525,6 +3527,31 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error getting message logs:', error);
       throw new DatabaseError('Failed to get message logs');
+    }
+  }
+
+  async getMessageTemplates(): Promise<MessageTemplateRow[]> {
+    try {
+      const result = await this.pool.query('SELECT key, channel, subject, body, enabled FROM message_templates');
+      return result.rows.map(mapMessageTemplateRow);
+    } catch (error) {
+      logger.error('Error getting message templates:', error);
+      throw new DatabaseError('Failed to get message templates');
+    }
+  }
+
+  async upsertMessageTemplate(t: MessageTemplateRow): Promise<void> {
+    try {
+      await this.pool.query(
+        `INSERT INTO message_templates (key, channel, subject, body, enabled)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (org_id, key, channel)
+         DO UPDATE SET subject = EXCLUDED.subject, body = EXCLUDED.body, enabled = EXCLUDED.enabled, updated_at = NOW()`,
+        [t.key, t.channel, t.subject, t.body, t.enabled]
+      );
+    } catch (error) {
+      logger.error('Error saving message template:', error);
+      throw new DatabaseError('Failed to save message template');
     }
   }
 

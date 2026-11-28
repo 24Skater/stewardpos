@@ -4,6 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, ServiceUnavailableError } from '../../utils/errors';
 import { sendEmail } from '../../services/email';
+import { renderTemplate } from '../../services/templates';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 
@@ -279,7 +280,30 @@ router.post('/:id/resend', requirePermission('orders', 'write'), async (req: Aut
       customerEmail: order.customerEmail,
     };
 
-    const subject = `Receipt #${id.slice(0, 8).toUpperCase()}`;
+    const orderRef = id.slice(0, 8).toUpperCase();
+    const rendered = await renderTemplate('receipt', 'email', {
+      orderId: orderRef,
+      receipt: renderReceiptText(order, `Receipt #${orderRef}`, data.includeItems),
+    });
+
+    // A switched-off template sends nothing, and the log says so.
+    if (!rendered.enabled) {
+      await adapter.createMessageLog({
+        channel: 'email',
+        template: 'receipt',
+        recipient: data.email,
+        status: 'suppressed',
+        error: 'The receipt template is switched off',
+      });
+      res.json({
+        success: true,
+        message: 'The receipt template is switched off, so nothing was sent',
+        data: { sentTo: data.email, status: 'suppressed', detail: 'Template disabled', receiptContent },
+      });
+      return;
+    }
+
+    const subject = rendered.subject;
 
     // This used to log `status: 'sent'` and reply "Receipt sent to ..." without
     // anything being sent. A shop reading its own resend history would see a
@@ -289,7 +313,8 @@ router.post('/:id/resend', requirePermission('orders', 'write'), async (req: Aut
       to: data.email,
       subject,
       template: 'receipt',
-      text: renderReceiptText(order, subject, data.includeItems),
+      text: rendered.text,
+      html: rendered.html,
     });
 
     // Recorded whatever the outcome, including failures: a resend that did not

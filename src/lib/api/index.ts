@@ -41,6 +41,9 @@ export type {
   UserPinState,
   UserPinLockState,
   MessageLogEntry,
+  MessageTemplate,
+  TemplateChannel,
+  TemplatePreview,
 } from './admin';
 export type { AssumedTillSession, TillSession } from './auth';
 export type {

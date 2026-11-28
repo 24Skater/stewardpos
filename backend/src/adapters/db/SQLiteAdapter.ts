@@ -29,6 +29,8 @@ import {
   DbRow,
   asRows,
   mapMessageLogRow,
+  mapMessageTemplateRow,
+  type MessageTemplateRow,
   type MessageLogEntry,
   type PaymentAttempt,
   type PaymentAttemptCreate,
@@ -3439,6 +3441,30 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error getting message logs:', error);
       throw new DatabaseError('Failed to get message logs');
+    }
+  }
+
+  async getMessageTemplates(): Promise<MessageTemplateRow[]> {
+    try {
+      const rows = this.db.prepare('SELECT key, channel, subject, body, enabled FROM message_templates').all() as DbRow[];
+      return rows.map(mapMessageTemplateRow);
+    } catch (error) {
+      logger.error('Error getting message templates:', error);
+      throw new DatabaseError('Failed to get message templates');
+    }
+  }
+
+  async upsertMessageTemplate(t: MessageTemplateRow): Promise<void> {
+    try {
+      this.db.prepare(
+        `INSERT INTO message_templates (id, key, channel, subject, body, enabled, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (org_id, key, channel)
+         DO UPDATE SET subject = excluded.subject, body = excluded.body, enabled = excluded.enabled, updated_at = excluded.updated_at`
+      ).run(crypto.randomUUID(), t.key, t.channel, t.subject, t.body, t.enabled ? 1 : 0, Date.now());
+    } catch (error) {
+      logger.error('Error saving message template:', error);
+      throw new DatabaseError('Failed to save message template');
     }
   }
 
