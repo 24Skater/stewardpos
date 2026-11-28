@@ -410,6 +410,24 @@ function isInvalidTextRepresentation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === '22P02';
 }
 
+/** Runs on the caller's client so the event commits or rolls back with the change. */
+async function insertOutboxEvent(
+  q: { query: (text: string, values?: unknown[]) => Promise<{ rows: DbRow[] }> },
+  type: string,
+  data: unknown
+): Promise<void> {
+  const ev = await q.query(
+    `INSERT INTO outbox_events (event_type, payload) VALUES ($1, $2) RETURNING id, org_id`,
+    [type, JSON.stringify(data)]
+  );
+  await q.query(
+    `INSERT INTO webhook_deliveries (org_id, event_id, subscription_id)
+     SELECT org_id, $1, id FROM webhook_subscriptions
+     WHERE active AND org_id = $2 AND events ? $3`,
+    [ev.rows[0].id, ev.rows[0].org_id, type]
+  );
+}
+
 export class PostgresAdapter {
   private pool: Pool;
 
@@ -839,29 +857,12 @@ export class PostgresAdapter {
   }
 
   // Outbox Operations
-  /** Runs on the caller's client so the event commits or rolls back with the change. */
-  private async insertOutboxEvent(
-    q: { query: (text: string, values?: unknown[]) => Promise<{ rows: DbRow[] }> },
-    type: string,
-    data: unknown
-  ): Promise<void> {
-    const ev = await q.query(
-      `INSERT INTO outbox_events (event_type, payload) VALUES ($1, $2) RETURNING id, org_id`,
-      [type, JSON.stringify(data)]
-    );
-    await q.query(
-      `INSERT INTO webhook_deliveries (org_id, event_id, subscription_id)
-       SELECT org_id, $1, id FROM webhook_subscriptions
-       WHERE active AND org_id = $2 AND events ? $3`,
-      [ev.rows[0].id, ev.rows[0].org_id, type]
-    );
-  }
 
   async enqueueOutboxEvent(type: string, data: unknown): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await this.insertOutboxEvent(client, type, data);
+      await insertOutboxEvent(client, type, data);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -1065,7 +1066,7 @@ export class PostgresAdapter {
         items: items.map(mapOrderItemRow),
         payments,
       };
-      await this.insertOutboxEvent(client, 'order.created', created);
+      await insertOutboxEvent(client, 'order.created', created);
 
       await client.query('COMMIT');
 
@@ -3075,7 +3076,7 @@ export class PostgresAdapter {
         );
       }
 
-      await this.insertOutboxEvent(client, 'order.refunded', {
+      await insertOutboxEvent(client, 'order.refunded', {
         id: returnId,
         originalOrderId: returnData.originalOrderId,
         returnNumber: returnData.returnNumber,
