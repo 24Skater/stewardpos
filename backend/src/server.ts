@@ -5,6 +5,10 @@ import { verifyStorage } from './storage';
 import app from './app';
 import { warnIfCredentialsUnprotected } from './services/credentialCrypto';
 
+import { startJob } from './services/jobs';
+import { runDeliveries } from './services/webhookDelivery';
+
+const WEBHOOK_JOB_INTERVAL_MS = 15_000;
 const PORT = config.port;
 const HOST = config.host;
 
@@ -43,6 +47,8 @@ const startServer = async () => {
     } catch (error) {
       logger.warn('Could not check how payment credentials are stored:', error);
     }
+
+    startJob('webhook-delivery', WEBHOOK_JOB_INTERVAL_MS, () => runDeliveries(db.getAdapter()));
 
     app.listen(PORT, HOST, () => {
       logger.info(`🚀 Server running on http://${HOST}:${PORT}`);
