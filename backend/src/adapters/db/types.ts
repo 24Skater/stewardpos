@@ -41,6 +41,24 @@ export interface MessageLogEntry {
   error?: string;
 }
 
+export interface MessageTemplateRow {
+  key: string;
+  channel: 'email' | 'sms';
+  subject: string;
+  body: string;
+  enabled: boolean;
+}
+
+export function mapMessageTemplateRow(row: DbRow): MessageTemplateRow {
+  return {
+    key: row.key,
+    channel: row.channel,
+    subject: row.subject,
+    body: row.body,
+    enabled: row.enabled === true || row.enabled === 1,
+  };
+}
+
 /** `created_at` is a Date on Postgres and epoch ms on SQLite; the API publishes epoch ms. */
 export function mapMessageLogRow(row: DbRow): DbRow {
   return {

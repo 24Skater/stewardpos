@@ -21,3 +21,22 @@ log because no provider is configured; it was not delivered.
 provider's message id or the error). Each attempt is one row in the `message_log` table.
 
 Check your local rules on when you may email customers, and keep consent records accordingly.
+
+## Message templates
+
+**Admin > Templates** edits the subject and body of each message, previews it with sample data,
+and switches it on or off. With no edit, a built-in default is used. A switched-off template
+sends nothing and is recorded in the delivery log as `suppressed`. Variables are written
+`{{name}}`; an unknown name renders blank, and values are HTML-escaped in the email version.
+
+| Key | Variables |
+|-----|-----------|
+| `receipt` | `receipt`, `orderId` |
+| `gift_card` | `code`, `amount`, `recipientName` |
+| `invoice` | `number`, `customerName`, `total`, `dueDate` |
+| `quote` | `number`, `customerName`, `total`, `validUntil` |
+| `purchase_order` | `number`, `supplierName`, `total` |
+| `membership_reminder` | `memberName`, `planName`, `renewalDate` |
+| `pickup_ready` | `customerName`, `orderId` |
+
+Only `receipt` is sent today (receipt resend); the others are defined for the features that use them.

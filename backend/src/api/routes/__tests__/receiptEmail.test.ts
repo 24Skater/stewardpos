@@ -12,9 +12,11 @@ const getUserByEmail = vi.fn();
 const getOrderById = vi.fn();
 const logReceiptEmail = vi.fn();
 const sendEmail = vi.fn();
+const getMessageTemplates = vi.fn();
+const createMessageLog = vi.fn();
 
 vi.mock('../../../services/database', () => ({
-  default: { getAdapter: () => ({ getUserByEmail, getOrderById, logReceiptEmail }) },
+  default: { getAdapter: () => ({ getUserByEmail, getOrderById, logReceiptEmail, getMessageTemplates, createMessageLog }) },
 }));
 vi.mock('../../../services/email', () => ({ sendEmail }));
 
@@ -56,6 +58,8 @@ beforeEach(() => {
   });
   getOrderById.mockResolvedValue(ORDER);
   logReceiptEmail.mockResolvedValue({});
+  getMessageTemplates.mockResolvedValue([]);
+  createMessageLog.mockResolvedValue(undefined);
   sendEmail.mockResolvedValue({ status: 'sent', detail: 'Delivered to the SMTP server' });
 });
 
@@ -135,6 +139,31 @@ describe('POST /api/receipts/:id/resend', () => {
 
     expect((await resend()).status).toBe(404);
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('uses an edited template, escaping variables in the html part', async () => {
+    getMessageTemplates.mockResolvedValue([
+      { key: 'receipt', channel: 'email', subject: 'Thanks {{orderId}}', body: 'Hi<b>\n{{receipt}}', enabled: true },
+    ]);
+
+    await resend();
+
+    const sent = sendEmail.mock.calls[0][0];
+    expect(sent.subject).toBe('Thanks ORD-1234');
+    expect(sent.text).toContain('Hi<b>');
+    expect(sent.html).toContain('Total     $10.80');
+  });
+
+  it('sends nothing and logs suppressed when the template is switched off', async () => {
+    getMessageTemplates.mockResolvedValue([
+      { key: 'receipt', channel: 'email', subject: 'x', body: 'y', enabled: false },
+    ]);
+
+    const response = await resend();
+
+    expect(response.status).toBe(200);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(createMessageLog).toHaveBeenCalledWith(expect.objectContaining({ status: 'suppressed', template: 'receipt' }));
   });
 
   it('rejects a malformed address before sending', async () => {

@@ -60,6 +60,7 @@ const navItems = [
   { path: '/admin/components', label: 'Components', icon: Code },
   { path: '/admin/api-keys', label: 'API Keys', icon: Key },
   { path: '/admin/messages', label: 'Messages', icon: Mail },
+  { path: '/admin/templates', label: 'Templates', icon: Mail },
   { path: '/admin/audit', label: 'Audit Log', icon: FileText },
 ];
 
