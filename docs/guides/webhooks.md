@@ -30,13 +30,18 @@ The `id` is stable across retries; use it to ignore duplicates.
 
 Each request carries `Steward-Signature: t=<unix seconds>,v1=<hex>`, where `v1` is the HMAC-SHA256 of `t + "." + raw request body`, keyed with the subscription secret. Reject requests whose `t` is far from your clock.
 
+For 24 hours after a secret is rotated the header carries two `v1=` values, one for the new secret and one for the old. Accept the request if either matches.
+
 ```js
 const crypto = require('crypto');
 
 function verify(secret, header, rawBody) {
-  const { t, v1 } = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  const parts = header.split(',').map((p) => p.split('='));
+  const t = parts.find(([k]) => k === 't')[1];
   const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
-  return v1.length === expected.length && crypto.timingSafeEqual(Buffer.from(v1), Buffer.from(expected));
+  return parts.some(
+    ([k, v]) => k === 'v1' && v.length === expected.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(expected))
+  );
 }
 ```
 
@@ -52,6 +57,16 @@ A delivery succeeds on any 2xx within 3 seconds. Otherwise it is retried:
 | 4th | 2 hours |
 | 5th | 12 hours |
 | 6th | none, the delivery is marked `dead` |
+
+## Managing subscriptions
+
+Admin, Webhooks. Each subscription has a URL and the events it receives. The signing secret is shown once, when the subscription is created or rotated; copy it then. The Deliveries tab lists attempts by status and can redeliver any of them.
+
+## Allowed addresses
+
+URLs must use https and must not resolve to a loopback, link-local, private (RFC 1918), CGNAT or unique-local address. This is checked when the subscription is saved and again before every send, and redirects are not followed.
+
+To send to a sibling app on your LAN, add its exact `host:port` to `settings.providers.webhookAllowlist`, for example `["192.168.1.50:8080", "pos-hub.lan:8443"]`. Allow-listed hosts may use plain http. The port is part of the match, and port 80 or 443 applies when the URL names none. Check your local rules and network policy before opening a LAN address.
 
 ## Inbound callbacks
 

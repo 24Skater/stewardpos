@@ -40,6 +40,7 @@ const AdminAudit = lazy(() => import("./pages/admin/AdminAudit"));
 const AdminComponents = lazy(() => import("./pages/admin/AdminComponents"));
 const AdminQuotes = lazy(() => import("./pages/admin/AdminQuotes"));
 const AdminApiKeys = lazy(() => import("./pages/admin/AdminApiKeys"));
+const AdminWebhooks = lazy(() => import("./pages/admin/AdminWebhooks"));
 const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
 const AdminReceipts = lazy(() => import("./pages/admin/AdminReceipts"));
 const AdminDiscounts = lazy(() => import("./pages/admin/AdminDiscounts"));
@@ -96,6 +97,7 @@ const App = () => (
                   route with authorize(['admin']). A custom role holding settings:write used to
                   clear this gate, render the page, and be bounced by a second guard inside it. */}
               <Route path="/admin/api-keys" element={<RequireAuth requireAdmin><AdminApiKeys /></RequireAuth>} />
+              <Route path="/admin/webhooks" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminWebhooks /></RequireAuth>} />
               <Route path="/admin/returns" element={<RequireAuth permission={{ domain: "returns", action: "read" }}><AdminReturns /></RequireAuth>} />
               <Route path="/admin/receipts" element={<RequireAuth permission={{ domain: "orders", action: "read" }}><AdminReceipts /></RequireAuth>} />
               <Route path="/admin/discounts" element={<RequireAuth permission={{ domain: "discounts", action: "read" }}><AdminDiscounts /></RequireAuth>} />
