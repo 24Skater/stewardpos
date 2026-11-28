@@ -24,6 +24,8 @@ import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
 import { sendEmail } from '../../services/email';
 import { TEMPLATE_KEYS, getTemplate, renderParts } from '../../services/templates';
+import { phoneSchema } from '../../utils/phone';
+import { sendSms } from '../../services/sms';
 import componentsRoutes from './components';
 import { BCRYPT_ROUNDS } from '../../services/hashing';
 import { findPasswordProblems, passwordSchema } from '../../services/passwordPolicy';
@@ -908,6 +910,31 @@ router.post('/templates/:key/:channel/preview', requirePermission('settings', 'r
     res.json({ success: true, data: renderParts(channel, subject, body, TEMPLATE_KEYS[key].sample) });
   } catch (error) {
     forwardError(error, next);
+  }
+});
+
+// ===== SMS =====
+
+const smsTestSchema = z.object({ to: phoneSchema });
+
+/** POST /api/admin/sms/test - the number must have opted in; the result is the real outcome. */
+router.post('/sms/test', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { to } = smsTestSchema.parse(req.body);
+    const result = await sendSms(to, 'This is a test message from StewardPOS.', 'test');
+    await audit(req, {
+      action: 'sms_test',
+      entity: 'settings',
+      entityId: SINGLETON_ENTITY_ID,
+      after: { to, status: result.status },
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.issues[0].message));
+    } else {
+      next(error);
+    }
   }
 });
 

@@ -26,6 +26,7 @@ import discountsRoutes from './api/routes/discounts';
 import reportsRoutes from './api/routes/reports';
 import uploadRoutes from './api/routes/upload';
 import apiKeysRoutes from './api/routes/apikeys';
+import webhookSubscriptionRoutes from './api/routes/webhookSubscriptions';
 import adminRoutes from './api/routes/admin';
 import healthRoutes from './api/routes/health';
 import setupRoutes from './api/routes/setup';
@@ -162,7 +163,7 @@ app.use('/api/registers/pair', pairLimiter);
  * not — and every event is rejected. Ordering here is the whole mechanism, so
  * it must stay above the parser below.
  */
-app.use('/api/webhooks', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
+app.use('/api/webhooks', express.raw({ type: () => true, limit: '1mb' }), webhookRoutes);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -232,6 +233,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin/reconciliation', reconciliationRoutes);
 app.use('/api/admin/api-keys', apiKeysRoutes);
+app.use('/api/admin/webhooks', webhookSubscriptionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/locations', locationsRoutes);

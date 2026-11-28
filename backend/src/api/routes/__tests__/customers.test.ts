@@ -19,6 +19,8 @@ const deleteCustomer = vi.fn();
 const archiveCustomer = vi.fn();
 const permanentDeleteCustomer = vi.fn();
 const createAuditLog = vi.fn();
+const listSmsConsent = vi.fn();
+const setSmsConsent = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -32,6 +34,8 @@ vi.mock('../../../services/database', () => ({
       archiveCustomer,
       permanentDeleteCustomer,
       createAuditLog,
+      listSmsConsent,
+      setSmsConsent,
     }),
   },
 }));
@@ -70,6 +74,8 @@ beforeEach(() => {
   archiveCustomer.mockResolvedValue({ ...BUYER, archived: true });
   permanentDeleteCustomer.mockResolvedValue(true);
   createAuditLog.mockResolvedValue({});
+  listSmsConsent.mockResolvedValue([]);
+  setSmsConsent.mockResolvedValue(undefined);
 });
 
 describe('GET /api/customers', () => {
@@ -221,5 +227,39 @@ describe('POST /api/customers/:id/archive', () => {
 
     expect((await request(app).post('/api/customers/nope/archive').set(auth())).status).toBe(404);
     expect(archiveCustomer).not.toHaveBeenCalled();
+  });
+});
+
+describe('SMS consent on the customer form', () => {
+  const WITH_PHONE = { ...BUYER, phone: '5551234567' };
+
+  it('marks only opted-in phones on the list', async () => {
+    getAllCustomers.mockResolvedValue([WITH_PHONE, { ...BUYER, id: 'c2', phone: '5559999999' }]);
+    listSmsConsent.mockResolvedValue([
+      { phone: '5551234567', status: 'opted_in' },
+      { phone: '5559999999', status: 'opted_out' },
+    ]);
+    const res = await request(app).get('/api/customers').set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((c: { smsConsent: boolean }) => c.smsConsent)).toEqual([true, false]);
+  });
+
+  it('records consent on create and opt-out on update', async () => {
+    createCustomer.mockResolvedValue(WITH_PHONE);
+    updateCustomer.mockResolvedValue(WITH_PHONE);
+    await request(app).post('/api/customers').set(auth()).send({ name: 'Ada', phone: '555-123-4567', smsConsent: true });
+    await request(app).put('/api/customers/c1').set(auth()).send({ smsConsent: false });
+    expect(setSmsConsent.mock.calls).toEqual([
+      ['5551234567', 'opted_in', 'customer_form'],
+      ['5551234567', 'opted_out', 'customer_form'],
+    ]);
+    expect(createCustomer.mock.calls[0][0]).not.toHaveProperty('smsConsent');
+  });
+
+  it('records nothing without a phone or without the checkbox', async () => {
+    await request(app).post('/api/customers').set(auth()).send({ name: 'Ada', smsConsent: true });
+    createCustomer.mockResolvedValue(WITH_PHONE);
+    await request(app).post('/api/customers').set(auth()).send({ name: 'Ada', phone: '5551234567' });
+    expect(setSmsConsent).not.toHaveBeenCalled();
   });
 });

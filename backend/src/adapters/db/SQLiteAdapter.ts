@@ -5,7 +5,26 @@ import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { escapeLike } from './like';
-import type { DeliveryMark, DueDelivery } from '../../services/webhookDelivery';
+import type {
+  DeliveryMark,
+  DueDelivery,
+  WebhookDeliveryRow,
+  WebhookSubscription,
+} from '../../services/webhookDelivery';
+
+const WEBHOOK_SUB_COLS = `id, url, events, active, created_at,
+  (secret_prev_enc IS NOT NULL AND secret_prev_expires_at > ?) AS rotating`;
+
+function toWebhookSubscription(r: DbRow): WebhookSubscription {
+  return {
+    id: r.id,
+    url: r.url,
+    events: JSON.parse(r.events),
+    active: r.active === 1,
+    createdAt: r.created_at,
+    rotating: r.rotating === 1,
+  };
+}
 import {
   DbRow,
   asRows,
@@ -785,7 +804,7 @@ export class SQLiteAdapter {
         const rows = this.db
           .prepare(
             `SELECT d.id, d.event_id, d.attempts, e.event_type, e.org_id, e.payload, e.created_at,
-                    s.url, s.secret_enc
+                    s.url, s.secret_enc, s.secret_prev_enc, s.secret_prev_expires_at
              FROM webhook_deliveries d
              JOIN outbox_events e ON e.id = d.event_id
              JOIN webhook_subscriptions s ON s.id = d.subscription_id
@@ -807,6 +826,8 @@ export class SQLiteAdapter {
         attempts: r.attempts,
         url: r.url,
         secretEnc: r.secret_enc,
+        secretPrevEnc: r.secret_prev_enc,
+        secretPrevExpiresAt: r.secret_prev_expires_at,
       }));
     } catch (error) {
       logger.error('Error claiming webhook deliveries:', error);
@@ -826,6 +847,133 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error marking webhook delivery:', error);
       throw new DatabaseError('Failed to update webhook delivery');
+    }
+  }
+
+  // Webhook subscriptions (admin)
+  async listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
+    try {
+      const rows = this.db
+        .prepare(`SELECT ${WEBHOOK_SUB_COLS} FROM webhook_subscriptions ORDER BY created_at DESC`)
+        .all(Date.now()) as DbRow[];
+      return rows.map(toWebhookSubscription);
+    } catch (error) {
+      logger.error('Error listing webhook subscriptions:', error);
+      throw new DatabaseError('Failed to list webhook subscriptions');
+    }
+  }
+
+  private getWebhookSubscription(id: string): WebhookSubscription | null {
+    const row = this.db
+      .prepare(`SELECT ${WEBHOOK_SUB_COLS} FROM webhook_subscriptions WHERE id = ?`)
+      .get(Date.now(), id) as DbRow | undefined;
+    return row ? toWebhookSubscription(row) : null;
+  }
+
+  async createWebhookSubscription(url: string, secretEnc: string, events: string[]): Promise<WebhookSubscription> {
+    try {
+      const id = crypto.randomUUID();
+      this.db
+        .prepare('INSERT INTO webhook_subscriptions (id, url, secret_enc, events, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(id, url, secretEnc, JSON.stringify(events), Date.now());
+      return this.getWebhookSubscription(id) as WebhookSubscription;
+    } catch (error) {
+      logger.error('Error creating webhook subscription:', error);
+      throw new DatabaseError('Failed to create webhook subscription');
+    }
+  }
+
+  async updateWebhookSubscription(
+    id: string,
+    patch: { url?: string; events?: string[]; active?: boolean }
+  ): Promise<WebhookSubscription | null> {
+    try {
+      this.db
+        .prepare(
+          `UPDATE webhook_subscriptions
+           SET url = COALESCE(?, url), events = COALESCE(?, events), active = COALESCE(?, active)
+           WHERE id = ?`
+        )
+        .run(
+          patch.url ?? null,
+          patch.events ? JSON.stringify(patch.events) : null,
+          patch.active === undefined ? null : patch.active ? 1 : 0,
+          id
+        );
+      return this.getWebhookSubscription(id);
+    } catch (error) {
+      logger.error('Error updating webhook subscription:', error);
+      throw new DatabaseError('Failed to update webhook subscription');
+    }
+  }
+
+  async deleteWebhookSubscription(id: string): Promise<boolean> {
+    try {
+      return this.db.prepare('DELETE FROM webhook_subscriptions WHERE id = ?').run(id).changes > 0;
+    } catch (error) {
+      logger.error('Error deleting webhook subscription:', error);
+      throw new DatabaseError('Failed to delete webhook subscription');
+    }
+  }
+
+  /** The old secret keeps signing until `prevExpiresAt` (epoch ms). */
+  async rotateWebhookSecret(id: string, secretEnc: string, prevExpiresAt: number): Promise<WebhookSubscription | null> {
+    try {
+      this.db
+        .prepare(
+          `UPDATE webhook_subscriptions
+           SET secret_prev_enc = secret_enc, secret_prev_expires_at = ?, secret_enc = ? WHERE id = ?`
+        )
+        .run(prevExpiresAt, secretEnc, id);
+      return this.getWebhookSubscription(id);
+    } catch (error) {
+      logger.error('Error rotating webhook secret:', error);
+      throw new DatabaseError('Failed to rotate webhook secret');
+    }
+  }
+
+  async listWebhookDeliveries(status: string | undefined, limit: number): Promise<WebhookDeliveryRow[]> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT d.id, d.event_id, e.event_type, d.subscription_id, d.status, d.attempts, d.next_attempt_at,
+                  d.last_status_code, d.last_error, d.created_at
+           FROM webhook_deliveries d JOIN outbox_events e ON e.id = d.event_id
+           WHERE (? IS NULL OR d.status = ?)
+           ORDER BY d.created_at DESC LIMIT ?`
+        )
+        .all(status ?? null, status ?? null, limit) as DbRow[];
+      return rows.map((r) => ({
+        id: r.id,
+        eventId: r.event_id,
+        eventType: r.event_type,
+        subscriptionId: r.subscription_id,
+        status: r.status,
+        attempts: r.attempts,
+        nextAttemptAt: r.next_attempt_at,
+        lastStatusCode: r.last_status_code,
+        lastError: r.last_error,
+        createdAt: r.created_at,
+      }));
+    } catch (error) {
+      logger.error('Error listing webhook deliveries:', error);
+      throw new DatabaseError('Failed to list webhook deliveries');
+    }
+  }
+
+  async redeliverWebhook(id: string): Promise<boolean> {
+    try {
+      return (
+        this.db
+          .prepare(
+            `UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = ?, last_error = NULL
+             WHERE id = ?`
+          )
+          .run(Date.now(), id).changes > 0
+      );
+    } catch (error) {
+      logger.error('Error redelivering webhook:', error);
+      throw new DatabaseError('Failed to redeliver webhook');
     }
   }
 
@@ -3317,6 +3465,43 @@ export class SQLiteAdapter {
     } catch (error) {
       logger.error('Error saving message template:', error);
       throw new DatabaseError('Failed to save message template');
+    }
+  }
+
+  // SMS consent
+  async getSmsConsent(phone: string): Promise<'opted_in' | 'opted_out' | null> {
+    try {
+      const row = this.db.prepare('SELECT status FROM sms_consent WHERE phone = ?').get(phone) as
+        | { status: 'opted_in' | 'opted_out' }
+        | undefined;
+      return row?.status ?? null;
+    } catch (error) {
+      logger.error('Error getting SMS consent:', error);
+      throw new DatabaseError('Failed to get SMS consent');
+    }
+  }
+
+  async listSmsConsent(): Promise<Array<{ phone: string; status: 'opted_in' | 'opted_out' }>> {
+    try {
+      return this.db.prepare('SELECT phone, status FROM sms_consent').all() as Array<{
+        phone: string;
+        status: 'opted_in' | 'opted_out';
+      }>;
+    } catch (error) {
+      logger.error('Error listing SMS consent:', error);
+      throw new DatabaseError('Failed to list SMS consent');
+    }
+  }
+
+  async setSmsConsent(phone: string, status: 'opted_in' | 'opted_out', source: string): Promise<void> {
+    try {
+      this.db.prepare(
+        `INSERT INTO sms_consent (id, phone, status, source, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (org_id, phone) DO UPDATE SET status = excluded.status, source = excluded.source, updated_at = excluded.updated_at`
+      ).run(crypto.randomUUID(), phone, status, source, Date.now());
+    } catch (error) {
+      logger.error('Error setting SMS consent:', error);
+      throw new DatabaseError('Failed to set SMS consent');
     }
   }
 

@@ -30,6 +30,7 @@ export { storeCreditsApi } from './storeCredits';
 export { setupApi } from './setup';
 export { terminalApi } from './terminal';
 export { uploadApi } from './upload';
+export { webhooksApi } from './webhooks';
 
 export type {
   CreateUserRequest,
@@ -56,6 +57,12 @@ export type {
   CreatedApiKey,
   UpdateApiKeyRequest,
 } from './apiKeys';
+export type {
+  WebhookDelivery,
+  WebhookDeliveryStatus,
+  WebhookSubscription,
+  WebhookSubscriptionWithSecret,
+} from './webhooks';
 export type {
   DiscountTypeInput,
   DiscountUsageQuery,

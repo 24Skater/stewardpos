@@ -14,7 +14,12 @@ import {
   type PaymentAttemptUpdate,
 } from './types';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
-import type { DeliveryMark, DueDelivery } from '../../services/webhookDelivery';
+import type {
+  DeliveryMark,
+  DueDelivery,
+  WebhookDeliveryRow,
+  WebhookSubscription,
+} from '../../services/webhookDelivery';
 import type {
   AuditLogQuery,
   DrawerVarianceByRegister,
@@ -412,6 +417,20 @@ function mapRegisterOverrideSummary(row: DbRow): DbRow {
  */
 function isInvalidTextRepresentation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === '22P02';
+}
+
+const WEBHOOK_SUB_COLS = `id, url, events, active, created_at,
+  (secret_prev_enc IS NOT NULL AND secret_prev_expires_at > NOW()) AS rotating`;
+
+function toWebhookSubscription(r: DbRow): WebhookSubscription {
+  return {
+    id: r.id,
+    url: r.url,
+    events: r.events,
+    active: r.active,
+    createdAt: new Date(r.created_at).getTime(),
+    rotating: Boolean(r.rotating),
+  };
 }
 
 /** Runs on the caller's client so the event commits or rolls back with the change. */
@@ -892,7 +911,7 @@ export class PostgresAdapter {
            RETURNING d.id, d.event_id, d.subscription_id, d.attempts
          )
          SELECT l.id, l.event_id, l.attempts, e.event_type, e.org_id, e.payload, e.created_at,
-                s.url, s.secret_enc
+                s.url, s.secret_enc, s.secret_prev_enc, s.secret_prev_expires_at
          FROM leased l
          JOIN outbox_events e ON e.id = l.event_id
          JOIN webhook_subscriptions s ON s.id = l.subscription_id`,
@@ -908,6 +927,8 @@ export class PostgresAdapter {
         attempts: r.attempts,
         url: r.url,
         secretEnc: r.secret_enc,
+        secretPrevEnc: r.secret_prev_enc,
+        secretPrevExpiresAt: r.secret_prev_expires_at ? new Date(r.secret_prev_expires_at).getTime() : null,
       }));
     } catch (error) {
       logger.error('Error claiming webhook deliveries:', error);
@@ -927,6 +948,124 @@ export class PostgresAdapter {
     } catch (error) {
       logger.error('Error marking webhook delivery:', error);
       throw new DatabaseError('Failed to update webhook delivery');
+    }
+  }
+
+  // Webhook subscriptions (admin)
+  async listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT ${WEBHOOK_SUB_COLS} FROM webhook_subscriptions ORDER BY created_at DESC`
+      );
+      return result.rows.map(toWebhookSubscription);
+    } catch (error) {
+      logger.error('Error listing webhook subscriptions:', error);
+      throw new DatabaseError('Failed to list webhook subscriptions');
+    }
+  }
+
+  async createWebhookSubscription(url: string, secretEnc: string, events: string[]): Promise<WebhookSubscription> {
+    try {
+      const result = await this.pool.query(
+        `INSERT INTO webhook_subscriptions (url, secret_enc, events) VALUES ($1, $2, $3::jsonb)
+         RETURNING ${WEBHOOK_SUB_COLS}`,
+        [url, secretEnc, JSON.stringify(events)]
+      );
+      return toWebhookSubscription(result.rows[0]);
+    } catch (error) {
+      logger.error('Error creating webhook subscription:', error);
+      throw new DatabaseError('Failed to create webhook subscription');
+    }
+  }
+
+  async updateWebhookSubscription(
+    id: string,
+    patch: { url?: string; events?: string[]; active?: boolean }
+  ): Promise<WebhookSubscription | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE webhook_subscriptions
+         SET url = COALESCE($2, url), events = COALESCE($3::jsonb, events), active = COALESCE($4, active)
+         WHERE id = $1 RETURNING ${WEBHOOK_SUB_COLS}`,
+        [id, patch.url ?? null, patch.events ? JSON.stringify(patch.events) : null, patch.active ?? null]
+      );
+      return result.rows[0] ? toWebhookSubscription(result.rows[0]) : null;
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
+      logger.error('Error updating webhook subscription:', error);
+      throw new DatabaseError('Failed to update webhook subscription');
+    }
+  }
+
+  async deleteWebhookSubscription(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query('DELETE FROM webhook_subscriptions WHERE id = $1', [id]);
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return false;
+      logger.error('Error deleting webhook subscription:', error);
+      throw new DatabaseError('Failed to delete webhook subscription');
+    }
+  }
+
+  /** The old secret keeps signing until `prevExpiresAt` (epoch ms). */
+  async rotateWebhookSecret(id: string, secretEnc: string, prevExpiresAt: number): Promise<WebhookSubscription | null> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE webhook_subscriptions
+         SET secret_prev_enc = secret_enc, secret_prev_expires_at = to_timestamp($3::double precision / 1000),
+             secret_enc = $2
+         WHERE id = $1 RETURNING ${WEBHOOK_SUB_COLS}`,
+        [id, secretEnc, prevExpiresAt]
+      );
+      return result.rows[0] ? toWebhookSubscription(result.rows[0]) : null;
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return null;
+      logger.error('Error rotating webhook secret:', error);
+      throw new DatabaseError('Failed to rotate webhook secret');
+    }
+  }
+
+  async listWebhookDeliveries(status: string | undefined, limit: number): Promise<WebhookDeliveryRow[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT d.id, d.event_id, e.event_type, d.subscription_id, d.status, d.attempts, d.next_attempt_at,
+                d.last_status_code, d.last_error, d.created_at
+         FROM webhook_deliveries d JOIN outbox_events e ON e.id = d.event_id
+         WHERE ($1::text IS NULL OR d.status = $1)
+         ORDER BY d.created_at DESC LIMIT $2`,
+        [status ?? null, limit]
+      );
+      return result.rows.map((r) => ({
+        id: r.id,
+        eventId: r.event_id,
+        eventType: r.event_type,
+        subscriptionId: r.subscription_id,
+        status: r.status,
+        attempts: r.attempts,
+        nextAttemptAt: new Date(r.next_attempt_at).getTime(),
+        lastStatusCode: r.last_status_code,
+        lastError: r.last_error,
+        createdAt: new Date(r.created_at).getTime(),
+      }));
+    } catch (error) {
+      logger.error('Error listing webhook deliveries:', error);
+      throw new DatabaseError('Failed to list webhook deliveries');
+    }
+  }
+
+  async redeliverWebhook(id: string): Promise<boolean> {
+    try {
+      const result = await this.pool.query(
+        `UPDATE webhook_deliveries SET status = 'pending', attempts = 0, next_attempt_at = NOW(), last_error = NULL
+         WHERE id = $1`,
+        [id]
+      );
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      if (isInvalidTextRepresentation(error)) return false;
+      logger.error('Error redelivering webhook:', error);
+      throw new DatabaseError('Failed to redeliver webhook');
     }
   }
 
@@ -3416,6 +3555,40 @@ export class PostgresAdapter {
     }
   }
 
+  // SMS consent
+  async getSmsConsent(phone: string): Promise<'opted_in' | 'opted_out' | null> {
+    try {
+      const result = await this.pool.query('SELECT status FROM sms_consent WHERE phone = $1', [phone]);
+      return (result.rows[0]?.status as 'opted_in' | 'opted_out' | undefined) ?? null;
+    } catch (error) {
+      logger.error('Error getting SMS consent:', error);
+      throw new DatabaseError('Failed to get SMS consent');
+    }
+  }
+
+  async listSmsConsent(): Promise<Array<{ phone: string; status: 'opted_in' | 'opted_out' }>> {
+    try {
+      const result = await this.pool.query('SELECT phone, status FROM sms_consent');
+      return result.rows;
+    } catch (error) {
+      logger.error('Error listing SMS consent:', error);
+      throw new DatabaseError('Failed to list SMS consent');
+    }
+  }
+
+  async setSmsConsent(phone: string, status: 'opted_in' | 'opted_out', source: string): Promise<void> {
+    try {
+      await this.pool.query(
+        `INSERT INTO sms_consent (phone, status, source) VALUES ($1, $2, $3)
+         ON CONFLICT (org_id, phone) DO UPDATE SET status = EXCLUDED.status, source = EXCLUDED.source, updated_at = NOW()`,
+        [phone, status, source]
+      );
+    } catch (error) {
+      logger.error('Error setting SMS consent:', error);
+      throw new DatabaseError('Failed to set SMS consent');
+    }
+  }
+
   async logReceiptEmail(data: any): Promise<any> {
     try {
       const result = await this.pool.query(
@@ -4929,15 +5102,15 @@ export class PostgresAdapter {
     limit?: number;
   } = {}): Promise<PaymentAttempt[]> {
     try {
-      const cutoff = new Date(Date.now() - (options.olderThanMs ?? 0));
+      // Cut off in SQL: created_at has microseconds, so a JS-ms cutoff can miss a row from the same ms.
       const result = await this.pool.query(
         `SELECT * FROM payment_attempts
           WHERE order_id IS NULL
             AND status IN ('authorized', 'pending')
-            AND created_at <= $1
+            AND created_at <= NOW() - $1 * INTERVAL '1 millisecond'
           ORDER BY created_at ASC
           LIMIT $2`,
-        [cutoff, options.limit ?? 200]
+        [options.olderThanMs ?? 0, options.limit ?? 200]
       );
       return asRows(result.rows).map(mapPaymentAttempt);
     } catch (error) {
