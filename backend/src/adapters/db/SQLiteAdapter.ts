@@ -4389,7 +4389,7 @@ export class SQLiteAdapter {
       );
       const rows = this.db
         .prepare(
-          `SELECT method, COUNT(*) as count, COALESCE(SUM(amount_cents), 0) as amount
+          `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
            FROM (
              SELECT LOWER(p.method) as method, p.amount_cents as amount
              FROM payments p

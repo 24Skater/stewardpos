@@ -4502,7 +4502,7 @@ export class PostgresAdapter {
         3
       );
       const result = await this.pool.query(
-        `SELECT method, COUNT(*) as count, COALESCE(SUM(amount_cents), 0) as amount
+        `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
          FROM (
            SELECT LOWER(p.method) as method, p.amount_cents as amount
            FROM payments p
