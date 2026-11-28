@@ -28,6 +28,9 @@ function toWebhookSubscription(r: DbRow): WebhookSubscription {
 import {
   DbRow,
   asRows,
+  centsToDollars,
+  centsToDollarsOrNull,
+  toCentsOrNull,
   mapMessageLogRow,
   mapMessageTemplateRow,
   type MessageTemplateRow,
@@ -36,6 +39,7 @@ import {
   type PaymentAttemptCreate,
   type PaymentAttemptUpdate,
 } from './types';
+import { toCents } from '../../services/pricing';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
 import type {
   AuditLogQuery,
@@ -109,10 +113,10 @@ export function mapOrderRow(order: DbRow): DbRow {
   return {
     id: order.id,
     createdAt: order.created_at,
-    subtotal: order.subtotal,
-    discountTotal: order.discount_total,
-    taxTotal: order.tax_total,
-    total: order.total,
+    subtotal: centsToDollars(order.subtotal_cents),
+    discountTotal: centsToDollars(order.discount_total_cents),
+    taxTotal: centsToDollars(order.tax_total_cents),
+    total: centsToDollars(order.total_cents),
     paymentMethod: order.payment_method,
     customerEmail: order.customer_email,
     customerPhone: order.customer_phone,
@@ -120,8 +124,8 @@ export function mapOrderRow(order: DbRow): DbRow {
     cardReceipt: parseCartSnapshot(order.card_receipt),
     cardAuthCode: order.card_auth_code ?? null,
     // Null on card and other tenders, and on orders predating the columns.
-    amountTendered: order.amount_tendered ?? null,
-    changeGiven: order.change_given ?? null,
+    amountTendered: centsToDollarsOrNull(order.amount_tendered_cents),
+    changeGiven: centsToDollarsOrNull(order.change_given_cents),
     registerId: order.register_id ?? null,
     cashierUserId: order.cashier_user_id ?? null,
     // Present only where the read joined them; a receipt prints these, a list
@@ -133,6 +137,24 @@ export function mapOrderRow(order: DbRow): DbRow {
   };
 }
 
+
+/** Turn an `order_items` row into the camelCase DTO the API publishes. */
+export function mapOrderItemRow(item: DbRow): DbRow {
+  return {
+    id: item.id,
+    orderId: item.order_id,
+    productId: item.product_id,
+    variantId: item.variant_id,
+    nameSnapshot: item.name_snapshot,
+    size: item.size,
+    color: item.color,
+    quantity: item.quantity,
+    unitPrice: centsToDollars(item.unit_price_cents),
+    lineDiscount: centsToDollars(item.line_discount_cents),
+    lineTotal: centsToDollars(item.line_total_cents),
+    notes: item.notes,
+  };
+}
 
 /** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
 export function mapDrawerSessionRow(row: DbRow): DbRow {
@@ -167,7 +189,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     id: row.id,
     orderId: row.order_id,
     method: row.method,
-    amount: Number(row.amount),
+    amount: centsToDollars(row.amount_cents),
     reference: row.reference ?? null,
     createdAt: row.created_at,
     registerId: row.register_id ?? null,
@@ -181,8 +203,8 @@ export function mapVariantRow(row: DbRow): DbRow {
     id: row.id,
     size: row.size,
     color: row.color,
-    priceOverride: row.price_override ?? null,
-    priceDelta: row.price_delta ?? null,
+    priceOverride: centsToDollarsOrNull(row.price_override_cents),
+    priceDelta: centsToDollarsOrNull(row.price_delta_cents),
     sku: row.sku,
     barcode: row.barcode,
     stock: row.stock,
@@ -571,7 +593,7 @@ export class SQLiteAdapter {
           name: product.name,
           description: product.description,
           category: product.category,
-          basePrice: product.base_price,
+          basePrice: centsToDollars(product.base_price_cents),
           image: product.image,
           barcode: product.barcode,
           variants: variants.map(mapVariantRow),
@@ -611,7 +633,7 @@ export class SQLiteAdapter {
         name: product.name,
         description: product.description,
         category: product.category,
-        basePrice: product.base_price,
+        basePrice: centsToDollars(product.base_price_cents),
         image: product.image,
         barcode: product.barcode,
         variants: variants.map(mapVariantRow),
@@ -631,14 +653,14 @@ export class SQLiteAdapter {
       const now = Date.now();
       const productResult = this.db
         .prepare(
-          `INSERT INTO products (name, description, category, base_price, image, barcode, created_at, updated_at)
+          `INSERT INTO products (name, description, category, base_price_cents, image, barcode, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           product.name ?? null,
           product.description ?? null,
           product.category ?? null,
-          product.basePrice ?? null,
+          toCentsOrNull(product.basePrice),
           product.image ?? null,
           product.barcode ?? null,
           now,
@@ -659,15 +681,15 @@ export class SQLiteAdapter {
           const variantResult = this.db
             .prepare(
               `INSERT INTO product_variants 
-               (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
+               (product_id, size, color, price_override_cents, price_delta_cents, sku, barcode, stock, enabled)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
               createdProduct.id,
               variant.size,
               variant.color,
-              variant.priceOverride,
-              variant.priceDelta,
+              toCentsOrNull(variant.priceOverride),
+              toCentsOrNull(variant.priceDelta),
               variant.sku,
               variant.barcode,
               variant.stock || 0,
@@ -687,7 +709,7 @@ export class SQLiteAdapter {
         name: createdProduct.name,
         description: createdProduct.description,
         category: createdProduct.category,
-        basePrice: createdProduct.base_price,
+        basePrice: centsToDollars(createdProduct.base_price_cents),
         image: createdProduct.image,
         barcode: createdProduct.barcode,
         variants,
@@ -716,7 +738,7 @@ export class SQLiteAdapter {
            SET name = COALESCE(?, name),
                description = COALESCE(?, description),
                category = COALESCE(?, category),
-               base_price = COALESCE(?, base_price),
+               base_price_cents = COALESCE(?, base_price_cents),
                image = COALESCE(?, image),
                barcode = COALESCE(?, barcode),
                updated_at = ?
@@ -726,7 +748,7 @@ export class SQLiteAdapter {
           product.name,
           product.description,
           product.category,
-          product.basePrice,
+          toCentsOrNull(product.basePrice),
           product.image,
           product.barcode,
           now,
@@ -746,7 +768,7 @@ export class SQLiteAdapter {
         name: updated.name,
         description: updated.description,
         category: updated.category,
-        basePrice: updated.base_price,
+        basePrice: centsToDollars(updated.base_price_cents),
         image: updated.image,
         barcode: updated.barcode,
         createdAt: updated.created_at,
@@ -985,15 +1007,15 @@ export class SQLiteAdapter {
       const now = Date.now();
       const orderResult = this.db
         .prepare(
-          `INSERT INTO orders (created_at, subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, card_receipt, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+          `INSERT INTO orders (created_at, subtotal_cents, discount_total_cents, tax_total_cents, total_cents, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, card_receipt, amount_tendered_cents, change_given_cents, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           now,
-          order.subtotal,
-          order.discountTotal || 0,
-          order.taxTotal || 0,
-          order.total,
+          toCents(Number(order.subtotal)),
+          toCents(Number(order.discountTotal || 0)),
+          toCents(Number(order.taxTotal || 0)),
+          toCents(Number(order.total)),
           order.paymentMethod,
           order.customerEmail,
           order.customerPhone,
@@ -1002,8 +1024,8 @@ export class SQLiteAdapter {
           order.cardReceipt === undefined || order.cardReceipt === null
             ? null
             : JSON.stringify(order.cardReceipt),
-          order.amountTendered ?? null,
-          order.changeGiven ?? null,
+          toCentsOrNull(order.amountTendered),
+          toCentsOrNull(order.changeGiven),
           order.registerId ?? null,
           order.cashierUserId ?? null,
           order.drawerSessionId ?? null,
@@ -1021,7 +1043,7 @@ export class SQLiteAdapter {
           const itemResult = this.db
             .prepare(
               `INSERT INTO order_items 
-               (order_id, product_id, variant_id, name_snapshot, size, color, quantity, unit_price, line_discount, line_total, notes)
+               (order_id, product_id, variant_id, name_snapshot, size, color, quantity, unit_price_cents, line_discount_cents, line_total_cents, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
@@ -1032,9 +1054,9 @@ export class SQLiteAdapter {
               item.size,
               item.color,
               item.quantity,
-              item.unitPrice,
-              item.lineDiscount || 0,
-              item.lineTotal,
+              toCents(Number(item.unitPrice)),
+              toCents(Number(item.lineDiscount || 0)),
+              toCents(Number(item.lineTotal)),
               item.notes
             );
 
@@ -1042,7 +1064,7 @@ export class SQLiteAdapter {
             .prepare('SELECT * FROM order_items WHERE rowid = ?')
             .get(itemResult.lastInsertRowid) as any;
 
-          items.push(createdItem);
+          items.push(mapOrderItemRow(createdItem));
 
           // Update variant stock if variantId is provided
           if (item.variantId) {
@@ -1098,14 +1120,14 @@ export class SQLiteAdapter {
           const paymentId = crypto.randomUUID();
           this.db
             .prepare(
-              `INSERT INTO payments (id, order_id, method, amount, reference, created_at, register_id)
+              `INSERT INTO payments (id, order_id, method, amount_cents, reference, created_at, register_id)
                VALUES (?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
               paymentId,
               createdOrder.id,
               payment.method,
-              payment.amount,
+              toCents(Number(payment.amount)),
               payment.reference ?? null,
               now,
               order.registerId ?? null
@@ -1159,20 +1181,7 @@ export class SQLiteAdapter {
           if (!itemsMap.has(orderId)) {
             itemsMap.set(orderId, []);
           }
-          itemsMap.get(orderId)!.push({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            lineDiscount: item.line_discount,
-            lineTotal: item.line_total,
-            notes: item.notes,
-          });
+          itemsMap.get(orderId)!.push(mapOrderItemRow(item));
         });
       }
 
@@ -1219,20 +1228,7 @@ export class SQLiteAdapter {
 
       return {
         ...mapOrderRow(order),
-        items: items.map((item) => ({
-          id: item.id,
-          orderId: item.order_id,
-          productId: item.product_id,
-          variantId: item.variant_id,
-          nameSnapshot: item.name_snapshot,
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          lineDiscount: item.line_discount,
-          lineTotal: item.line_total,
-          notes: item.notes,
-        })),
+        items: items.map(mapOrderItemRow),
         payments: payments.map(mapPaymentRow),
       };
     } catch (error) {
@@ -1587,7 +1583,7 @@ export class SQLiteAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active === 1,
         createdAt: s.created_at,
@@ -1614,7 +1610,7 @@ export class SQLiteAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active === 1,
         createdAt: s.created_at,
@@ -1631,14 +1627,14 @@ export class SQLiteAdapter {
       const now = Date.now();
       const result = this.db
         .prepare(
-          `INSERT INTO services (name, category, description, base_price, unit_type, is_active, created_at, updated_at)
+          `INSERT INTO services (name, category, description, base_price_cents, unit_type, is_active, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           service.name,
           service.category,
           service.description,
-          service.basePrice,
+          toCentsOrNull(service.basePrice),
           service.unitType || 'flat',
           service.isActive !== false ? 1 : 0,
           now,
@@ -1654,7 +1650,7 @@ export class SQLiteAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active === 1,
         createdAt: s.created_at,
@@ -1683,7 +1679,7 @@ export class SQLiteAdapter {
              name = COALESCE(?, name),
              category = COALESCE(?, category),
              description = COALESCE(?, description),
-             base_price = COALESCE(?, base_price),
+             base_price_cents = COALESCE(?, base_price_cents),
              unit_type = COALESCE(?, unit_type),
              is_active = COALESCE(?, is_active),
              updated_at = ?
@@ -1693,7 +1689,7 @@ export class SQLiteAdapter {
           service.name,
           service.category,
           service.description,
-          service.basePrice,
+          toCentsOrNull(service.basePrice),
           service.unitType,
           service.isActive !== undefined ? (service.isActive ? 1 : 0) : null,
           now,
@@ -1709,7 +1705,7 @@ export class SQLiteAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active === 1,
         createdAt: s.created_at,
@@ -2669,20 +2665,7 @@ export class SQLiteAdapter {
 
         return {
           ...mapOrderRow(order),
-          items: items.map((item) => ({
-            id: item.id,
-            orderId: item.order_id,
-            productId: item.product_id,
-            variantId: item.variant_id,
-            nameSnapshot: item.name_snapshot,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            lineDiscount: item.line_discount,
-            lineTotal: item.line_total,
-            notes: item.notes,
-          })),
+          items: items.map(mapOrderItemRow),
         };
       });
     } catch (error) {
@@ -2900,7 +2883,7 @@ export class SQLiteAdapter {
     try {
       let query = `
         SELECT r.*, 
-               o.total as original_order_total,
+               o.total_cents / 100.0 as original_order_total,
                u.name as created_by_name,
                c.name as customer_name
         FROM returns r
@@ -2943,7 +2926,7 @@ export class SQLiteAdapter {
     try {
       const row = this.db.prepare(
         `SELECT r.*, 
-                o.total as original_order_total,
+                o.total_cents / 100.0 as original_order_total,
                 u.name as created_by_name,
                 a.name as approved_by_name,
                 c.name as customer_name
@@ -3070,7 +3053,7 @@ export class SQLiteAdapter {
   async getReturnsByCustomer(customerId: string): Promise<any[]> {
     try {
       const returns = this.db.prepare(
-        `SELECT r.*, o.total as original_order_total
+        `SELECT r.*, o.total_cents / 100.0 as original_order_total
          FROM returns r
          LEFT JOIN orders o ON r.original_order_id = o.id
          WHERE r.customer_id = ?
@@ -3588,12 +3571,12 @@ export class SQLiteAdapter {
         params.push(filters.customerEmail);
       }
       if (filters.minAmount !== undefined) {
-        query += ' AND o.total >= ?';
-        params.push(filters.minAmount);
+        query += ' AND o.total_cents >= ?';
+        params.push(toCents(Number(filters.minAmount)));
       }
       if (filters.maxAmount !== undefined) {
-        query += ' AND o.total <= ?';
-        params.push(filters.maxAmount);
+        query += ' AND o.total_cents <= ?';
+        params.push(toCents(Number(filters.maxAmount)));
       }
       if (filters.paymentMethod) {
         query += ' AND o.payment_method = ?';
@@ -4298,10 +4281,10 @@ export class SQLiteAdapter {
         .prepare(
           `SELECT
              COUNT(*) as order_count,
-             ROUND(COALESCE(SUM(subtotal), 0), 2) as gross,
-             ROUND(COALESCE(SUM(discount_total), 0), 2) as discounts,
-             ROUND(COALESCE(SUM(tax_total), 0), 2) as tax,
-             ROUND(COALESCE(SUM(total), 0), 2) as net
+             COALESCE(SUM(subtotal_cents), 0) as gross,
+             COALESCE(SUM(discount_total_cents), 0) as discounts,
+             COALESCE(SUM(tax_total_cents), 0) as tax,
+             COALESCE(SUM(total_cents), 0) as net
            FROM orders
            WHERE created_at >= ? AND created_at <= ?${clause}`
         )
@@ -4309,10 +4292,10 @@ export class SQLiteAdapter {
 
       return {
         orderCount: Number(row.order_count ?? 0),
-        gross: Number(row.gross ?? 0),
-        discounts: Number(row.discounts ?? 0),
-        tax: Number(row.tax ?? 0),
-        net: Number(row.net ?? 0),
+        gross: centsToDollars(row.gross ?? 0),
+        discounts: centsToDollars(row.discounts ?? 0),
+        tax: centsToDollars(row.tax ?? 0),
+        net: centsToDollars(row.net ?? 0),
       };
     } catch (error) {
       logger.error('Error getting sales totals:', error);
@@ -4332,8 +4315,8 @@ export class SQLiteAdapter {
           `SELECT
              strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') as date,
              COUNT(*) as order_count,
-             ROUND(COALESCE(SUM(subtotal), 0), 2) as gross,
-             ROUND(COALESCE(SUM(total), 0), 2) as net
+             COALESCE(SUM(subtotal_cents), 0) as gross,
+             COALESCE(SUM(total_cents), 0) as net
            FROM orders
            WHERE created_at >= ? AND created_at <= ?${clause}
            GROUP BY 1
@@ -4344,8 +4327,8 @@ export class SQLiteAdapter {
       return rows.map((row) => ({
         date: String(row.date),
         orderCount: Number(row.order_count ?? 0),
-        gross: Number(row.gross ?? 0),
-        net: Number(row.net ?? 0),
+        gross: centsToDollars(row.gross ?? 0),
+        net: centsToDollars(row.net ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting sales by day:', error);
@@ -4370,7 +4353,7 @@ export class SQLiteAdapter {
              oi.product_id as product_id,
              MIN(oi.name_snapshot) as name,
              COALESCE(SUM(oi.quantity), 0) as quantity,
-             ROUND(COALESCE(SUM(oi.line_total), 0), 2) as revenue
+             COALESCE(SUM(oi.line_total_cents), 0) as revenue
            FROM order_items oi
            JOIN orders o ON o.id = oi.order_id
            WHERE o.created_at >= ? AND o.created_at <= ?${clause}
@@ -4384,7 +4367,7 @@ export class SQLiteAdapter {
         productId: String(row.product_id),
         name: String(row.name),
         quantity: Number(row.quantity ?? 0),
-        revenue: Number(row.revenue ?? 0),
+        revenue: centsToDollars(row.revenue ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting top products:', error);
@@ -4406,14 +4389,14 @@ export class SQLiteAdapter {
       );
       const rows = this.db
         .prepare(
-          `SELECT method, COUNT(*) as count, ROUND(COALESCE(SUM(amount), 0), 2) as amount
+          `SELECT method, COUNT(*) as count, COALESCE(SUM(amount_cents), 0) as amount
            FROM (
-             SELECT LOWER(p.method) as method, p.amount as amount
+             SELECT LOWER(p.method) as method, p.amount_cents as amount
              FROM payments p
              JOIN orders o ON o.id = p.order_id
              WHERE o.created_at >= ? AND o.created_at <= ?${clause}
              UNION ALL
-             SELECT LOWER(o.payment_method) as method, o.total as amount
+             SELECT LOWER(o.payment_method) as method, o.total_cents as amount
              FROM orders o
              WHERE o.created_at >= ? AND o.created_at <= ?${clause}
                AND NOT EXISTS (SELECT 1 FROM payments p2 WHERE p2.order_id = o.id)
@@ -4433,7 +4416,7 @@ export class SQLiteAdapter {
       return rows.map((row) => ({
         method: String(row.method),
         count: Number(row.count ?? 0),
-        amount: Number(row.amount ?? 0),
+        amount: centsToDollars(row.amount ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting payment mix:', error);
@@ -4545,10 +4528,10 @@ export class SQLiteAdapter {
              r.has_cash_drawer as has_cash_drawer,
              r.status as status,
              COUNT(o.id) as order_count,
-             ROUND(COALESCE(SUM(o.subtotal), 0), 2) as gross,
-             ROUND(COALESCE(SUM(o.discount_total), 0), 2) as discounts,
-             ROUND(COALESCE(SUM(o.tax_total), 0), 2) as tax,
-             ROUND(COALESCE(SUM(o.total), 0), 2) as net
+             COALESCE(SUM(o.subtotal_cents), 0) as gross,
+             COALESCE(SUM(o.discount_total_cents), 0) as discounts,
+             COALESCE(SUM(o.tax_total_cents), 0) as tax,
+             COALESCE(SUM(o.total_cents), 0) as net
            FROM registers r
            JOIN locations l ON l.id = r.location_id
            JOIN orders o ON o.register_id = r.id
@@ -4569,10 +4552,10 @@ export class SQLiteAdapter {
         hasCashDrawer: Boolean(row.has_cash_drawer),
         status: String(row.status),
         orderCount: Number(row.order_count ?? 0),
-        gross: Number(row.gross ?? 0),
-        discounts: Number(row.discounts ?? 0),
-        tax: Number(row.tax ?? 0),
-        net: Number(row.net ?? 0),
+        gross: centsToDollars(row.gross ?? 0),
+        discounts: centsToDollars(row.discounts ?? 0),
+        tax: centsToDollars(row.tax ?? 0),
+        net: centsToDollars(row.net ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting sales by register:', error);
@@ -4603,8 +4586,8 @@ export class SQLiteAdapter {
              COALESCE(o.cashier_user_id, 'unknown') as cashier_user_id,
              COALESCE(u.name, 'Unknown') as cashier_name,
              COUNT(*) as order_count,
-             ROUND(COALESCE(SUM(o.subtotal), 0), 2) as gross,
-             ROUND(COALESCE(SUM(o.total), 0), 2) as net
+             COALESCE(SUM(o.subtotal_cents), 0) as gross,
+             COALESCE(SUM(o.total_cents), 0) as net
            FROM orders o
            LEFT JOIN users u ON u.id = o.cashier_user_id
            WHERE o.created_at >= ? AND o.created_at <= ?${clause}
@@ -4617,8 +4600,8 @@ export class SQLiteAdapter {
         cashierUserId: String(row.cashier_user_id),
         cashierName: String(row.cashier_name),
         orderCount: Number(row.order_count ?? 0),
-        gross: Number(row.gross ?? 0),
-        net: Number(row.net ?? 0),
+        gross: centsToDollars(row.gross ?? 0),
+        net: centsToDollars(row.net ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting sales by cashier:', error);
@@ -4660,7 +4643,7 @@ export class SQLiteAdapter {
              l.name as location_name,
              COUNT(DISTINCT o.register_id) as register_count,
              COUNT(o.id) as order_count,
-             ROUND(COALESCE(SUM(o.total), 0), 2) as net
+             COALESCE(SUM(o.total_cents), 0) as net
            FROM locations l
            JOIN registers r ON r.location_id = l.id
            JOIN orders o ON o.register_id = r.id
@@ -4676,7 +4659,7 @@ export class SQLiteAdapter {
         locationName: String(row.location_name),
         registerCount: Number(row.register_count ?? 0),
         orderCount: Number(row.order_count ?? 0),
-        net: Number(row.net ?? 0),
+        net: centsToDollars(row.net ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting sales by location:', error);
@@ -4802,14 +4785,14 @@ export class SQLiteAdapter {
 
       const orders = this.db
         .prepare(
-          `SELECT created_at as created_at, total as total
+          `SELECT created_at as created_at, total_cents
            FROM orders
            WHERE register_id = ? AND created_at >= ? AND created_at <= ?`
         )
         .all(registerId, range.from, range.to) as DbRow[];
 
       return bucketOrdersByLocalHour(
-        orders.map((row) => ({ createdAt: Number(row.created_at), total: Number(row.total) })),
+        orders.map((row) => ({ createdAt: Number(row.created_at), total: centsToDollars(row.total_cents) })),
         location?.timezone ? String(location.timezone) : 'UTC'
       );
     } catch (error) {
@@ -5084,7 +5067,7 @@ export class SQLiteAdapter {
         .prepare(
           `SELECT
              s.opening_float
-               + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+               + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0) / 100.0
                AS expected
            FROM cash_drawer_sessions s
            LEFT JOIN orders o
@@ -5168,13 +5151,13 @@ export class SQLiteAdapter {
       this.db
         .prepare(
           `INSERT INTO product_variants
-           (id, product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+           (id, product_id, size, color, price_override_cents, price_delta_cents, sku, barcode, stock, enabled,
             low_stock_threshold)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           id, productId, variant.size ?? null, variant.color ?? null,
-          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          toCentsOrNull(variant.priceOverride), toCentsOrNull(variant.priceDelta),
           variant.sku ?? null, variant.barcode ?? null,
           variant.stock ?? 0, variant.enabled !== false ? 1 : 0,
           variant.lowStockThreshold ?? null
@@ -5200,8 +5183,8 @@ export class SQLiteAdapter {
           `UPDATE product_variants
            SET size = COALESCE(?, size),
                color = COALESCE(?, color),
-               price_override = COALESCE(?, price_override),
-               price_delta = COALESCE(?, price_delta),
+               price_override_cents = COALESCE(?, price_override_cents),
+               price_delta_cents = COALESCE(?, price_delta_cents),
                sku = COALESCE(?, sku),
                barcode = COALESCE(?, barcode),
                stock = COALESCE(?, stock),
@@ -5215,7 +5198,7 @@ export class SQLiteAdapter {
         )
         .run(
           variant.size ?? null, variant.color ?? null,
-          variant.priceOverride ?? null, variant.priceDelta ?? null,
+          toCentsOrNull(variant.priceOverride), toCentsOrNull(variant.priceDelta),
           variant.sku ?? null, variant.barcode ?? null,
           variant.stock ?? null,
           variant.enabled === undefined ? null : variant.enabled ? 1 : 0,

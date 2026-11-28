@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import config from '../config';
 import logger from '../utils/logger';
 import { BCRYPT_ROUNDS } from './hashing';
+import { toCents } from './pricing';
 
 /**
  * The register PIN the seeded demo administrator signs on to a till with.
@@ -438,14 +439,14 @@ export class Seeder {
         }
 
         const result = await this.pgPool.query(
-          `INSERT INTO products (name, description, category, base_price, barcode) 
+          `INSERT INTO products (name, description, category, base_price_cents, barcode) 
            VALUES ($1, $2, $3, $4, $5) 
            RETURNING id`,
           [
             product.name,
             product.description,
             product.category,
-            product.base_price,
+            toCents(product.base_price),
             product.barcode,
           ]
         );
@@ -472,7 +473,7 @@ export class Seeder {
 
         const result = this.sqliteDb
           .prepare(
-            `INSERT INTO products (name, description, category, base_price, barcode) 
+            `INSERT INTO products (name, description, category, base_price_cents, barcode) 
              VALUES (?, ?, ?, ?, ?)
              RETURNING id`
           )
@@ -480,7 +481,7 @@ export class Seeder {
             product.name,
             product.description,
             product.category,
-            product.base_price,
+            toCents(product.base_price),
             product.barcode
           ) as { id: string } | undefined;
 

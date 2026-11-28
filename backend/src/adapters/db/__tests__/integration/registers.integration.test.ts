@@ -573,8 +573,8 @@ describe('per-org register backfill invariant (016)', () => {
     if (typeof register === 'string') throw new Error(`expected a register row, got ${register}`);
 
     const { rows } = await h.query(
-      `INSERT INTO orders (subtotal, total, payment_method, org_id, customer_email)
-       VALUES (1, 1, 'card', $1, $2) RETURNING id`,
+      `INSERT INTO orders (subtotal_cents, total_cents, payment_method, org_id, customer_email)
+       VALUES (100, 100, 'card', $1, $2) RETURNING id`,
       [orgBId, `${mark}@example.com`]
     );
     const orderId = String(rows[0].id);
