@@ -9,6 +9,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Feature switches and provider settings (all off by default) with a Features tab in Settings.
+
 ### Changed
 
 - **The receipt dialog no longer pretends to send.** Email now goes through the server and says so when email is not set up; the SMS option is removed until SMS sending exists.

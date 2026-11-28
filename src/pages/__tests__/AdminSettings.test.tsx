@@ -332,3 +332,19 @@ describe('AdminSettings — auth and database', () => {
     expect(confirmSpy).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('AdminSettings — features', () => {
+  it('renders the Features tab and saves a switch', async () => {
+    renderPage();
+    await screen.findByDisplayValue('Corner Store');
+    openTab('Features');
+
+    const tips = await screen.findByRole('switch', { name: 'Tips' });
+    expect(tips).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(tips);
+    save();
+
+    await waitFor(() => expect(adminApi.settings.update).toHaveBeenCalled());
+    expect(sentPayload().features).toEqual({ tips: true });
+  });
+});

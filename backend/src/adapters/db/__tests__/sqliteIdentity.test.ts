@@ -269,3 +269,16 @@ describeSqlite('API keys on SQLite', () => {
     await expect(h.adapter.createApiKey({ name: 'Bad', keyPrefix: 'x' })).rejects.toThrow('Failed to create API key');
   });
 });
+
+describeSqlite('feature settings on SQLite', () => {
+  const h = useFreshSqlite();
+
+  it('round-trips features and providers, defaulting to empty', async () => {
+    const created = await h.adapter.updateSettings({ storeName: 'S' });
+    expect(created).toMatchObject({ features: {}, providers: {} });
+
+    const patch = { features: { tips: true }, providers: { email: 'smtp' } };
+    expect(await h.adapter.updateSettings(patch)).toMatchObject(patch);
+    expect(await h.adapter.getSettings()).toMatchObject(patch);
+  });
+});
