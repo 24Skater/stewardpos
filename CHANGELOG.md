@@ -11,6 +11,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Inbound webhooks go through a provider registry.** `POST /api/webhooks/:provider`
+  verifies, deduplicates and dispatches to a registered handler; Stripe is the first,
+  with no change in behavior.
+
 - **Object storage is now Versity S3 Gateway instead of MinIO.** MinIO stopped
   publishing images anyone can pull: `quay.io/minio/*` and Docker Hub's
   `minio/minio` both answer 401, so a fresh install could not start and CI's
