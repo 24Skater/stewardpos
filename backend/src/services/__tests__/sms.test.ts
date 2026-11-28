@@ -36,6 +36,20 @@ beforeEach(() => {
 });
 
 describe('sendSms', () => {
+  it('fails a number that is not 10 digits without sending', async () => {
+    getSettings.mockResolvedValue(on());
+    const result = await sendSms('12', 'Hi', 'test');
+    expect(result).toEqual({ status: 'failed', detail: 'Phone must be a 10-digit number' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('still reports the outcome when the message log cannot be written', async () => {
+    getSettings.mockResolvedValue(on());
+    getSmsConsent.mockResolvedValue('opted_in');
+    createMessageLog.mockRejectedValue(new Error('db down'));
+    expect((await sendSms('5551234567', 'Hi', 'test')).status).toBe('sent');
+  });
+
   it('does not send without consent and logs it suppressed', async () => {
     getSettings.mockResolvedValue(on());
     getSmsConsent.mockResolvedValue(null);
@@ -96,5 +110,10 @@ describe('inQuietHours', () => {
 
   it('is off when unset', () => {
     expect(inQuietHours(undefined, 'UTC')).toBe(false);
+  });
+
+  it('falls back to UTC for an unknown time zone', () => {
+    const quiet = { start: '21:00', end: '08:00' };
+    expect(inQuietHours(quiet, 'Not/AZone', at('2026-01-01T23:00:00Z'))).toBe(true);
   });
 });
