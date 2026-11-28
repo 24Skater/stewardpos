@@ -192,6 +192,7 @@ describe('AdminCustomers create / edit', () => {
         phone: '555',
         address: '2 Cobol Rd',
         city: 'Arlington',
+        smsConsent: false,
         state: 'VA',
         zip: '22201',
         country: 'USA',
