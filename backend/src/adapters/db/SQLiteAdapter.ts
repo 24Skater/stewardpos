@@ -30,6 +30,7 @@ import {
   asRows,
   centsToDollars,
   centsToDollarsOrNull,
+  mapRefundTransactionRow,
   toCentsOrNull,
   mapMessageLogRow,
   mapMessageTemplateRow,
@@ -90,8 +91,8 @@ export function mapStoreCreditRow(row: DbRow): DbRow {
     customerEmail: row.customer_email,
     returnId: row.return_id,
     code: row.code,
-    originalAmount: Number(row.original_amount),
-    remainingAmount: Number(row.remaining_amount),
+    originalAmount: centsToDollars(row.original_amount_cents),
+    remainingAmount: centsToDollars(row.remaining_amount_cents),
     status: row.status,
     expiresAt: row.expires_at ?? null,
     createdAt: row.created_at,
@@ -158,8 +159,6 @@ export function mapOrderItemRow(item: DbRow): DbRow {
 
 /** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
 export function mapDrawerSessionRow(row: DbRow): DbRow {
-  const money = (value: unknown) => (value == null ? null : Number(value));
-
   return {
     id: row.id,
     registerId: row.register_id ?? null,
@@ -173,10 +172,10 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
     closedByName: row.closed_by_name ?? null,
     openedAt: row.opened_at,
     closedAt: row.closed_at ?? null,
-    openingFloat: money(row.opening_float),
-    expectedCash: money(row.expected_cash),
-    countedCash: money(row.counted_cash),
-    variance: money(row.variance),
+    openingFloat: centsToDollarsOrNull(row.opening_float_cents),
+    expectedCash: centsToDollarsOrNull(row.expected_cash_cents),
+    countedCash: centsToDollarsOrNull(row.counted_cash_cents),
+    variance: centsToDollarsOrNull(row.variance_cents),
     notes: row.notes ?? null,
     status: row.status,
   };
@@ -1093,21 +1092,22 @@ export class SQLiteAdapter {
       if (Array.isArray(order.payments)) {
         for (const payment of order.payments as Array<Record<string, unknown>>) {
           if (payment.method === 'store_credit') {
+            const redeemCents = toCents(Number(payment.amount));
             const redeemed = this.db
               .prepare(
                 `UPDATE store_credits
-                 SET remaining_amount = remaining_amount - ?,
-                     status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
-                     used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+                 SET remaining_amount_cents = remaining_amount_cents - ?,
+                     status = CASE WHEN remaining_amount_cents - ? <= 0 THEN 'used' ELSE status END,
+                     used_at = CASE WHEN remaining_amount_cents - ? <= 0 THEN ? ELSE used_at END,
                      used_order_id = ?
                  WHERE UPPER(code) = UPPER(?)
                    AND status = 'active'
-                   AND remaining_amount >= ?
+                   AND remaining_amount_cents >= ?
                    AND (expires_at IS NULL OR expires_at > ?)`
               )
               .run(
-                payment.amount, payment.amount, payment.amount, now,
-                createdOrder.id, payment.reference, payment.amount, now
+                redeemCents, redeemCents, redeemCents, now,
+                createdOrder.id, payment.reference, redeemCents, now
               );
 
             if (redeemed.changes === 0) {
@@ -2883,7 +2883,7 @@ export class SQLiteAdapter {
     try {
       let query = `
         SELECT r.*, 
-               o.total_cents / 100.0 as original_order_total,
+               o.total_cents as original_order_total_cents,
                u.name as created_by_name,
                c.name as customer_name
         FROM returns r
@@ -2926,7 +2926,7 @@ export class SQLiteAdapter {
     try {
       const row = this.db.prepare(
         `SELECT r.*, 
-                o.total_cents / 100.0 as original_order_total,
+                o.total_cents as original_order_total_cents,
                 u.name as created_by_name,
                 a.name as approved_by_name,
                 c.name as customer_name
@@ -2959,8 +2959,8 @@ export class SQLiteAdapter {
         color: item.color,
         originalQuantity: item.original_quantity,
         returnQuantity: item.return_quantity,
-        unitPrice: item.unit_price,
-        lineTotal: item.line_total,
+        unitPrice: centsToDollars(item.unit_price_cents),
+        lineTotal: centsToDollars(item.line_total_cents),
         condition: item.condition,
         restocked: Boolean(item.restocked),
         restockedAt: item.restocked_at,
@@ -3011,8 +3011,8 @@ export class SQLiteAdapter {
             variantId: item.variant_id,
             nameSnapshot: item.name_snapshot,
             returnQuantity: item.return_quantity,
-            unitPrice: item.unit_price,
-            lineTotal: item.line_total,
+            unitPrice: centsToDollars(item.unit_price_cents),
+            lineTotal: centsToDollars(item.line_total_cents),
           });
           itemsByReturn.set(key, bucket);
         }
@@ -3053,7 +3053,7 @@ export class SQLiteAdapter {
   async getReturnsByCustomer(customerId: string): Promise<any[]> {
     try {
       const returns = this.db.prepare(
-        `SELECT r.*, o.total_cents / 100.0 as original_order_total
+        `SELECT r.*, o.total_cents as original_order_total_cents
          FROM returns r
          LEFT JOIN orders o ON r.original_order_id = o.id
          WHERE r.customer_id = ?
@@ -3076,10 +3076,10 @@ export class SQLiteAdapter {
         `INSERT INTO returns (
           id, original_order_id, return_number, return_type, status,
           customer_email, customer_phone, customer_id,
-          subtotal, tax_total, total,
+          subtotal_cents, tax_total_cents, total_cents,
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
-          restock_items, restocking_fee, created_by, created_at, updated_at,
+          restock_items, restocking_fee_cents, created_by, created_at, updated_at,
           register_id, cashier_user_id, override_by_user_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
@@ -3091,16 +3091,16 @@ export class SQLiteAdapter {
         returnData.customerEmail,
         returnData.customerPhone,
         returnData.customerId,
-        returnData.subtotal,
-        returnData.taxTotal || 0,
-        returnData.total,
+        toCents(Number(returnData.subtotal)),
+        toCents(Number(returnData.taxTotal || 0)),
+        toCents(Number(returnData.total)),
         returnData.refundMethod,
         returnData.refundStatus || 'pending',
         returnData.reasonCode,
         returnData.reasonDetails,
         returnData.internalNotes,
         returnData.restockItems !== false ? 1 : 0,
-        returnData.restockingFee || 0,
+        toCents(Number(returnData.restockingFee || 0)),
         returnData.createdBy,
         Date.now(),
         Date.now(),
@@ -3115,7 +3115,7 @@ export class SQLiteAdapter {
           id, return_id, original_order_item_id, product_id, variant_id,
           name_snapshot, size, color,
           original_quantity, return_quantity,
-          unit_price, line_total, condition, notes
+          unit_price_cents, line_total_cents, condition, notes
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
 
@@ -3131,8 +3131,8 @@ export class SQLiteAdapter {
           item.color,
           item.originalQuantity,
           item.returnQuantity,
-          item.unitPrice,
-          item.lineTotal,
+          toCents(Number(item.unitPrice)),
+          toCents(Number(item.lineTotal)),
           item.condition || 'good',
           item.notes
         );
@@ -3180,7 +3180,7 @@ export class SQLiteAdapter {
           refund_method = COALESCE(?, refund_method),
           refund_processed_at = COALESCE(?, refund_processed_at),
           store_credit_code = COALESCE(?, store_credit_code),
-          store_credit_amount = COALESCE(?, store_credit_amount),
+          store_credit_amount_cents = COALESCE(?, store_credit_amount_cents),
           updated_at = ?
         WHERE id = ?`
       ).run(
@@ -3188,7 +3188,7 @@ export class SQLiteAdapter {
         data.refundMethod,
         data.refundProcessedAt,
         data.storeCreditCode,
-        data.storeCreditAmount,
+        toCentsOrNull(data.storeCreditAmount),
         Date.now(),
         id
       );
@@ -3208,8 +3208,8 @@ export class SQLiteAdapter {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_returns,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_returns,
           SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_returns,
-          COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as total_refunded,
-          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount ELSE 0 END), 0) as total_store_credits,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total_cents ELSE 0 END), 0) as total_refunded_cents,
+          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount_cents ELSE 0 END), 0) as total_store_credits_cents,
           COUNT(DISTINCT customer_id) as unique_customers
         FROM returns
         WHERE 1=1
@@ -3232,8 +3232,8 @@ export class SQLiteAdapter {
         completedReturns: stats.completed_returns || 0,
         pendingReturns: stats.pending_returns || 0,
         rejectedReturns: stats.rejected_returns || 0,
-        totalRefunded: stats.total_refunded || 0,
-        totalStoreCredits: stats.total_store_credits || 0,
+        totalRefunded: centsToDollars(stats.total_refunded_cents ?? 0),
+        totalStoreCredits: centsToDollars(stats.total_store_credits_cents ?? 0),
         uniqueCustomers: stats.unique_customers || 0,
       };
     } catch (error) {
@@ -3248,7 +3248,7 @@ export class SQLiteAdapter {
       const status = data.status || 'completed';
       this.db.prepare(
         `INSERT INTO refund_transactions (
-          id, return_id, order_id, transaction_type, amount, currency,
+          id, return_id, order_id, transaction_type, amount_cents, currency,
           payment_method, processor_transaction_id, processor_response,
           status, failure_reason, processed_by, created_at, completed_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -3257,7 +3257,7 @@ export class SQLiteAdapter {
         data.returnId,
         data.orderId,
         data.transactionType,
-        data.amount,
+        toCents(Number(data.amount)),
         data.currency || 'USD',
         data.paymentMethod,
         data.processorTransactionId,
@@ -3270,7 +3270,9 @@ export class SQLiteAdapter {
         status === 'completed' || status === 'succeeded' ? Date.now() : null
       );
 
-      return this.db.prepare('SELECT * FROM refund_transactions WHERE id = ?').get(id);
+      return mapRefundTransactionRow(
+        this.db.prepare('SELECT * FROM refund_transactions WHERE id = ?').get(id) as DbRow
+      );
     } catch (error) {
       logger.error('Error creating refund transaction:', error);
       throw new DatabaseError('Failed to create refund transaction');
@@ -3283,7 +3285,7 @@ export class SQLiteAdapter {
       this.db.prepare(
         `INSERT INTO store_credits (
           id, customer_id, customer_email, return_id, code,
-          original_amount, remaining_amount, status, expires_at, created_at
+          original_amount_cents, remaining_amount_cents, status, expires_at, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
@@ -3291,8 +3293,8 @@ export class SQLiteAdapter {
         data.customerEmail,
         data.returnId,
         data.code,
-        data.originalAmount,
-        data.remainingAmount,
+        toCents(Number(data.originalAmount)),
+        toCents(Number(data.remainingAmount)),
         data.status || 'active',
         data.expiresAt,
         Date.now()
@@ -3329,19 +3331,20 @@ export class SQLiteAdapter {
   async redeemStoreCredit(code: string, amount: number, orderId?: string): Promise<DbRow | null> {
     try {
       const now = Date.now();
+      const cents = toCents(amount);
       const result = this.db
         .prepare(
           `UPDATE store_credits
-           SET remaining_amount = remaining_amount - ?,
-               status = CASE WHEN remaining_amount - ? <= 0 THEN 'used' ELSE status END,
-               used_at = CASE WHEN remaining_amount - ? <= 0 THEN ? ELSE used_at END,
+           SET remaining_amount_cents = remaining_amount_cents - ?,
+               status = CASE WHEN remaining_amount_cents - ? <= 0 THEN 'used' ELSE status END,
+               used_at = CASE WHEN remaining_amount_cents - ? <= 0 THEN ? ELSE used_at END,
                used_order_id = COALESCE(?, used_order_id)
            WHERE UPPER(code) = UPPER(?)
              AND status = 'active'
-             AND remaining_amount >= ?
+             AND remaining_amount_cents >= ?
              AND (expires_at IS NULL OR expires_at > ?)`
         )
-        .run(amount, amount, amount, now, orderId ?? null, code, amount, now);
+        .run(cents, cents, cents, now, orderId ?? null, code, cents, now);
 
       if (result.changes === 0) return null;
       return this.getStoreCreditByCode(code);
@@ -3617,25 +3620,25 @@ export class SQLiteAdapter {
       customerPhone: row.customer_phone,
       customerId: row.customer_id,
       customerName: row.customer_name,
-      subtotal: row.subtotal,
-      taxTotal: row.tax_total,
-      total: row.total,
+      subtotal: centsToDollars(row.subtotal_cents),
+      taxTotal: centsToDollars(row.tax_total_cents),
+      total: centsToDollars(row.total_cents),
       refundMethod: row.refund_method,
       refundStatus: row.refund_status,
       refundProcessedAt: row.refund_processed_at,
       refundReference: row.refund_reference,
-      storeCreditAmount: row.store_credit_amount || 0,
+      storeCreditAmount: centsToDollars(row.store_credit_amount_cents ?? 0),
       storeCreditCode: row.store_credit_code,
       reasonCode: row.reason_code,
       reasonDetails: row.reason_details,
       internalNotes: row.internal_notes,
       restockItems: Boolean(row.restock_items),
-      restockingFee: row.restocking_fee || 0,
+      restockingFee: centsToDollars(row.restocking_fee_cents ?? 0),
       createdBy: row.created_by,
       createdByName: row.created_by_name,
       approvedBy: row.approved_by,
       approvedByName: row.approved_by_name,
-      originalOrderTotal: row.original_order_total,
+      originalOrderTotal: centsToDollarsOrNull(row.original_order_total_cents),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       registerId: row.register_id ?? null,
@@ -4435,9 +4438,9 @@ export class SQLiteAdapter {
         .prepare(
           `SELECT
              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as return_count,
-             ROUND(COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0), 2) as refunded,
+             COALESCE(SUM(CASE WHEN status = 'completed' THEN total_cents ELSE 0 END), 0) as refunded_cents,
              SUM(CASE WHEN status IN ('pending', 'approved') THEN 1 ELSE 0 END) as pending_count,
-             ROUND(COALESCE(SUM(CASE WHEN status IN ('pending', 'approved') THEN total ELSE 0 END), 0), 2) as pending_amount
+             COALESCE(SUM(CASE WHEN status IN ('pending', 'approved') THEN total_cents ELSE 0 END), 0) as pending_amount_cents
            FROM returns
            WHERE created_at >= ? AND created_at <= ?${clause}`
         )
@@ -4445,9 +4448,9 @@ export class SQLiteAdapter {
 
       return {
         returnCount: Number(row.return_count ?? 0),
-        refunded: Number(row.refunded ?? 0),
+        refunded: centsToDollars(row.refunded_cents ?? 0),
         pendingCount: Number(row.pending_count ?? 0),
-        pendingAmount: Number(row.pending_amount ?? 0),
+        pendingAmount: centsToDollars(row.pending_amount_cents ?? 0),
       };
     } catch (error) {
       logger.error('Error getting returns totals:', error);
@@ -4470,19 +4473,19 @@ export class SQLiteAdapter {
           `SELECT
              COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
              COUNT(*) as return_count,
-             ROUND(COALESCE(SUM(total), 0), 2) as refunded
+             COALESCE(SUM(total_cents), 0) as refunded_cents
            FROM returns
            WHERE status = 'completed'
              AND created_at >= ? AND created_at <= ?${clause}
            GROUP BY 1
-           ORDER BY refunded DESC, reason_code`
+           ORDER BY refunded_cents DESC, reason_code`
         )
         .all(range.from, range.to, ...filterParams) as DbRow[];
 
       return rows.map((row) => ({
         reasonCode: String(row.reason_code),
         returnCount: Number(row.return_count ?? 0),
-        refunded: Number(row.refunded ?? 0),
+        refunded: centsToDollars(row.refunded_cents ?? 0),
       }));
     } catch (error) {
       logger.error('Error getting returns by reason:', error);
@@ -4692,15 +4695,15 @@ export class SQLiteAdapter {
              r.display_code as display_code,
              r.name as name,
              COUNT(s.id) as session_count,
-             ROUND(COALESCE(SUM(s.variance), 0), 2) as total_variance,
-             ROUND(COALESCE(MIN(s.variance), 0), 2) as worst_variance,
-             SUM(CASE WHEN s.variance < 0 THEN 1 ELSE 0 END) as short_count
+             COALESCE(SUM(s.variance_cents), 0) as total_variance_cents,
+             COALESCE(MIN(s.variance_cents), 0) as worst_variance_cents,
+             SUM(CASE WHEN s.variance_cents < 0 THEN 1 ELSE 0 END) as short_count
            FROM registers r
            JOIN cash_drawer_sessions s ON s.register_id = r.id
              AND s.status = 'closed' AND s.closed_at >= ? AND s.closed_at <= ?
            WHERE 1=1${clause}
            GROUP BY r.id, r.display_code, r.name
-           ORDER BY total_variance ASC`
+           ORDER BY total_variance_cents ASC`
         )
         .all(range.from, range.to, ...filterParams) as DbRow[];
 
@@ -4709,8 +4712,8 @@ export class SQLiteAdapter {
         displayCode: String(row.display_code),
         name: String(row.name),
         sessionCount: Number(row.session_count ?? 0),
-        totalVariance: Number(row.total_variance ?? 0),
-        worstVariance: Number(row.worst_variance ?? 0),
+        totalVariance: centsToDollars(row.total_variance_cents ?? 0),
+        worstVariance: centsToDollars(row.worst_variance_cents ?? 0),
         shortCount: Number(row.short_count ?? 0),
       }));
     } catch (error) {
@@ -5031,10 +5034,10 @@ export class SQLiteAdapter {
       const id = crypto.randomUUID();
       this.db
         .prepare(
-          `INSERT INTO cash_drawer_sessions (id, register_id, opened_by, opened_at, opening_float, status)
+          `INSERT INTO cash_drawer_sessions (id, register_id, opened_by, opened_at, opening_float_cents, status)
            VALUES (?, ?, ?, ?, ?, 'open')`
         )
-        .run(id, input.registerId, input.userId ?? null, Date.now(), input.openingFloat);
+        .run(id, input.registerId, input.userId ?? null, Date.now(), toCents(input.openingFloat));
 
       return mapDrawerSessionRow(
         this.db.prepare('SELECT * FROM cash_drawer_sessions WHERE id = ?').get(id) as DbRow
@@ -5066,18 +5069,18 @@ export class SQLiteAdapter {
       const row = this.db
         .prepare(
           `SELECT
-             s.opening_float
-               + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0) / 100.0
-               AS expected
+             s.opening_float_cents
+               + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0)
+               AS expected_cents
            FROM cash_drawer_sessions s
            LEFT JOIN orders o
              ON o.drawer_session_id = s.id
             AND LOWER(o.payment_method) = 'cash'
            WHERE s.id = ?
-           GROUP BY s.opening_float`
+           GROUP BY s.opening_float_cents`
         )
         .get(sessionId) as DbRow | undefined;
-      return row ? Number(row.expected) : 0;
+      return row ? centsToDollars(row.expected_cents) : 0;
     } catch (error) {
       logger.error('Error computing expected drawer cash:', error);
       throw new DatabaseError('Failed to compute expected cash');
@@ -5092,14 +5095,16 @@ export class SQLiteAdapter {
     notes?: string
   ): Promise<DbRow | null> {
     try {
+      const countedCents = toCents(countedCash);
+      const expectedCents = toCents(expectedCash);
       const result = this.db
         .prepare(
           `UPDATE cash_drawer_sessions
            SET status = 'closed', closed_at = ?, closed_by = ?,
-               counted_cash = ?, expected_cash = ?, variance = ? - ?, notes = ?
+               counted_cash_cents = ?, expected_cash_cents = ?, variance_cents = ? - ?, notes = ?
            WHERE id = ? AND status = 'open'`
         )
-        .run(Date.now(), userId ?? null, countedCash, expectedCash, countedCash, expectedCash, notes ?? null, sessionId);
+        .run(Date.now(), userId ?? null, countedCents, expectedCents, countedCents, expectedCents, notes ?? null, sessionId);
 
       if (result.changes === 0) return null;
       return mapDrawerSessionRow(
@@ -5854,10 +5859,10 @@ export class SQLiteAdapter {
   async getOrganizationDrawerVarianceThreshold(orgId: string): Promise<number | null> {
     try {
       const row = this.db
-        .prepare('SELECT drawer_variance_threshold FROM organizations WHERE id = ?')
-        .get(orgId) as { drawer_variance_threshold: number | null } | undefined;
+        .prepare('SELECT drawer_variance_threshold_cents FROM organizations WHERE id = ?')
+        .get(orgId) as { drawer_variance_threshold_cents: number | null } | undefined;
       if (!row) return null;
-      return row.drawer_variance_threshold == null ? null : Number(row.drawer_variance_threshold);
+      return centsToDollarsOrNull(row.drawer_variance_threshold_cents);
     } catch (error) {
       logger.error('Error getting organization drawer variance threshold:', error);
       throw new DatabaseError('Failed to get organization policy');

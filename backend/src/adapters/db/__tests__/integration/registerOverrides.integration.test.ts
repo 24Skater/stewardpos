@@ -165,17 +165,17 @@ describe('createRegisterOverride / getRegisterOverridesByPrefix / consumeRegiste
 });
 
 describe('getOrganizationDrawerVarianceThreshold', () => {
-  it('is null by default, and reads back a set DECIMAL value', async () => {
+  it('is null by default, and reads back a set cents value', async () => {
     const initial = await h.adapter.getOrganizationDrawerVarianceThreshold(orgId);
     expect(initial).toBeNull();
 
-    await h.query('UPDATE organizations SET drawer_variance_threshold = $1 WHERE id = $2', [5.5, orgId]);
+    await h.query('UPDATE organizations SET drawer_variance_threshold_cents = $1 WHERE id = $2', [550, orgId]);
 
     const updated = await h.adapter.getOrganizationDrawerVarianceThreshold(orgId);
     expect(updated).toBe(5.5);
 
     // Reset for any later test in this file that assumes the default.
-    await h.query('UPDATE organizations SET drawer_variance_threshold = NULL WHERE id = $1', [orgId]);
+    await h.query('UPDATE organizations SET drawer_variance_threshold_cents = NULL WHERE id = $1', [orgId]);
   });
 });
 

@@ -173,7 +173,7 @@ describeSqlite('registers on SQLite', () => {
   });
 
   it('reads org policy and the drawer variance threshold', async () => {
-    h.db.prepare('UPDATE organizations SET max_registers = 3, drawer_variance_threshold = 5.25 WHERE id = ?').run(DEFAULT_ORG);
+    h.db.prepare('UPDATE organizations SET max_registers = 3, drawer_variance_threshold_cents = 525 WHERE id = ?').run(DEFAULT_ORG);
     seedOrg(h.db, ORG_B, 'orgb');
 
     expect(await h.adapter.getOrgPolicy(DEFAULT_ORG)).toEqual({ maxRegisters: 3, pinLength: 6 });
