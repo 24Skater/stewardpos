@@ -11,6 +11,8 @@ const redeliverWebhook = vi.fn();
 const listWebhookDeliveries = vi.fn();
 const listWebhookSubscriptions = vi.fn();
 const createAuditLog = vi.fn();
+const updateWebhookSubscription = vi.fn();
+const deleteWebhookSubscription = vi.fn();
 
 vi.mock('../../../services/database', () => ({
   default: {
@@ -23,6 +25,8 @@ vi.mock('../../../services/database', () => ({
       listWebhookDeliveries,
       listWebhookSubscriptions,
       createAuditLog,
+      updateWebhookSubscription,
+      deleteWebhookSubscription,
     }),
   },
 }));
@@ -100,5 +104,92 @@ describe('webhook subscriptions', () => {
   it('filters deliveries by status', async () => {
     await request(app).get('/api/admin/webhooks/deliveries?status=dead').set(auth());
     expect(listWebhookDeliveries).toHaveBeenCalledWith('dead', 200);
+  });
+
+  it('lists subscriptions', async () => {
+    listWebhookSubscriptions.mockResolvedValue([SUB]);
+    const res = await request(app).get('/api/admin/webhooks').set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([SUB]);
+  });
+
+  it('passes a list failure to the error handler', async () => {
+    listWebhookSubscriptions.mockRejectedValue(new Error('db down'));
+    expect((await request(app).get('/api/admin/webhooks').set(auth())).status).toBe(500);
+  });
+
+  it('rejects an unknown delivery status', async () => {
+    const res = await request(app).get('/api/admin/webhooks/deliveries?status=bogus').set(auth());
+    expect(res.status).toBe(400);
+    expect(listWebhookDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('rejects a create with no events, or an unknown event', async () => {
+    for (const events of [[], ['order.deleted']]) {
+      const res = await request(app).post('/api/admin/webhooks').set(auth()).send({ url: 'https://203.0.113.9/h', events });
+      expect(res.status).toBe(400);
+    }
+    expect(createWebhookSubscription).not.toHaveBeenCalled();
+  });
+
+  it('refuses plain http unless the exact host:port is allow-listed', async () => {
+    const body = { url: 'http://192.168.1.20:8080/h', events: ['order.created'] };
+    expect((await request(app).post('/api/admin/webhooks').set(auth()).send(body)).status).toBe(400);
+
+    getSettings.mockResolvedValue({ providers: { webhookAllowlist: ['192.168.1.20:8080'] } });
+    expect((await request(app).post('/api/admin/webhooks').set(auth()).send(body)).status).toBe(201);
+  });
+
+  it('keeps the secret out of the audit row', async () => {
+    await request(app).post('/api/admin/webhooks').set(auth()).send({ url: 'https://203.0.113.9/h', events: ['order.created'] });
+    expect(JSON.stringify(createAuditLog.mock.calls)).not.toMatch(/whsec_/);
+  });
+
+  it('updates a subscription, re-checking a changed URL', async () => {
+    updateWebhookSubscription.mockResolvedValue({ ...SUB, active: false });
+    const res = await request(app).put('/api/admin/webhooks/s1').set(auth()).send({ active: false });
+    expect(res.status).toBe(200);
+    expect(updateWebhookSubscription).toHaveBeenCalledWith('s1', { active: false });
+
+    const refused = await request(app).put('/api/admin/webhooks/s1').set(auth()).send({ url: 'https://127.0.0.1/h' });
+    expect(refused.status).toBe(400);
+    expect(updateWebhookSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it('404s when updating an unknown subscription, 400s on a bad body', async () => {
+    updateWebhookSubscription.mockResolvedValue(null);
+    expect((await request(app).put('/api/admin/webhooks/nope').set(auth()).send({ active: true })).status).toBe(404);
+    expect((await request(app).put('/api/admin/webhooks/s1').set(auth()).send({ active: 'yes' })).status).toBe(400);
+  });
+
+  it('deletes a subscription, and 404s an unknown one', async () => {
+    deleteWebhookSubscription.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect((await request(app).delete('/api/admin/webhooks/s1').set(auth())).status).toBe(200);
+    expect(createAuditLog).toHaveBeenCalled();
+    expect((await request(app).delete('/api/admin/webhooks/nope').set(auth())).status).toBe(404);
+  });
+
+  it('passes adapter failures on write routes to the error handler', async () => {
+    redeliverWebhook.mockRejectedValue(new Error('db down'));
+    rotateWebhookSecret.mockRejectedValue(new Error('db down'));
+    deleteWebhookSubscription.mockRejectedValue(new Error('db down'));
+    expect((await request(app).post('/api/admin/webhooks/deliveries/d1/redeliver').set(auth())).status).toBe(500);
+    expect((await request(app).post('/api/admin/webhooks/s1/rotate-secret').set(auth())).status).toBe(500);
+    expect((await request(app).delete('/api/admin/webhooks/s1').set(auth())).status).toBe(500);
+  });
+
+  it('lets a read-only role list but not change anything', async () => {
+    getUserByEmail.mockResolvedValue({
+      id: 'u1', email: 'a@example.com', status: 'active', roleIds: ['r1'],
+      roles: [{ id: 'r1', name: 'Viewer', systemRole: null, permissions: { settings: { read: true, write: false } } }],
+    });
+    listWebhookSubscriptions.mockResolvedValue([]);
+    expect((await request(app).get('/api/admin/webhooks').set(auth())).status).toBe(200);
+    expect((await request(app).post('/api/admin/webhooks/s1/rotate-secret').set(auth())).status).toBe(403);
+    expect(rotateWebhookSecret).not.toHaveBeenCalled();
+  });
+
+  it('requires a signed-in user', async () => {
+    expect((await request(app).get('/api/admin/webhooks')).status).toBe(401);
   });
 });
