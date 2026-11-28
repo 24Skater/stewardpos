@@ -22,6 +22,7 @@ import {
 } from '../../services/credentialCrypto';
 import { audit, SINGLETON_ENTITY_ID } from '../../services/audit';
 import config from '../../config';
+import { sendEmail } from '../../services/email';
 import componentsRoutes from './components';
 import { BCRYPT_ROUNDS } from '../../services/hashing';
 import { findPasswordProblems, passwordSchema } from '../../services/passwordPolicy';
@@ -817,6 +818,56 @@ router.put('/settings', requirePermission('settings', 'write'), async (req: Auth
       success: true,
       data: withoutSecrets(settings as Record<string, unknown>),
     });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.issues[0].message));
+    } else {
+      next(error);
+    }
+  }
+});
+
+// ===== Email =====
+
+const emailTestSchema = z.object({ to: z.string().email() });
+
+/** POST /api/admin/email/test - sends through the configured provider and reports the real outcome. */
+router.post('/email/test', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { to } = emailTestSchema.parse(req.body);
+    const result = await sendEmail({
+      to,
+      subject: 'StewardPOS test email',
+      text: 'This is a test message from StewardPOS. If you can read it, email is working.',
+      template: 'test',
+    });
+    await audit(req, {
+      action: 'email_test',
+      entity: 'settings',
+      entityId: SINGLETON_ENTITY_ID,
+      after: { to, status: result.status },
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      next(new ValidationError(error.issues[0].message));
+    } else {
+      next(error);
+    }
+  }
+});
+
+const messageLogQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** GET /api/admin/messages - the delivery log, newest first. */
+router.get('/messages', requirePermission('settings', 'read'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { limit, offset } = messageLogQuerySchema.parse(req.query);
+    const data = await db.getAdapter().getMessageLogs(limit, offset);
+    res.json({ success: true, data });
   } catch (error) {
     if (error instanceof z.ZodError) {
       next(new ValidationError(error.issues[0].message));

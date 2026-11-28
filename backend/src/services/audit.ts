@@ -2,7 +2,7 @@ import db from './database';
 import logger from '../utils/logger';
 import { AuthRequest } from '../api/middleware/auth';
 
-export type AuditAction = 'create' | 'update' | 'delete' | 'archive' | 'refund' | 'restock';
+export type AuditAction = 'create' | 'update' | 'delete' | 'archive' | 'refund' | 'restock' | 'email_test';
 
 /**
  * The things worth attributing to a person. Matches the resources in the

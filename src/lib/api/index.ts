@@ -40,6 +40,7 @@ export type {
   SetPinRequest,
   UserPinState,
   UserPinLockState,
+  MessageLogEntry,
 } from './admin';
 export type { AssumedTillSession, TillSession } from './auth';
 export type {

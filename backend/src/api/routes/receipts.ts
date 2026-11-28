@@ -288,6 +288,7 @@ router.post('/:id/resend', requirePermission('orders', 'write'), async (req: Aut
     const result = await sendEmail({
       to: data.email,
       subject,
+      template: 'receipt',
       text: renderReceiptText(order, subject, data.includeItems),
     });
 
