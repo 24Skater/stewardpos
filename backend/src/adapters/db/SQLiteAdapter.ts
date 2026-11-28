@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import logger from '../../utils/logger';
 import { DatabaseError, ValidationError } from '../../utils/errors';
 import { escapeLike } from './like';
+import type { DeliveryMark, DueDelivery } from '../../services/webhookDelivery';
 import {
   DbRow,
   asRows,
@@ -748,6 +749,84 @@ export class SQLiteAdapter {
     }
   }
 
+  // Outbox Operations
+  /** Synchronous so it can run inside the caller's better-sqlite3 transaction. */
+  private insertOutboxEvent(type: string, data: unknown): void {
+    const now = Date.now();
+    const eventId = crypto.randomUUID();
+    this.db
+      .prepare('INSERT INTO outbox_events (id, event_type, payload, created_at) VALUES (?, ?, ?, ?)')
+      .run(eventId, type, JSON.stringify(data), now);
+    this.db
+      .prepare(
+        `INSERT INTO webhook_deliveries (id, org_id, event_id, subscription_id, next_attempt_at, created_at)
+         SELECT lower(hex(randomblob(16))), org_id, ?, id, ?, ? FROM webhook_subscriptions
+         WHERE active = 1 AND EXISTS (SELECT 1 FROM json_each(events) WHERE value = ?)`
+      )
+      .run(eventId, now, now, type);
+  }
+
+  async enqueueOutboxEvent(type: string, data: unknown): Promise<void> {
+    try {
+      this.db.transaction(() => this.insertOutboxEvent(type, data))();
+    } catch (error) {
+      logger.error('Error enqueueing outbox event:', error);
+      throw new DatabaseError('Failed to enqueue event');
+    }
+  }
+
+  async claimDueDeliveries(limit: number): Promise<DueDelivery[]> {
+    try {
+      // Leased for 5 minutes so an overlapping runner skips rows already taken.
+      const claim = this.db.transaction(() => {
+        const now = Date.now();
+        const rows = this.db
+          .prepare(
+            `SELECT d.id, d.event_id, d.attempts, e.event_type, e.org_id, e.payload, e.created_at,
+                    s.url, s.secret_enc
+             FROM webhook_deliveries d
+             JOIN outbox_events e ON e.id = d.event_id
+             JOIN webhook_subscriptions s ON s.id = d.subscription_id
+             WHERE d.status IN ('pending', 'failed') AND d.next_attempt_at <= ?
+             ORDER BY d.next_attempt_at LIMIT ?`
+          )
+          .all(now, limit) as DbRow[];
+        const lease = this.db.prepare('UPDATE webhook_deliveries SET next_attempt_at = ? WHERE id = ?');
+        for (const r of rows) lease.run(now + 5 * 60_000, r.id);
+        return rows;
+      });
+      return claim().map((r) => ({
+        id: r.id,
+        eventId: r.event_id,
+        eventType: r.event_type,
+        orgId: r.org_id,
+        payload: JSON.parse(r.payload),
+        createdAt: r.created_at,
+        attempts: r.attempts,
+        url: r.url,
+        secretEnc: r.secret_enc,
+      }));
+    } catch (error) {
+      logger.error('Error claiming webhook deliveries:', error);
+      throw new DatabaseError('Failed to claim webhook deliveries');
+    }
+  }
+
+  async markDelivery(id: string, mark: DeliveryMark): Promise<void> {
+    try {
+      this.db
+        .prepare(
+          `UPDATE webhook_deliveries
+           SET status = ?, attempts = ?, next_attempt_at = ?, last_status_code = ?, last_error = ?
+           WHERE id = ?`
+        )
+        .run(mark.status, mark.attempts, mark.nextAttemptAt, mark.lastStatusCode, mark.lastError, id);
+    } catch (error) {
+      logger.error('Error marking webhook delivery:', error);
+      throw new DatabaseError('Failed to update webhook delivery');
+    }
+  }
+
   // Order Operations
   async createOrder(order: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Built lazily (inside the caller's try) so a closed connection surfaces as DatabaseError.
@@ -888,11 +967,13 @@ export class SQLiteAdapter {
         }
       }
 
-      return {
+      const created = {
         ...mapOrderRow(createdOrder),
         items,
         payments,
       };
+      this.insertOutboxEvent('order.created', created);
+      return created;
     });
 
     try {
@@ -2923,6 +3004,15 @@ export class SQLiteAdapter {
           item.notes
         );
       }
+
+      // shortcut: SQLite createReturn has no transaction of its own, so this event is
+      // not atomic with the return; upgrade when createReturn is wrapped in one.
+      this.insertOutboxEvent('order.refunded', {
+        id: returnId,
+        originalOrderId: returnData.originalOrderId,
+        returnNumber: returnData.returnNumber,
+        total: returnData.total,
+      });
 
       return this.getReturnById(returnId);
     } catch (error) {

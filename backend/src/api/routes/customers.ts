@@ -8,6 +8,7 @@ import { phoneSchema } from '../../utils/phone';
 import db from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
+import { enqueueEvent } from '../../services/outbox';
 
 const router = Router();
 
@@ -95,6 +96,12 @@ router.post('/', requirePermission('customers', 'write'), async (req: AuthReques
     const customerData = createCustomerSchema.parse(req.body);
     const adapter = db.getAdapter();
     const customer = await adapter.createCustomer(customerData);
+
+    // shortcut: createCustomer is a single insert, so the event is a second write and
+    // can be lost if it fails; upgrade by emitting inside createCustomer.
+    await enqueueEvent(adapter, 'customer.created', customer).catch((error) =>
+      logger.error('Could not enqueue customer.created:', error)
+    );
 
     logger.info(`Created customer: ${customer.name} (${customer.id})`);
     await audit(req, { action: 'create', entity: 'customer', entityId: String(customer.id), after: customer });
