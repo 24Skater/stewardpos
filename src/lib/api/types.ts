@@ -550,6 +550,8 @@ export interface Settings {
   receiptFooterText?: string;
   receiptShowLogo?: boolean;
   receiptShowBarcode?: boolean;
+  features?: Record<string, boolean>;
+  providers?: Record<string, unknown>;
 }
 
 export type UpdateSettingsRequest = Partial<Settings>;

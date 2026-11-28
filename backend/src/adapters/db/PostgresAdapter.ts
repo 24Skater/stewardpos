@@ -1912,6 +1912,8 @@ export class PostgresAdapter {
         receiptFooterText: s.receipt_footer_text,
         receiptShowLogo: s.receipt_show_logo !== false,
         receiptShowBarcode: s.receipt_show_barcode !== false,
+        features: s.features || {},
+        providers: s.providers || {},
       };
     } catch (error) {
       logger.error('Error getting settings:', error);
@@ -1927,9 +1929,11 @@ export class PostgresAdapter {
           id, tax_rate_default, store_name, store_email, store_phone, timezone, 
           logo_url, icon_url, brand_color, config,
           store_address, store_city, store_state, store_zip, store_number,
-          receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode
+          receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode,
+          features, providers
         )
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+           COALESCE($20::jsonb, '{}'::jsonb), COALESCE($21::jsonb, '{}'::jsonb))
          ON CONFLICT (id) DO UPDATE SET
            tax_rate_default = COALESCE($1, settings.tax_rate_default),
            store_name = COALESCE($2, settings.store_name),
@@ -1949,7 +1953,9 @@ export class PostgresAdapter {
            receipt_header_text = COALESCE($16, settings.receipt_header_text),
            receipt_footer_text = COALESCE($17, settings.receipt_footer_text),
            receipt_show_logo = COALESCE($18, settings.receipt_show_logo),
-           receipt_show_barcode = COALESCE($19, settings.receipt_show_barcode)
+           receipt_show_barcode = COALESCE($19, settings.receipt_show_barcode),
+           features = COALESCE($20::jsonb, settings.features),
+           providers = COALESCE($21::jsonb, settings.providers)
          RETURNING *`,
         [
           settings.taxRateDefault,
@@ -1971,6 +1977,8 @@ export class PostgresAdapter {
           settings.receiptFooterText,
           settings.receiptShowLogo,
           settings.receiptShowBarcode,
+          settings.features ? JSON.stringify(settings.features) : null,
+          settings.providers ? JSON.stringify(settings.providers) : null,
         ]
       );
 
@@ -1995,6 +2003,8 @@ export class PostgresAdapter {
         receiptFooterText: s.receipt_footer_text,
         receiptShowLogo: s.receipt_show_logo !== false,
         receiptShowBarcode: s.receipt_show_barcode !== false,
+        features: s.features || {},
+        providers: s.providers || {},
       };
     } catch (error) {
       logger.error('Error updating settings:', error);

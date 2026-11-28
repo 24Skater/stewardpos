@@ -1839,6 +1839,8 @@ export class SQLiteAdapter {
         receiptFooterText: s.receipt_footer_text,
         receiptShowLogo: s.receipt_show_logo !== 0,
         receiptShowBarcode: s.receipt_show_barcode !== 0,
+        features: s.features ? JSON.parse(s.features) : {},
+        providers: s.providers ? JSON.parse(s.providers) : {},
       };
     } catch (error) {
       logger.error('Error getting settings:', error);
@@ -1875,7 +1877,9 @@ export class SQLiteAdapter {
                receipt_header_text = COALESCE(?, receipt_header_text),
                receipt_footer_text = COALESCE(?, receipt_footer_text),
                receipt_show_logo = COALESCE(?, receipt_show_logo),
-               receipt_show_barcode = COALESCE(?, receipt_show_barcode)
+               receipt_show_barcode = COALESCE(?, receipt_show_barcode),
+               features = COALESCE(?, features),
+               providers = COALESCE(?, providers)
              WHERE id = 1`
           )
           .run(
@@ -1897,7 +1901,9 @@ export class SQLiteAdapter {
             settings.receiptHeaderText,
             settings.receiptFooterText,
             settings.receiptShowLogo !== undefined ? (settings.receiptShowLogo ? 1 : 0) : null,
-            settings.receiptShowBarcode !== undefined ? (settings.receiptShowBarcode ? 1 : 0) : null
+            settings.receiptShowBarcode !== undefined ? (settings.receiptShowBarcode ? 1 : 0) : null,
+            settings.features ? JSON.stringify(settings.features) : null,
+            settings.providers ? JSON.stringify(settings.providers) : null
           );
       } else {
         this.db
@@ -1906,8 +1912,9 @@ export class SQLiteAdapter {
               id, tax_rate_default, store_name, store_email, store_phone, timezone, 
               logo_url, icon_url, brand_color, config,
               store_address, store_city, store_state, store_zip, store_number,
-              receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              receipt_logo_url, receipt_header_text, receipt_footer_text, receipt_show_logo, receipt_show_barcode,
+              features, providers
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             settings.taxRateDefault || 0,
@@ -1928,7 +1935,9 @@ export class SQLiteAdapter {
             settings.receiptHeaderText,
             settings.receiptFooterText,
             settings.receiptShowLogo !== false ? 1 : 0,
-            settings.receiptShowBarcode !== false ? 1 : 0
+            settings.receiptShowBarcode !== false ? 1 : 0,
+            JSON.stringify(settings.features ?? {}),
+            JSON.stringify(settings.providers ?? {})
           );
       }
 
@@ -1956,6 +1965,8 @@ export class SQLiteAdapter {
         receiptFooterText: s.receipt_footer_text,
         receiptShowLogo: s.receipt_show_logo !== 0,
         receiptShowBarcode: s.receipt_show_barcode !== 0,
+        features: s.features ? JSON.parse(s.features) : {},
+        providers: s.providers ? JSON.parse(s.providers) : {},
       };
     } catch (error) {
       logger.error('Error updating settings:', error);

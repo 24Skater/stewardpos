@@ -577,6 +577,8 @@ const updateSettingsSchema = z.object({
   receiptFooterText: z.string().optional().nullable(),
   receiptShowLogo: z.boolean().optional(),
   receiptShowBarcode: z.boolean().optional(),
+  features: z.record(z.string(), z.boolean()).optional(),
+  providers: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -768,9 +770,34 @@ async function preserveSecrets(
   return { ...incoming, config: { ...config, terminalCredentials: stored } };
 }
 
+/** Encrypt `providers[key].credentials` on the way in; values already encrypted are kept. */
+function encryptProviderSecrets(providers: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(providers)) {
+    const credentials = (entry as { credentials?: unknown } | null)?.credentials;
+    if (!credentials || typeof credentials !== 'object') {
+      out[key] = entry;
+      continue;
+    }
+    const fresh = Object.fromEntries(
+      Object.entries(credentials as Record<string, unknown>).filter(
+        ([, v]) => !(typeof v === 'string' && isEncrypted(v))
+      )
+    );
+    const kept = Object.fromEntries(
+      Object.entries(credentials as Record<string, unknown>).filter(
+        ([, v]) => typeof v === 'string' && isEncrypted(v)
+      )
+    );
+    out[key] = { ...(entry as Record<string, unknown>), credentials: { ...kept, ...encryptCredentials(fresh) } };
+  }
+  return out;
+}
+
 router.put('/settings', requirePermission('settings', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const settingsData = updateSettingsSchema.parse(req.body);
+    if (settingsData.providers) settingsData.providers = encryptProviderSecrets(settingsData.providers);
     const adapter = db.getAdapter();
     const before = await adapter.getSettings();
     const settings = await adapter.updateSettings(

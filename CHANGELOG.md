@@ -9,6 +9,10 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Feature switches and provider settings (all off by default) with a Features tab in Settings.
+
 ### Changed
 
 - **Object storage is now Versity S3 Gateway instead of MinIO.** MinIO stopped
