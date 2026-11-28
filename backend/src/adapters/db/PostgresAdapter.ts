@@ -4902,15 +4902,15 @@ export class PostgresAdapter {
     limit?: number;
   } = {}): Promise<PaymentAttempt[]> {
     try {
-      const cutoff = new Date(Date.now() - (options.olderThanMs ?? 0));
+      // Cut off in SQL: created_at has microseconds, so a JS-ms cutoff can miss a row from the same ms.
       const result = await this.pool.query(
         `SELECT * FROM payment_attempts
           WHERE order_id IS NULL
             AND status IN ('authorized', 'pending')
-            AND created_at <= $1
+            AND created_at <= NOW() - $1 * INTERVAL '1 millisecond'
           ORDER BY created_at ASC
           LIMIT $2`,
-        [cutoff, options.limit ?? 200]
+        [options.olderThanMs ?? 0, options.limit ?? 200]
       );
       return asRows(result.rows).map(mapPaymentAttempt);
     } catch (error) {
