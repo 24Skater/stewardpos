@@ -42,7 +42,7 @@ describeSqlite('migration 037 (quotes, discounts, archive money to integer cents
     db.pragma('foreign_keys = ON');
     applyMigrations(db, 1, 36);
 
-    db.prepare("INSERT INTO customers (id, name, email) VALUES ('c1', 'Ada', 'ada@example.com')").run();
+    db.prepare("INSERT INTO customers (id, name, email) VALUES ('c1', 'Ada', 'ada@example.com'), ('c2', 'Bo', 'bo@example.com')").run();
     db.prepare("INSERT INTO users (id, email, password_hash, name) VALUES ('u1', 'staff@example.com', 'x', 'Staff')").run();
     db.prepare("INSERT INTO services (id, name, category) VALUES ('s1', 'Install', 'Labor')").run();
     db.prepare(
@@ -72,7 +72,7 @@ describeSqlite('migration 037 (quotes, discounts, archive money to integer cents
     ).run();
 
     db.prepare("INSERT INTO loyalty_programs (id, name) VALUES ('lp1', 'Points')").run();
-    db.prepare("INSERT INTO customer_loyalty (id, customer_id, program_id) VALUES ('cl1', 'c1', 'lp1')").run();
+    db.prepare("INSERT INTO customer_loyalty (id, customer_id, program_id) VALUES ('cl1', 'c2', 'lp1')").run();
     db.prepare(
       "INSERT INTO loyalty_transactions (id, customer_loyalty_id, transaction_type, points, order_total, discount_amount) VALUES ('lt1', 'cl1', 'redeem', -100, 45.45, 1)"
     ).run();
