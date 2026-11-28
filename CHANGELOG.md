@@ -55,6 +55,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The unreconciled-payments list could miss a charge from the last millisecond.** On Postgres the cutoff is now computed by the database, so a charge authorized just before the check is listed.
 - **Editing a variant on either inventory screen silently discarded the change.**
   Product update does not touch variants — they are a sub-resource — so a
   corrected stock count, a disabled size, or a new colour was shown in the form,
