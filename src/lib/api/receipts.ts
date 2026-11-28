@@ -38,7 +38,7 @@ export const receiptsApi = {
   search: (query: ReceiptSearchQuery) => apiClient.get<Order[]>(`/api/receipts/search${qs(query)}`),
   get: (id: string) => apiClient.get<Order>(`/api/receipts/${id}`),
   resend: (id: string, email: string) =>
-    apiClient.post<{ sentTo: string; receiptContent: unknown }>(`/api/receipts/${id}/resend`, {
+    apiClient.post<{ sentTo: string; status: 'sent' | 'logged'; receiptContent: unknown }>(`/api/receipts/${id}/resend`, {
       email,
     }),
   history: (id: string) => apiClient.get<ReceiptEmailLog[]>(`/api/receipts/${id}/history`),

@@ -11,6 +11,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The receipt dialog no longer pretends to send.** Email now goes through the server and says so when email is not set up; the SMS option is removed until SMS sending exists.
 - **Object storage is now Versity S3 Gateway instead of MinIO.** MinIO stopped
   publishing images anyone can pull: `quay.io/minio/*` and Docker Hub's
   `minio/minio` both answer 401, so a fresh install could not start and CI's
