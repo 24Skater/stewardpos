@@ -7,6 +7,7 @@ import {
   asRows,
   centsToDollars,
   centsToDollarsOrNull,
+  mapRefundTransactionRow,
   toCentsOrNull,
   mapMessageLogRow,
   mapMessageTemplateRow,
@@ -136,8 +137,8 @@ export function mapStoreCreditRow(row: DbRow): DbRow {
     customerEmail: row.customer_email,
     returnId: row.return_id,
     code: row.code,
-    originalAmount: parseFloat(row.original_amount as string),
-    remainingAmount: parseFloat(row.remaining_amount as string),
+    originalAmount: centsToDollars(row.original_amount_cents),
+    remainingAmount: centsToDollars(row.remaining_amount_cents),
     status: row.status,
     expiresAt: row.expires_at ? new Date(row.expires_at as string).getTime() : null,
     createdAt: new Date(row.created_at as string).getTime(),
@@ -149,8 +150,6 @@ export function mapStoreCreditRow(row: DbRow): DbRow {
 
 /** Turn a `cash_drawer_sessions` row into the camelCase DTO the API publishes. */
 export function mapDrawerSessionRow(row: DbRow): DbRow {
-  const money = (value: unknown) => (value == null ? null : parseFloat(value as string));
-
   return {
     id: row.id,
     registerId: row.register_id ?? null,
@@ -164,10 +163,10 @@ export function mapDrawerSessionRow(row: DbRow): DbRow {
     closedByName: row.closed_by_name ?? null,
     openedAt: new Date(row.opened_at as string).getTime(),
     closedAt: row.closed_at ? new Date(row.closed_at as string).getTime() : null,
-    openingFloat: money(row.opening_float),
-    expectedCash: money(row.expected_cash),
-    countedCash: money(row.counted_cash),
-    variance: money(row.variance),
+    openingFloat: centsToDollarsOrNull(row.opening_float_cents),
+    expectedCash: centsToDollarsOrNull(row.expected_cash_cents),
+    countedCash: centsToDollarsOrNull(row.counted_cash_cents),
+    variance: centsToDollarsOrNull(row.variance_cents),
     notes: row.notes ?? null,
     status: row.status,
   };
@@ -1173,16 +1172,16 @@ export class PostgresAdapter {
           if (payment.method === 'store_credit') {
             const redeemed = await client.query(
               `UPDATE store_credits
-               SET remaining_amount = remaining_amount - $2,
-                   status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
-                   used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+               SET remaining_amount_cents = remaining_amount_cents - $2,
+                   status = CASE WHEN remaining_amount_cents - $2 <= 0 THEN 'used' ELSE status END,
+                   used_at = CASE WHEN remaining_amount_cents - $2 <= 0 THEN NOW() ELSE used_at END,
                    used_order_id = $3
                WHERE UPPER(code) = UPPER($1)
                  AND status = 'active'
-                 AND remaining_amount >= $2
+                 AND remaining_amount_cents >= $2
                  AND (expires_at IS NULL OR expires_at > NOW())
                RETURNING id`,
-              [payment.reference, payment.amount, newOrder.id]
+              [payment.reference, toCents(Number(payment.amount)), newOrder.id]
             );
 
             if (redeemed.rowCount === 0) {
@@ -2954,7 +2953,7 @@ export class PostgresAdapter {
     try {
       let query = `
         SELECT r.*, 
-               o.total_cents / 100.0 as original_order_total,
+               o.total_cents as original_order_total_cents,
                u.name as created_by_name,
                c.name as customer_name
         FROM returns r
@@ -2998,7 +2997,7 @@ export class PostgresAdapter {
     try {
       const returnResult = await this.pool.query(
         `SELECT r.*, 
-                o.total_cents / 100.0 as original_order_total,
+                o.total_cents as original_order_total_cents,
                 u.name as created_by_name,
                 a.name as approved_by_name,
                 c.name as customer_name
@@ -3033,8 +3032,8 @@ export class PostgresAdapter {
         color: item.color,
         originalQuantity: item.original_quantity,
         returnQuantity: item.return_quantity,
-        unitPrice: parseFloat(item.unit_price),
-        lineTotal: parseFloat(item.line_total),
+        unitPrice: centsToDollars(item.unit_price_cents),
+        lineTotal: centsToDollars(item.line_total_cents),
         condition: item.condition,
         restocked: item.restocked,
         restockedAt: item.restocked_at ? new Date(item.restocked_at).getTime() : null,
@@ -3085,8 +3084,8 @@ export class PostgresAdapter {
             variantId: item.variant_id,
             nameSnapshot: item.name_snapshot,
             returnQuantity: item.return_quantity,
-            unitPrice: parseFloat(item.unit_price),
-            lineTotal: parseFloat(item.line_total),
+            unitPrice: centsToDollars(item.unit_price_cents),
+            lineTotal: centsToDollars(item.line_total_cents),
           });
           itemsByReturn.set(item.return_id, bucket);
         }
@@ -3137,7 +3136,7 @@ export class PostgresAdapter {
   async getReturnsByCustomer(customerId: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
-        `SELECT r.*, o.total_cents / 100.0 as original_order_total
+        `SELECT r.*, o.total_cents as original_order_total_cents
          FROM returns r
          LEFT JOIN orders o ON r.original_order_id = o.id
          WHERE r.customer_id = $1
@@ -3162,10 +3161,10 @@ export class PostgresAdapter {
         `INSERT INTO returns (
           original_order_id, return_number, return_type, status,
           customer_email, customer_phone, customer_id,
-          subtotal, tax_total, total,
+          subtotal_cents, tax_total_cents, total_cents,
           refund_method, refund_status,
           reason_code, reason_details, internal_notes,
-          restock_items, restocking_fee, created_by,
+          restock_items, restocking_fee_cents, created_by,
           register_id, cashier_user_id, override_by_user_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         RETURNING *`,
@@ -3177,16 +3176,16 @@ export class PostgresAdapter {
           returnData.customerEmail,
           returnData.customerPhone,
           returnData.customerId,
-          returnData.subtotal,
-          returnData.taxTotal || 0,
-          returnData.total,
+          toCents(Number(returnData.subtotal)),
+          toCents(Number(returnData.taxTotal || 0)),
+          toCents(Number(returnData.total)),
           returnData.refundMethod,
           returnData.refundStatus || 'pending',
           returnData.reasonCode,
           returnData.reasonDetails,
           returnData.internalNotes,
           returnData.restockItems !== false,
-          returnData.restockingFee || 0,
+          toCents(Number(returnData.restockingFee || 0)),
           returnData.createdBy,
           returnData.registerId ?? null,
           returnData.cashierUserId ?? null,
@@ -3203,7 +3202,7 @@ export class PostgresAdapter {
             return_id, original_order_item_id, product_id, variant_id,
             name_snapshot, size, color,
             original_quantity, return_quantity,
-            unit_price, line_total, condition, notes
+            unit_price_cents, line_total_cents, condition, notes
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
           [
             returnId,
@@ -3215,8 +3214,8 @@ export class PostgresAdapter {
             item.color,
             item.originalQuantity,
             item.returnQuantity,
-            item.unitPrice,
-            item.lineTotal,
+            toCents(Number(item.unitPrice)),
+            toCents(Number(item.lineTotal)),
             item.condition || 'good',
             item.notes,
           ]
@@ -3274,7 +3273,7 @@ export class PostgresAdapter {
           refund_method = COALESCE($2, refund_method),
           refund_processed_at = COALESCE(to_timestamp($3 / 1000.0), refund_processed_at),
           store_credit_code = COALESCE($4, store_credit_code),
-          store_credit_amount = COALESCE($5, store_credit_amount),
+          store_credit_amount_cents = COALESCE($5, store_credit_amount_cents),
           updated_at = NOW()
         WHERE id = $6
         RETURNING *`,
@@ -3283,7 +3282,7 @@ export class PostgresAdapter {
           data.refundMethod,
           data.refundProcessedAt,
           data.storeCreditCode,
-          data.storeCreditAmount,
+          toCentsOrNull(data.storeCreditAmount),
           id,
         ]
       );
@@ -3319,8 +3318,8 @@ export class PostgresAdapter {
           COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_returns,
           COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_returns,
           COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_returns,
-          COALESCE(SUM(CASE WHEN status = 'completed' THEN total ELSE 0 END), 0) as total_refunded,
-          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount ELSE 0 END), 0) as total_store_credits,
+          COALESCE(SUM(CASE WHEN status = 'completed' THEN total_cents ELSE 0 END), 0) as total_refunded_cents,
+          COALESCE(SUM(CASE WHEN refund_method = 'store_credit' THEN store_credit_amount_cents ELSE 0 END), 0) as total_store_credits_cents,
           COUNT(DISTINCT customer_id) as unique_customers
         FROM returns
         WHERE 1=1 ${whereClause}`,
@@ -3333,8 +3332,8 @@ export class PostgresAdapter {
         completedReturns: parseInt(stats.completed_returns),
         pendingReturns: parseInt(stats.pending_returns),
         rejectedReturns: parseInt(stats.rejected_returns),
-        totalRefunded: parseFloat(stats.total_refunded),
-        totalStoreCredits: parseFloat(stats.total_store_credits),
+        totalRefunded: centsToDollars(stats.total_refunded_cents),
+        totalStoreCredits: centsToDollars(stats.total_store_credits_cents),
         uniqueCustomers: parseInt(stats.unique_customers),
       };
     } catch (error) {
@@ -3352,7 +3351,7 @@ export class PostgresAdapter {
       const completedAt = status === 'completed' || status === 'succeeded' ? new Date() : null;
       const result = await this.pool.query(
         `INSERT INTO refund_transactions (
-          return_id, order_id, transaction_type, amount, currency,
+          return_id, order_id, transaction_type, amount_cents, currency,
           payment_method, processor_transaction_id, processor_response,
           status, failure_reason, processed_by, completed_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -3361,7 +3360,7 @@ export class PostgresAdapter {
           data.returnId,
           data.orderId,
           data.transactionType,
-          data.amount,
+          toCents(Number(data.amount)),
           data.currency || 'USD',
           data.paymentMethod,
           data.processorTransactionId,
@@ -3373,7 +3372,7 @@ export class PostgresAdapter {
         ]
       );
 
-      return result.rows[0];
+      return mapRefundTransactionRow(result.rows[0]);
     } catch (error) {
       logger.error('Error creating refund transaction:', error);
       throw new DatabaseError('Failed to create refund transaction');
@@ -3385,7 +3384,7 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `INSERT INTO store_credits (
           customer_id, customer_email, return_id, code,
-          original_amount, remaining_amount, status, expires_at
+          original_amount_cents, remaining_amount_cents, status, expires_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8 / 1000.0))
         RETURNING *`,
         [
@@ -3393,8 +3392,8 @@ export class PostgresAdapter {
           data.customerEmail,
           data.returnId,
           data.code,
-          data.originalAmount,
-          data.remainingAmount,
+          toCents(Number(data.originalAmount)),
+          toCents(Number(data.remainingAmount)),
           data.status || 'active',
           data.expiresAt,
         ]
@@ -3436,16 +3435,16 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `UPDATE store_credits
-         SET remaining_amount = remaining_amount - $2,
-             status = CASE WHEN remaining_amount - $2 <= 0 THEN 'used' ELSE status END,
-             used_at = CASE WHEN remaining_amount - $2 <= 0 THEN NOW() ELSE used_at END,
+         SET remaining_amount_cents = remaining_amount_cents - $2,
+             status = CASE WHEN remaining_amount_cents - $2 <= 0 THEN 'used' ELSE status END,
+             used_at = CASE WHEN remaining_amount_cents - $2 <= 0 THEN NOW() ELSE used_at END,
              used_order_id = COALESCE($3, used_order_id)
          WHERE UPPER(code) = UPPER($1)
            AND status = 'active'
-           AND remaining_amount >= $2
+           AND remaining_amount_cents >= $2
            AND (expires_at IS NULL OR expires_at > NOW())
          RETURNING *`,
-        [code, amount, orderId ?? null]
+        [code, toCents(amount), orderId ?? null]
       );
 
       return result.rows[0] ? mapStoreCreditRow(result.rows[0]) : null;
@@ -3726,25 +3725,25 @@ export class PostgresAdapter {
       customerPhone: row.customer_phone,
       customerId: row.customer_id,
       customerName: row.customer_name,
-      subtotal: parseFloat(row.subtotal),
-      taxTotal: parseFloat(row.tax_total),
-      total: parseFloat(row.total),
+      subtotal: centsToDollars(row.subtotal_cents),
+      taxTotal: centsToDollars(row.tax_total_cents),
+      total: centsToDollars(row.total_cents),
       refundMethod: row.refund_method,
       refundStatus: row.refund_status,
       refundProcessedAt: row.refund_processed_at ? new Date(row.refund_processed_at).getTime() : null,
       refundReference: row.refund_reference,
-      storeCreditAmount: row.store_credit_amount ? parseFloat(row.store_credit_amount) : 0,
+      storeCreditAmount: centsToDollars(row.store_credit_amount_cents ?? 0),
       storeCreditCode: row.store_credit_code,
       reasonCode: row.reason_code,
       reasonDetails: row.reason_details,
       internalNotes: row.internal_notes,
       restockItems: row.restock_items,
-      restockingFee: row.restocking_fee ? parseFloat(row.restocking_fee) : 0,
+      restockingFee: centsToDollars(row.restocking_fee_cents ?? 0),
       createdBy: row.created_by,
       createdByName: row.created_by_name,
       approvedBy: row.approved_by,
       approvedByName: row.approved_by_name,
-      originalOrderTotal: row.original_order_total ? parseFloat(row.original_order_total) : null,
+      originalOrderTotal: centsToDollarsOrNull(row.original_order_total_cents),
       createdAt: new Date(row.created_at).getTime(),
       updatedAt: new Date(row.updated_at).getTime(),
       registerId: row.register_id ?? null,
@@ -4548,9 +4547,9 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `SELECT
            COUNT(*) FILTER (WHERE status = 'completed') as return_count,
-           COALESCE(SUM(total) FILTER (WHERE status = 'completed'), 0) as refunded,
+           COALESCE(SUM(total_cents) FILTER (WHERE status = 'completed'), 0) as refunded_cents,
            COUNT(*) FILTER (WHERE status IN ('pending', 'approved')) as pending_count,
-           COALESCE(SUM(total) FILTER (WHERE status IN ('pending', 'approved')), 0) as pending_amount
+           COALESCE(SUM(total_cents) FILTER (WHERE status IN ('pending', 'approved')), 0) as pending_amount_cents
          FROM returns
          WHERE created_at >= to_timestamp($1 / 1000.0)
            AND created_at <= to_timestamp($2 / 1000.0)${clause}`,
@@ -4560,9 +4559,9 @@ export class PostgresAdapter {
       const row = result.rows[0];
       return {
         returnCount: parseInt(row.return_count, 10),
-        refunded: parseFloat(row.refunded),
+        refunded: centsToDollars(row.refunded_cents),
         pendingCount: parseInt(row.pending_count, 10),
-        pendingAmount: parseFloat(row.pending_amount),
+        pendingAmount: centsToDollars(row.pending_amount_cents),
       };
     } catch (error) {
       logger.error('Error getting returns totals:', error);
@@ -4585,20 +4584,20 @@ export class PostgresAdapter {
         `SELECT
            COALESCE(NULLIF(reason_code, ''), 'unspecified') as reason_code,
            COUNT(*) as return_count,
-           COALESCE(SUM(total), 0) as refunded
+           COALESCE(SUM(total_cents), 0) as refunded_cents
          FROM returns
          WHERE status = 'completed'
            AND created_at >= to_timestamp($1 / 1000.0)
            AND created_at <= to_timestamp($2 / 1000.0)${clause}
          GROUP BY 1
-         ORDER BY refunded DESC, reason_code`,
+         ORDER BY refunded_cents DESC, reason_code`,
         [range.from, range.to, ...filterParams]
       );
 
       return result.rows.map((row) => ({
         reasonCode: row.reason_code as string,
         returnCount: parseInt(row.return_count, 10),
-        refunded: parseFloat(row.refunded),
+        refunded: centsToDollars(row.refunded_cents),
       }));
     } catch (error) {
       logger.error('Error getting returns by reason:', error);
@@ -4819,9 +4818,9 @@ export class PostgresAdapter {
            r.display_code as display_code,
            r.name as name,
            COUNT(s.id) as session_count,
-           COALESCE(SUM(s.variance), 0) as total_variance,
-           COALESCE(MIN(s.variance), 0) as worst_variance,
-           COUNT(*) FILTER (WHERE s.variance < 0) as short_count
+           COALESCE(SUM(s.variance_cents), 0) as total_variance_cents,
+           COALESCE(MIN(s.variance_cents), 0) as worst_variance_cents,
+           COUNT(*) FILTER (WHERE s.variance_cents < 0) as short_count
          FROM registers r
          JOIN cash_drawer_sessions s ON s.register_id = r.id
            AND s.status = 'closed'
@@ -4829,7 +4828,7 @@ export class PostgresAdapter {
            AND s.closed_at <= to_timestamp($2 / 1000.0)
          WHERE 1=1${clause}
          GROUP BY r.id, r.display_code, r.name
-         ORDER BY total_variance ASC`,
+         ORDER BY total_variance_cents ASC`,
         [range.from, range.to, ...filterParams]
       );
 
@@ -4838,8 +4837,8 @@ export class PostgresAdapter {
         displayCode: row.display_code as string,
         name: row.name as string,
         sessionCount: parseInt(row.session_count, 10),
-        totalVariance: parseFloat(row.total_variance),
-        worstVariance: parseFloat(row.worst_variance),
+        totalVariance: centsToDollars(row.total_variance_cents),
+        worstVariance: centsToDollars(row.worst_variance_cents),
         shortCount: parseInt(row.short_count, 10),
       }));
     } catch (error) {
@@ -5220,10 +5219,10 @@ export class PostgresAdapter {
   }): Promise<DbRow> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO cash_drawer_sessions (register_id, opened_by, opening_float, status)
+        `INSERT INTO cash_drawer_sessions (register_id, opened_by, opening_float_cents, status)
          VALUES ($1, $2, $3, 'open')
          RETURNING *`,
-        [input.registerId, input.userId ?? null, input.openingFloat]
+        [input.registerId, input.userId ?? null, toCents(input.openingFloat)]
       );
       return mapDrawerSessionRow(result.rows[0]);
     } catch (error) {
@@ -5257,18 +5256,18 @@ export class PostgresAdapter {
     try {
       const result = await this.pool.query(
         `SELECT
-           s.opening_float
-             + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0) / 100.0
-             AS expected
+           s.opening_float_cents
+             + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0)
+             AS expected_cents
          FROM cash_drawer_sessions s
          LEFT JOIN orders o
            ON o.drawer_session_id = s.id
           AND LOWER(o.payment_method) = 'cash'
          WHERE s.id = $1
-         GROUP BY s.opening_float`,
+         GROUP BY s.opening_float_cents`,
         [sessionId]
       );
-      return result.rows[0] ? parseFloat(result.rows[0].expected) : 0;
+      return result.rows[0] ? centsToDollars(result.rows[0].expected_cents) : 0;
     } catch (error) {
       logger.error('Error computing expected drawer cash:', error);
       throw new DatabaseError('Failed to compute expected cash');
@@ -5288,16 +5287,16 @@ export class PostgresAdapter {
          SET status = 'closed',
              closed_at = NOW(),
              closed_by = $2,
-             counted_cash = $3,
-             expected_cash = $4,
+             counted_cash_cents = $3,
+             expected_cash_cents = $4,
              -- Cast explicitly: Postgres cannot infer the type of two untyped
              -- parameters being subtracted, and fails with "operator is not
              -- unique: unknown - unknown".
-             variance = $3::numeric - $4::numeric,
+             variance_cents = $3::bigint - $4::bigint,
              notes = $5
          WHERE id = $1 AND status = 'open'
          RETURNING *`,
-        [sessionId, userId ?? null, countedCash, expectedCash, notes ?? null]
+        [sessionId, userId ?? null, toCents(countedCash), toCents(expectedCash), notes ?? null]
       );
       return result.rows[0] ? mapDrawerSessionRow(result.rows[0]) : null;
     } catch (error) {
@@ -6144,13 +6143,12 @@ export class PostgresAdapter {
   async getOrganizationDrawerVarianceThreshold(orgId: string): Promise<number | null> {
     try {
       const result = await this.pool.query(
-        'SELECT drawer_variance_threshold FROM organizations WHERE id = $1',
+        'SELECT drawer_variance_threshold_cents FROM organizations WHERE id = $1',
         [orgId]
       );
       if (result.rows.length === 0) return null;
 
-      const value = result.rows[0].drawer_variance_threshold;
-      return value == null ? null : Number(value);
+      return centsToDollarsOrNull(result.rows[0].drawer_variance_threshold_cents);
     } catch (error) {
       logger.error('Error getting organization drawer variance threshold:', error);
       throw new DatabaseError('Failed to get organization policy');

@@ -4,7 +4,7 @@ import { connect, tag, type Harness } from './harness';
 /**
  * Cash drawer reconciliation and refund transactions.
  *
- * Closing a drawer computes the variance in SQL — `$3::numeric - $4::numeric`,
+ * Closing a drawer computes the variance in SQL — `$3::bigint - $4::bigint` (cents),
  * cast explicitly because Postgres cannot infer the type of two untyped
  * parameters being subtracted and fails with "operator is not unique". That
  * cast is the kind of thing a mocked adapter cannot exercise at all, and the
@@ -155,10 +155,10 @@ describe('closing a drawer', () => {
     await h.adapter.closeDrawerSession(String(session.id), 250, 250, cashier);
     await h.adapter.closeDrawerSession(String(session.id), 999, 250, cashier);
 
-    const { rows } = await h.query('SELECT counted_cash FROM cash_drawer_sessions WHERE id = $1', [
+    const { rows } = await h.query('SELECT counted_cash_cents FROM cash_drawer_sessions WHERE id = $1', [
       session.id,
     ]);
-    expect(Number(rows[0].counted_cash)).toBe(250);
+    expect(Number(rows[0].counted_cash_cents)).toBe(25000);
   });
 
   it('returns null for a session that does not exist', async () => {
@@ -418,7 +418,7 @@ describe('refund reversal and return refund status', () => {
     const after = await h.adapter.updateReturnRefundStatus(String(ret.id), { refundStatus: 'reversed' });
 
     const { rows } = await h.query(
-      'SELECT refund_status, refund_method, refund_processed_at, store_credit_code, store_credit_amount FROM returns WHERE id = $1',
+      'SELECT refund_status, refund_method, refund_processed_at, store_credit_code, store_credit_amount_cents FROM returns WHERE id = $1',
       [ret.id]
     );
     expect(rows[0]).toMatchObject({
@@ -426,7 +426,7 @@ describe('refund reversal and return refund status', () => {
       refund_method: 'store_credit',
       store_credit_code: `${mark}-SC`,
     });
-    expect(Number(rows[0].store_credit_amount)).toBe(30);
+    expect(Number(rows[0].store_credit_amount_cents)).toBe(3000);
     expect(new Date(rows[0].refund_processed_at as string).getTime()).toBe(processedAt);
     expect(after).toMatchObject({ id: ret.id });
   });
