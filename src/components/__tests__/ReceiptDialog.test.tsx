@@ -10,7 +10,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
  */
 
 const getSettings = vi.fn();
-vi.mock('@/lib/api', () => ({ adminApi: { settings: { get: () => getSettings() } } }));
+const resend = vi.fn();
+vi.mock('@/lib/api', () => ({
+  adminApi: { settings: { get: () => getSettings() } },
+  receiptsApi: { resend: (id: string, email: string) => resend(id, email) },
+}));
 
 const printReceipt = vi.fn();
 vi.mock('@/lib/print-receipt', () => ({
@@ -50,6 +54,7 @@ function renderReceipt(props: Props = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resend.mockReset();
   getSettings.mockResolvedValue({});
 });
 
@@ -175,35 +180,56 @@ describe('ReceiptDialog delivery', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('emails the receipt, confirms it, and closes', async () => {
+  it('emails the receipt through the server, confirms it, and closes', async () => {
+    resend.mockResolvedValue({ sentTo: 'pat@example.com', status: 'sent' });
     const { dialog, onClose } = renderReceipt();
     fireEvent.change(within(dialog).getByLabelText('Email Receipt'), { target: { value: 'pat@example.com' } });
 
     fireEvent.click(sendButtons(dialog)[0]);
 
-    expect(sendButtons(dialog)[0]).toBeDisabled();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(resend).toHaveBeenCalledWith('abcdef1234567890', 'pat@example.com');
     expect(toastSpy).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Email sent!', description: 'Receipt sent to pat@example.com' })
     );
   });
 
-  it('requires a phone number before texting', () => {
-    const { dialog } = renderReceipt();
+  it('says nothing was sent when email is not set up', async () => {
+    resend.mockResolvedValue({ sentTo: 'pat@example.com', status: 'logged' });
+    const { dialog, onClose } = renderReceipt();
+    fireEvent.change(within(dialog).getByLabelText('Email Receipt'), { target: { value: 'pat@example.com' } });
 
-    fireEvent.click(sendButtons(dialog)[1]);
+    fireEvent.click(sendButtons(dialog)[0]);
 
-    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: 'Phone required' }));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'Email is not set up, so nothing was sent' })
+      )
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Email sent!' }));
+    expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('texts the receipt, confirms it, and closes', async () => {
+  it('shows the server error when sending fails', async () => {
+    resend.mockRejectedValue(new Error('The receipt could not be sent: smtp down'));
     const { dialog, onClose } = renderReceipt();
-    fireEvent.change(within(dialog).getByLabelText('SMS Receipt'), { target: { value: '555-0199' } });
+    fireEvent.change(within(dialog).getByLabelText('Email Receipt'), { target: { value: 'pat@example.com' } });
 
-    fireEvent.click(sendButtons(dialog)[1]);
+    fireEvent.click(sendButtons(dialog)[0]);
 
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: 'SMS sent!' }));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: 'The receipt could not be sent: smtp down', variant: 'destructive' })
+      )
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('offers no SMS option', () => {
+    const { dialog } = renderReceipt();
+
+    expect(within(dialog).queryByLabelText('SMS Receipt')).not.toBeInTheDocument();
+    expect(sendButtons(dialog)).toHaveLength(1);
   });
 
   it('prints the receipt itself, titled with the order', () => {

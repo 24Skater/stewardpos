@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { adminApi } from '@/lib/api';
-import { Mail, Phone, Printer } from "lucide-react";
+import { adminApi, receiptsApi } from '@/lib/api';
+import { Mail, Printer } from "lucide-react";
 import Barcode from '@/components/Barcode';
 import { printReceipt } from '@/lib/print-receipt';
 
@@ -48,18 +48,6 @@ interface ReceiptDialogProps {
   items?: CartItem[];
 }
 
-async function sendEmailMock(_email: string, _orderId: string): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 500);
-  });
-}
-
-async function sendSmsMock(_phone: string, _orderId: string): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 500);
-  });
-}
-
 export default function ReceiptDialog({
   open,
   onClose,
@@ -73,7 +61,6 @@ export default function ReceiptDialog({
   items = []
 }: ReceiptDialogProps) {
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [sending, setSending] = useState(false);
   const [settings, setSettings] = useState<ReceiptSettings>({});
   const { toast } = useToast();
@@ -101,22 +88,23 @@ export default function ReceiptDialog({
       return;
     }
     setSending(true);
-    await sendEmailMock(email, orderId);
-    toast({ title: "Email sent!", description: `Receipt sent to ${email}` });
-    setSending(false);
-    onClose();
-  };
-
-  const handleSendSms = async () => {
-    if (!phone) {
-      toast({ title: "Phone required", variant: "destructive" });
-      return;
+    try {
+      const { status } = await receiptsApi.resend(orderId, email);
+      if (status === 'sent') {
+        toast({ title: "Email sent!", description: `Receipt sent to ${email}` });
+        onClose();
+      } else {
+        toast({ title: "Not sent", description: "Email is not set up, so nothing was sent", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({
+        title: "Email failed",
+        description: error instanceof Error ? error.message : "The receipt could not be sent",
+        variant: "destructive",
+      });
+    } finally {
+      setSending(false);
     }
-    setSending(true);
-    await sendSmsMock(phone, orderId);
-    toast({ title: "SMS sent!", description: `Receipt sent to ${phone}` });
-    setSending(false);
-    onClose();
   };
 
   const handlePrint = () => {
@@ -281,33 +269,6 @@ export default function ReceiptDialog({
               />
               <Button onClick={handleSendEmail} disabled={sending} className="bg-primary text-primary-foreground">
                 <Mail className="w-4 h-4 mr-2" />
-                Send
-              </Button>
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="receipt-phone" className="text-foreground">SMS Receipt</Label>
-            <div className="flex gap-2">
-              <Input
-                id="receipt-phone"
-                type="tel"
-                placeholder="(555) 123-4567"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="bg-background border-border flex-1"
-              />
-              <Button onClick={handleSendSms} disabled={sending} className="bg-primary text-primary-foreground">
-                <Phone className="w-4 h-4 mr-2" />
                 Send
               </Button>
             </div>

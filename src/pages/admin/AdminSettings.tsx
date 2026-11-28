@@ -20,6 +20,7 @@ import AdminLayout from '@/components/AdminLayout';
 import BrandingSettings from '@/components/settings/BrandingSettings';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
+import { FEATURES } from '@/lib/features';
 
 const CARD_PROVIDERS = [
   { value: 'square', label: 'Square' },
@@ -235,6 +236,7 @@ export default function AdminSettings() {
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="branding">Branding</TabsTrigger>
+            <TabsTrigger value="features">Features</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
             <TabsTrigger value="auth">Authentication</TabsTrigger>
             <TabsTrigger value="database">Database</TabsTrigger>
@@ -246,6 +248,29 @@ export default function AdminSettings() {
               settings={settings}
               onChange={(patch) => setSettings({ ...settings, ...patch })}
             />
+          </TabsContent>
+
+          <TabsContent value="features" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Features</CardTitle>
+                <CardDescription>All features are off until switched on</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {FEATURES.map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label htmlFor={`feature-${key}`}>{label}</Label>
+                    <Switch
+                      id={`feature-${key}`}
+                      checked={settings.features?.[key] === true}
+                      onCheckedChange={(on) =>
+                        setSettings({ ...settings, features: { ...settings.features, [key]: on } })
+                      }
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* General Settings */}
