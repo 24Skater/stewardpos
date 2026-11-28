@@ -3389,6 +3389,40 @@ export class PostgresAdapter {
     }
   }
 
+  // SMS consent
+  async getSmsConsent(phone: string): Promise<'opted_in' | 'opted_out' | null> {
+    try {
+      const result = await this.pool.query('SELECT status FROM sms_consent WHERE phone = $1', [phone]);
+      return (result.rows[0]?.status as 'opted_in' | 'opted_out' | undefined) ?? null;
+    } catch (error) {
+      logger.error('Error getting SMS consent:', error);
+      throw new DatabaseError('Failed to get SMS consent');
+    }
+  }
+
+  async listSmsConsent(): Promise<Array<{ phone: string; status: 'opted_in' | 'opted_out' }>> {
+    try {
+      const result = await this.pool.query('SELECT phone, status FROM sms_consent');
+      return result.rows;
+    } catch (error) {
+      logger.error('Error listing SMS consent:', error);
+      throw new DatabaseError('Failed to list SMS consent');
+    }
+  }
+
+  async setSmsConsent(phone: string, status: 'opted_in' | 'opted_out', source: string): Promise<void> {
+    try {
+      await this.pool.query(
+        `INSERT INTO sms_consent (phone, status, source) VALUES ($1, $2, $3)
+         ON CONFLICT (org_id, phone) DO UPDATE SET status = EXCLUDED.status, source = EXCLUDED.source, updated_at = NOW()`,
+        [phone, status, source]
+      );
+    } catch (error) {
+      logger.error('Error setting SMS consent:', error);
+      throw new DatabaseError('Failed to set SMS consent');
+    }
+  }
+
   async logReceiptEmail(data: any): Promise<any> {
     try {
       const result = await this.pool.query(

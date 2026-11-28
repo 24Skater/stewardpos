@@ -359,6 +359,7 @@ export interface Customer {
   country?: string;
   notes?: string;
   tags?: string[];
+  smsConsent?: boolean;
   lastOrderAt?: number;
   lifetimeValue?: number;
   createdAt: number;

@@ -13,6 +13,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Feature switches and provider settings (all off by default) with a Features tab in Settings.
 - Email provider (SMTP or Resend) chosen in Settings with a test send, and a Messages page logging every send attempt.
+- SMS (Twilio or HTTP gateway) with consent tracking, STOP/START handling, quiet hours and a test send.
 - Transactional outbox and signed webhook delivery with retries (`order.created`, `order.refunded`, `customer.created`).
 
 ### Changed

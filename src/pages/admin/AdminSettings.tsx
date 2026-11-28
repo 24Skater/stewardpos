@@ -19,6 +19,7 @@ import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartph
 import AdminLayout from '@/components/AdminLayout';
 import BrandingSettings from '@/components/settings/BrandingSettings';
 import EmailSettings from '@/components/settings/EmailSettings';
+import SmsSettings from '@/components/settings/SmsSettings';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 import { FEATURES } from '@/lib/features';
@@ -240,6 +241,7 @@ export default function AdminSettings() {
             <TabsTrigger value="features">Features</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
             <TabsTrigger value="email">Email</TabsTrigger>
+            <TabsTrigger value="sms">SMS</TabsTrigger>
             <TabsTrigger value="auth">Authentication</TabsTrigger>
             <TabsTrigger value="database">Database</TabsTrigger>
           </TabsList>
@@ -254,6 +256,13 @@ export default function AdminSettings() {
 
           <TabsContent value="email" className="space-y-4">
             <EmailSettings
+              settings={settings}
+              onChange={(patch) => setSettings({ ...settings, ...patch })}
+            />
+          </TabsContent>
+
+          <TabsContent value="sms" className="space-y-4">
+            <SmsSettings
               settings={settings}
               onChange={(patch) => setSettings({ ...settings, ...patch })}
             />

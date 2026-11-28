@@ -5,7 +5,7 @@ import { authorize, requirePermission } from '../middleware/authorize';
 import { ValidationError, NotFoundError, getErrorMessage, errorProps } from '../../utils/errors';
 import { partialUpdate } from '../../utils/zod';
 import { phoneSchema } from '../../utils/phone';
-import db from '../../services/database';
+import db, { type DatabaseAdapter } from '../../services/database';
 import logger from '../../utils/logger';
 import { audit } from '../../services/audit';
 import { enqueueEvent } from '../../services/outbox';
@@ -40,9 +40,17 @@ const createCustomerSchema = z.object({
   country: z.string().optional(),
   notes: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  // Stored in sms_consent, keyed by phone, not on the customer row.
+  smsConsent: z.boolean().optional(),
 });
 
 const updateCustomerSchema = partialUpdate(createCustomerSchema);
+
+/** Records the form's consent checkbox; a customer without a phone has nothing to consent for. */
+async function applySmsConsent(adapter: DatabaseAdapter, phone: unknown, consent: boolean | undefined): Promise<void> {
+  if (consent === undefined || typeof phone !== 'string' || !/^\d{10}$/.test(phone)) return;
+  await adapter.setSmsConsent(phone, consent ? 'opted_in' : 'opted_out', 'customer_form');
+}
 
 /**
  * GET /api/customers
@@ -51,7 +59,10 @@ const updateCustomerSchema = partialUpdate(createCustomerSchema);
 router.get('/', requirePermission('customers', 'read'), async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const adapter = db.getAdapter();
-    const customers = await adapter.getAllCustomers();
+    const rows = await adapter.getAllCustomers();
+    // shortcut: whole consent table read per list; page it if a store has tens of thousands of numbers.
+    const optedIn = new Set((await adapter.listSmsConsent()).filter((c) => c.status === 'opted_in').map((c) => c.phone));
+    const customers = rows.map((c) => ({ ...c, smsConsent: optedIn.has(String(c.phone)) }));
 
     logger.info(`Retrieved ${customers.length} customers`);
 
@@ -93,9 +104,10 @@ router.get('/:id', requirePermission('customers', 'read'), async (req: AuthReque
  */
 router.post('/', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const customerData = createCustomerSchema.parse(req.body);
+    const { smsConsent, ...customerData } = createCustomerSchema.parse(req.body);
     const adapter = db.getAdapter();
     const customer = await adapter.createCustomer(customerData);
+    await applySmsConsent(adapter, customer.phone, smsConsent);
 
     // shortcut: createCustomer is a single insert, so the event is a second write and
     // can be lost if it fails; upgrade by emitting inside createCustomer.
@@ -126,13 +138,14 @@ router.post('/', requirePermission('customers', 'write'), async (req: AuthReques
 router.put('/:id', requirePermission('customers', 'write'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const customerData = updateCustomerSchema.parse(req.body);
+    const { smsConsent, ...customerData } = updateCustomerSchema.parse(req.body);
     const adapter = db.getAdapter();
     const customer = await adapter.updateCustomer(id, customerData);
 
     if (!customer) {
       throw new NotFoundError('Customer not found');
     }
+    await applySmsConsent(adapter, customer.phone, smsConsent);
 
     logger.info(`Updated customer: ${id}`);
     await audit(req, { action: 'update', entity: 'customer', entityId: id, after: customer });
