@@ -21,6 +21,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **Catalog, order and payment money is stored as integer cents** (migration 035: `products`, `product_variants`, `services`, `orders`, `order_items`, `payments` get `*_cents` columns; existing values are converted in place). The HTTP API still sends and receives dollars. Returns, store credit, drawer, quotes and discounts stay DECIMAL for now.
+- **Returns, store credit and drawer money is stored as integer cents** (migration 036: `returns`, `return_items`, `refund_transactions`, `store_credits`, `cash_drawer_sessions`, `organizations.drawer_variance_threshold`). Existing values are converted in place; the HTTP API still sends and receives dollars. Drawer expected cash, variance and store credit redemption are computed in cents.
 - **Inbound webhooks go through a provider registry.** `POST /api/webhooks/:provider`
   verifies, deduplicates and dispatches to a registered handler; Stripe is the first,
   with no change in behavior.

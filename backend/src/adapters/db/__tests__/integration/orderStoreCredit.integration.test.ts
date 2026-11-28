@@ -59,7 +59,7 @@ const orderPaidWith = (total: number, payments: Array<Record<string, unknown>>) 
   });
 
 const creditRow = async (code: string) =>
-  (await h.query('SELECT remaining_amount, status, used_order_id, used_at FROM store_credits WHERE code = $1', [code]))
+  (await h.query('SELECT remaining_amount_cents, status, used_order_id, used_at FROM store_credits WHERE code = $1', [code]))
     .rows[0];
 
 const orderCount = async () =>
@@ -75,7 +75,7 @@ describe('store credit as tender', () => {
     ]);
 
     const row = await creditRow(code);
-    expect(Number(row.remaining_amount)).toBe(30);
+    expect(Number(row.remaining_amount_cents)).toBe(3000);
     expect(row.status).toBe('active');
     expect(row.used_at).toBeNull();
     expect(String(row.used_order_id)).toBe(String(order.id));
@@ -88,7 +88,7 @@ describe('store credit as tender', () => {
     await orderPaidWith(12.5, [{ method: 'store_credit', amount: 12.5, reference: code }]);
 
     const row = await creditRow(code);
-    expect(Number(row.remaining_amount)).toBe(0);
+    expect(Number(row.remaining_amount_cents)).toBe(0);
     expect(row.status).toBe('used');
     expect(row.used_at).toBeTruthy();
   });
@@ -102,7 +102,7 @@ describe('store credit as tender', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
 
     expect(await orderCount()).toBe(before);
-    expect(Number((await creditRow(code)).remaining_amount)).toBe(10);
+    expect(Number((await creditRow(code)).remaining_amount_cents)).toBe(1000);
   });
 
   it('refuses an expired credit', async () => {
@@ -111,7 +111,7 @@ describe('store credit as tender', () => {
     await expect(
       orderPaidWith(5, [{ method: 'store_credit', amount: 5, reference: code }])
     ).rejects.toThrow('not available');
-    expect(Number((await creditRow(code)).remaining_amount)).toBe(40);
+    expect(Number((await creditRow(code)).remaining_amount_cents)).toBe(4000);
   });
 
   it('refuses a credit that has already been used up', async () => {

@@ -513,14 +513,14 @@ describe('idx_drawer_one_open_per_register (016)', () => {
     // registers, so both succeed.
     await expect(
       h.query(
-        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float_cents, status) VALUES ($1, 0, 'open')`,
         [regA.id]
       )
     ).resolves.toBeDefined();
 
     await expect(
       h.query(
-        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float_cents, status) VALUES ($1, 0, 'open')`,
         [regB.id]
       )
     ).resolves.toBeDefined();
@@ -534,7 +534,7 @@ describe('idx_drawer_one_open_per_register (016)', () => {
     if (typeof reg === 'string') throw new Error(`expected a register row, got ${reg}`);
 
     await h.query(
-      `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+      `INSERT INTO cash_drawer_sessions (register_id, opening_float_cents, status) VALUES ($1, 0, 'open')`,
       [reg.id]
     );
 
@@ -542,7 +542,7 @@ describe('idx_drawer_one_open_per_register (016)', () => {
     // fire, or two sessions could both claim to own the same till at once.
     await expect(
       h.query(
-        `INSERT INTO cash_drawer_sessions (register_id, opening_float, status) VALUES ($1, 0, 'open')`,
+        `INSERT INTO cash_drawer_sessions (register_id, opening_float_cents, status) VALUES ($1, 0, 'open')`,
         [reg.id]
       )
     ).rejects.toThrow();

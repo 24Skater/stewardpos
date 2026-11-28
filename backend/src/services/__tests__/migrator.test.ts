@@ -592,6 +592,6 @@ describeSqlite('019_register_overrides', () => {
   });
 
   it('adds the drawer variance threshold to organizations', () => {
-    expect(columns('organizations')).toContain('drawer_variance_threshold');
+    expect(columns('organizations')).toContain('drawer_variance_threshold_cents');
   });
 });

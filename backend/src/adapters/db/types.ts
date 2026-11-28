@@ -47,6 +47,12 @@ export function centsToDollarsOrNull(cents: unknown): number | null {
   return cents == null ? null : centsToDollars(cents);
 }
 
+/** A `refund_transactions` row, with the cents column published as dollars `amount`. */
+export function mapRefundTransactionRow(row: DbRow): DbRow {
+  const { amount_cents: amountCents, ...rest } = row;
+  return { ...rest, amount: centsToDollars(amountCents) };
+}
+
 /** Nullable dollars from a payload to cents; null/undefined stay null. */
 export function toCentsOrNull(dollars: unknown): number | null {
   return dollars == null ? null : toCents(Number(dollars));
