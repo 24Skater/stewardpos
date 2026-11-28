@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const callSibling = vi.fn();
 vi.mock('../siblingClient', () => ({ callSibling: (...args: unknown[]) => callSibling(...args) }));
 
+const assertSafeWebhookUrl = vi.fn();
+vi.mock('../ssrfGuard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../ssrfGuard')>()),
+  assertSafeWebhookUrl: (...args: unknown[]) => assertSafeWebhookUrl(...args),
+}));
+
 import {
   BACKOFF_MS,
   nextAttemptDelay,
@@ -28,11 +34,12 @@ function due(attempts: number): DueDelivery {
   };
 }
 
-async function run(attempts: number): Promise<DeliveryMark> {
+async function run(attempts: number, override: Partial<DueDelivery> = {}): Promise<DeliveryMark> {
   const marks: DeliveryMark[] = [];
   await runDeliveries(
     {
-      claimDueDeliveries: async () => [due(attempts)],
+      claimDueDeliveries: async () => [{ ...due(attempts), ...override }],
+      getSettings: async () => ({ providers: {} }),
       markDelivery: async (_id, mark) => {
         marks.push(mark);
       },
@@ -45,6 +52,30 @@ async function run(attempts: number): Promise<DeliveryMark> {
 describe('webhook delivery', () => {
   beforeEach(() => {
     callSibling.mockReset();
+    assertSafeWebhookUrl.mockReset();
+    assertSafeWebhookUrl.mockResolvedValue(undefined);
+  });
+
+  it('does not send when the guard refuses the URL', async () => {
+    assertSafeWebhookUrl.mockRejectedValue(new Error('URL points at a private or reserved address'));
+    const mark = await run(0);
+    expect(callSibling).not.toHaveBeenCalled();
+    expect(mark).toMatchObject({ status: 'failed', lastError: 'URL points at a private or reserved address' });
+  });
+
+  it('sends both signatures while the previous secret is still valid', async () => {
+    callSibling.mockResolvedValue({ ok: true, status: 200, data: null });
+    await run(0, { secretPrevEnc: 'old', secretPrevExpiresAt: 1_700_000_200_000 });
+    expect(callSibling.mock.calls[0][0].headers['Steward-Signature']).toMatch(
+      /^t=1700000100,v1=[0-9a-f]{64},v1=[0-9a-f]{64}$/
+    );
+    expect(callSibling.mock.calls[0][0].noRedirect).toBe(true);
+  });
+
+  it('drops the previous signature once it has expired', async () => {
+    callSibling.mockResolvedValue({ ok: true, status: 200, data: null });
+    await run(0, { secretPrevEnc: 'old', secretPrevExpiresAt: 1_700_000_000_000 });
+    expect(callSibling.mock.calls[0][0].headers['Steward-Signature']).toMatch(/^t=1700000100,v1=[0-9a-f]{64}$/);
   });
 
   it('signs t + "." + body with HMAC-SHA256 (known vector)', () => {

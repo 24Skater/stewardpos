@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import logger from '../utils/logger';
 import { callSibling } from './siblingClient';
 import { decryptSecret } from './credentialCrypto';
+import { assertSafeWebhookUrl, readAllowlist } from './ssrfGuard';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -30,6 +31,32 @@ export interface DueDelivery {
   attempts: number;
   url: string;
   secretEnc: string;
+  /** Pre-rotation secret; still signs until `secretPrevExpiresAt`. */
+  secretPrevEnc?: string | null;
+  secretPrevExpiresAt?: number | null;
+}
+
+export interface WebhookSubscription {
+  id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  createdAt: number;
+  /** True while a rotated-out secret is still being sent alongside the new one. */
+  rotating: boolean;
+}
+
+export interface WebhookDeliveryRow {
+  id: string;
+  eventId: string;
+  eventType: string;
+  subscriptionId: string;
+  status: string;
+  attempts: number;
+  nextAttemptAt: number;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  createdAt: number;
 }
 
 export interface DeliveryMark {
@@ -43,9 +70,15 @@ export interface DeliveryMark {
 interface DeliveryAdapter {
   claimDueDeliveries(limit: number): Promise<DueDelivery[]>;
   markDelivery(id: string, mark: DeliveryMark): Promise<void>;
+  getSettings(): Promise<{ providers?: Record<string, unknown> } | null | undefined>;
 }
 
-async function deliverOne(adapter: DeliveryAdapter, d: DueDelivery, now: number): Promise<void> {
+async function deliverOne(
+  adapter: DeliveryAdapter,
+  d: DueDelivery,
+  now: number,
+  allowlist: string[]
+): Promise<void> {
   const body = JSON.stringify({
     id: d.eventId,
     type: d.eventType,
@@ -69,16 +102,41 @@ async function deliverOne(adapter: DeliveryAdapter, d: DueDelivery, now: number)
     return;
   }
 
+  const attempts = d.attempts + 1;
+  // Re-checked on every send: a hostname can be re-pointed at a private address after it was saved.
+  try {
+    await assertSafeWebhookUrl(d.url, allowlist);
+  } catch (error) {
+    const delay = nextAttemptDelay(attempts);
+    await adapter.markDelivery(d.id, {
+      status: delay === null ? 'dead' : 'failed',
+      attempts,
+      nextAttemptAt: now + (delay ?? 0),
+      lastStatusCode: null,
+      lastError: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  let signature = `t=${timestamp},v1=${signPayload(secret, timestamp, body)}`;
+  if (d.secretPrevEnc && d.secretPrevExpiresAt && d.secretPrevExpiresAt > now) {
+    try {
+      signature += `,v1=${signPayload(decryptSecret(d.secretPrevEnc), timestamp, body)}`;
+    } catch (error) {
+      logger.warn('Previous webhook secret unreadable, sending the current signature only:', error);
+    }
+  }
+
   // callSibling re-serialises its body, so hand it the parsed envelope's exact
   // bytes via a pre-signed header instead of a different string.
   const result = await callSibling({
     url: d.url,
     method: 'POST',
     body: JSON.parse(body),
-    headers: { 'Steward-Signature': `t=${timestamp},v1=${signPayload(secret, timestamp, body)}` },
+    headers: { 'Steward-Signature': signature },
+    noRedirect: true,
   });
 
-  const attempts = d.attempts + 1;
   if (result.ok) {
     await adapter.markDelivery(d.id, {
       status: 'delivered',
@@ -102,9 +160,11 @@ async function deliverOne(adapter: DeliveryAdapter, d: DueDelivery, now: number)
 /** One pass of the delivery job. */
 export async function runDeliveries(adapter: DeliveryAdapter, now: number = Date.now()): Promise<void> {
   const due = await adapter.claimDueDeliveries(DELIVERY_BATCH_SIZE);
+  if (due.length === 0) return;
+  const allowlist = readAllowlist(await adapter.getSettings());
   await Promise.all(
     due.map((d) =>
-      deliverOne(adapter, d, now).catch((error) => logger.error('Webhook delivery bookkeeping failed:', error))
+      deliverOne(adapter, d, now, allowlist).catch((error) => logger.error('Webhook delivery bookkeeping failed:', error))
     )
   );
 }

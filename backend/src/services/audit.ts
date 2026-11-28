@@ -22,6 +22,7 @@ export type AuditEntity =
   | 'role'
   | 'settings'
   | 'api_key'
+  | 'webhook_subscription'
   | 'location'
   | 'register'
   | 'register_credential'
