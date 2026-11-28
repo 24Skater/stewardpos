@@ -10,6 +10,7 @@ import {
   type PaymentAttemptUpdate,
 } from './types';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
+import type { DeliveryMark, DueDelivery } from '../../services/webhookDelivery';
 import type {
   AuditLogQuery,
   DrawerVarianceByRegister,
@@ -407,6 +408,24 @@ function mapRegisterOverrideSummary(row: DbRow): DbRow {
  */
 function isInvalidTextRepresentation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === '22P02';
+}
+
+/** Runs on the caller's client so the event commits or rolls back with the change. */
+async function insertOutboxEvent(
+  q: { query: (text: string, values?: unknown[]) => Promise<{ rows: DbRow[] }> },
+  type: string,
+  data: unknown
+): Promise<void> {
+  const ev = await q.query(
+    `INSERT INTO outbox_events (event_type, payload) VALUES ($1, $2) RETURNING id, org_id`,
+    [type, JSON.stringify(data)]
+  );
+  await q.query(
+    `INSERT INTO webhook_deliveries (org_id, event_id, subscription_id)
+     SELECT org_id, $1, id FROM webhook_subscriptions
+     WHERE active AND org_id = $2 AND events ? $3`,
+    [ev.rows[0].id, ev.rows[0].org_id, type]
+  );
 }
 
 export class PostgresAdapter {
@@ -837,6 +856,76 @@ export class PostgresAdapter {
     }
   }
 
+  // Outbox Operations
+
+  async enqueueOutboxEvent(type: string, data: unknown): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await insertOutboxEvent(client, type, data);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('Error enqueueing outbox event:', error);
+      throw new DatabaseError('Failed to enqueue event');
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Claims rows with SKIP LOCKED and leases them so a second runner skips them. */
+  async claimDueDeliveries(limit: number): Promise<DueDelivery[]> {
+    try {
+      const result = await this.pool.query(
+        `WITH due AS (
+           SELECT id FROM webhook_deliveries
+           WHERE status IN ('pending', 'failed') AND next_attempt_at <= NOW()
+           ORDER BY next_attempt_at LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         ), leased AS (
+           UPDATE webhook_deliveries d SET next_attempt_at = NOW() + INTERVAL '5 minutes'
+           FROM due WHERE d.id = due.id
+           RETURNING d.id, d.event_id, d.subscription_id, d.attempts
+         )
+         SELECT l.id, l.event_id, l.attempts, e.event_type, e.org_id, e.payload, e.created_at,
+                s.url, s.secret_enc
+         FROM leased l
+         JOIN outbox_events e ON e.id = l.event_id
+         JOIN webhook_subscriptions s ON s.id = l.subscription_id`,
+        [limit]
+      );
+      return result.rows.map((r) => ({
+        id: r.id,
+        eventId: r.event_id,
+        eventType: r.event_type,
+        orgId: r.org_id,
+        payload: r.payload,
+        createdAt: new Date(r.created_at).getTime(),
+        attempts: r.attempts,
+        url: r.url,
+        secretEnc: r.secret_enc,
+      }));
+    } catch (error) {
+      logger.error('Error claiming webhook deliveries:', error);
+      throw new DatabaseError('Failed to claim webhook deliveries');
+    }
+  }
+
+  async markDelivery(id: string, mark: DeliveryMark): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE webhook_deliveries
+         SET status = $2, attempts = $3, next_attempt_at = to_timestamp($4::double precision / 1000),
+             last_status_code = $5, last_error = $6
+         WHERE id = $1`,
+        [id, mark.status, mark.attempts, mark.nextAttemptAt, mark.lastStatusCode, mark.lastError]
+      );
+    } catch (error) {
+      logger.error('Error marking webhook delivery:', error);
+      throw new DatabaseError('Failed to update webhook delivery');
+    }
+  }
+
   // Order Operations
   async createOrder(order: Record<string, unknown>): Promise<Record<string, unknown>> {
     const client = await this.pool.connect();
@@ -972,13 +1061,16 @@ export class PostgresAdapter {
         }
       }
 
-      await client.query('COMMIT');
-
-      return {
+      const created = {
         ...mapOrderRow(newOrder),
         items: items.map(mapOrderItemRow),
         payments,
       };
+      await insertOutboxEvent(client, 'order.created', created);
+
+      await client.query('COMMIT');
+
+      return created;
     } catch (error) {
       await client.query('ROLLBACK');
 
@@ -2983,6 +3075,13 @@ export class PostgresAdapter {
           ]
         );
       }
+
+      await insertOutboxEvent(client, 'order.refunded', {
+        id: returnId,
+        originalOrderId: returnData.originalOrderId,
+        returnNumber: returnData.returnNumber,
+        total: returnData.total,
+      });
 
       await client.query('COMMIT');
 
