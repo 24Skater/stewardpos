@@ -67,7 +67,7 @@ describe('createOrder', () => {
 
     expect(items).toHaveLength(1);
     expect(payments).toHaveLength(1);
-    expect(Number(payments[0].amount)).toBe(10);
+    expect(Number(payments[0].amount_cents)).toBe(1000);
   });
 
   it('stores money exactly, with no floating-point drift', async () => {

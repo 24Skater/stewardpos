@@ -2,6 +2,8 @@
  * Shared types for the database adapters.
  */
 
+import { toCents, toDollars } from '../../services/pricing';
+
 /**
  * A raw row as returned by a database driver.
  *
@@ -30,6 +32,24 @@ export type DbRow = Record<string, any>;
  */
 export function asRows(value: unknown): DbRow[] {
   return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Cents column to dollars for the API. node-pg returns BIGINT (and SUM of it,
+ * which is NUMERIC) as a string, so the value is always coerced with Number first.
+ */
+export function centsToDollars(cents: unknown): number {
+  return toDollars(Number(cents));
+}
+
+/** As `centsToDollars`, but keeps null/undefined (nullable columns). */
+export function centsToDollarsOrNull(cents: unknown): number | null {
+  return cents == null ? null : centsToDollars(cents);
+}
+
+/** Nullable dollars from a payload to cents; null/undefined stay null. */
+export function toCentsOrNull(dollars: unknown): number | null {
+  return dollars == null ? null : toCents(Number(dollars));
 }
 
 export interface MessageLogEntry {

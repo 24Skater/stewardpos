@@ -20,3 +20,7 @@ Owner decision: store money as integer cents everywhere, long term. This task co
 Golden test: seed a SQLite DB at migration N-1 with orders whose totals include 0.1 + 0.2 style values, migrate, assert every API response value is identical. Existing pricing, order, report and adapter tests pass unchanged.
 
 Out of scope: returns, drawer, quotes, discounts (T-45, T-46). API in cents (later).
+
+## Notes (executor)
+- SQLite version: better-sqlite3 resolves to 9.6.0 which bundles SQLite 3.45.3, so `DROP COLUMN` (3.35+) is available. None of the dropped columns is in an index, view, trigger, CHECK or foreign key (verified against migrations 001-034), so no table rebuild is needed. The migration was also run on SQLite 3.50 (node:sqlite) over a database seeded at 034.
+- SQLite NOT NULL source columns become `INTEGER NOT NULL DEFAULT 0` (ADD COLUMN needs a default); adapters always write them.

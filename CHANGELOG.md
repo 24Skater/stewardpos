@@ -20,6 +20,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Catalog, order and payment money is stored as integer cents** (migration 035: `products`, `product_variants`, `services`, `orders`, `order_items`, `payments` get `*_cents` columns; existing values are converted in place). The HTTP API still sends and receives dollars. Returns, store credit, drawer, quotes and discounts stay DECIMAL for now.
 - **Inbound webhooks go through a provider registry.** `POST /api/webhooks/:provider`
   verifies, deduplicates and dispatches to a registered handler; Stripe is the first,
   with no change in behavior.
@@ -163,6 +164,7 @@ path still wanting a real-world run.
 
 ### Changed
 
+- **Catalog, order and payment money is stored as integer cents** (migration 035: `products`, `product_variants`, `services`, `orders`, `order_items`, `payments` get `*_cents` columns; existing values are converted in place). The HTTP API still sends and receives dollars. Returns, store credit, drawer, quotes and discounts stay DECIMAL for now.
 - **One auth gate in front of the admin console, not two.** Every admin page had
   wrapped itself in a second, role-based guard on top of the route's
   permission-based one. On the API Keys page the two disagreed, and the page was

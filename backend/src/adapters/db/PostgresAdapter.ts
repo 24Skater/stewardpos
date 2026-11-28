@@ -5,6 +5,9 @@ import { DatabaseError, ValidationError } from '../../utils/errors';
 import {
   DbRow,
   asRows,
+  centsToDollars,
+  centsToDollarsOrNull,
+  toCentsOrNull,
   mapMessageLogRow,
   mapMessageTemplateRow,
   type MessageTemplateRow,
@@ -13,6 +16,7 @@ import {
   type PaymentAttemptCreate,
   type PaymentAttemptUpdate,
 } from './types';
+import { toCents } from '../../services/pricing';
 import { bucketOrdersByLocalHour } from './timezoneBucketing';
 import type {
   DeliveryMark,
@@ -87,9 +91,9 @@ export function mapOrderItemRow(item: DbRow): DbRow {
     size: item.size,
     color: item.color,
     quantity: item.quantity,
-    unitPrice: parseFloat(item.unit_price as string),
-    lineDiscount: parseFloat(item.line_discount as string),
-    lineTotal: parseFloat(item.line_total as string),
+    unitPrice: centsToDollars(item.unit_price_cents),
+    lineDiscount: centsToDollars(item.line_discount_cents),
+    lineTotal: centsToDollars(item.line_total_cents),
     notes: item.notes,
   };
 }
@@ -99,10 +103,10 @@ export function mapOrderRow(order: DbRow): DbRow {
   return {
     id: order.id,
     createdAt: new Date(order.created_at as string).getTime(),
-    subtotal: parseFloat(order.subtotal as string),
-    discountTotal: parseFloat(order.discount_total as string),
-    taxTotal: parseFloat(order.tax_total as string),
-    total: parseFloat(order.total as string),
+    subtotal: centsToDollars(order.subtotal_cents),
+    discountTotal: centsToDollars(order.discount_total_cents),
+    taxTotal: centsToDollars(order.tax_total_cents),
+    total: centsToDollars(order.total_cents),
     paymentMethod: order.payment_method,
     customerEmail: order.customer_email,
     customerPhone: order.customer_phone,
@@ -110,8 +114,8 @@ export function mapOrderRow(order: DbRow): DbRow {
     cardReceipt: parseCartSnapshot(order.card_receipt),
     cardAuthCode: order.card_auth_code ?? null,
     // Null on card and other tenders, and on orders predating the columns.
-    amountTendered: order.amount_tendered == null ? null : parseFloat(order.amount_tendered as string),
-    changeGiven: order.change_given == null ? null : parseFloat(order.change_given as string),
+    amountTendered: centsToDollarsOrNull(order.amount_tendered_cents),
+    changeGiven: centsToDollarsOrNull(order.change_given_cents),
     registerId: order.register_id ?? null,
     cashierUserId: order.cashier_user_id ?? null,
     // Present only where the read joined them; a receipt prints these, a list
@@ -176,7 +180,7 @@ export function mapPaymentRow(row: DbRow): DbRow {
     id: row.id,
     orderId: row.order_id,
     method: row.method,
-    amount: parseFloat(row.amount as string),
+    amount: centsToDollars(row.amount_cents),
     reference: row.reference ?? null,
     createdAt: new Date(row.created_at as string).getTime(),
     registerId: row.register_id ?? null,
@@ -191,8 +195,8 @@ export function mapVariantRow(row: DbRow): DbRow {
     id: row.id,
     size: row.size,
     color: row.color,
-    priceOverride: row.price_override == null ? null : parseFloat(row.price_override as string),
-    priceDelta: row.price_delta == null ? null : parseFloat(row.price_delta as string),
+    priceOverride: centsToDollarsOrNull(row.price_override_cents),
+    priceDelta: centsToDollarsOrNull(row.price_delta_cents),
     sku: row.sku,
     barcode: row.barcode,
     stock: row.stock,
@@ -645,8 +649,8 @@ export class PostgresAdapter {
                     'id', pv.id,
                     'size', pv.size,
                     'color', pv.color,
-                    'priceOverride', pv.price_override,
-                    'priceDelta', pv.price_delta,
+                    'priceOverride', pv.price_override_cents / 100.0,
+                    'priceDelta', pv.price_delta_cents / 100.0,
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
@@ -674,7 +678,7 @@ export class PostgresAdapter {
         name: row.name,
         description: row.description,
         category: row.category,
-        basePrice: parseFloat(row.base_price),
+        basePrice: centsToDollars(row.base_price_cents),
         image: row.image,
         barcode: row.barcode,
         variants: row.variants || [],
@@ -698,8 +702,8 @@ export class PostgresAdapter {
                     'id', pv.id,
                     'size', pv.size,
                     'color', pv.color,
-                    'priceOverride', pv.price_override,
-                    'priceDelta', pv.price_delta,
+                    'priceOverride', pv.price_override_cents / 100.0,
+                    'priceDelta', pv.price_delta_cents / 100.0,
                     'sku', pv.sku,
                     'barcode', pv.barcode,
                     'stock', pv.stock,
@@ -731,7 +735,7 @@ export class PostgresAdapter {
         name: row.name,
         description: row.description,
         category: row.category,
-        basePrice: parseFloat(row.base_price),
+        basePrice: centsToDollars(row.base_price_cents),
         image: row.image,
         barcode: row.barcode,
         variants: row.variants || [],
@@ -752,14 +756,14 @@ export class PostgresAdapter {
 
       // Insert product
       const productResult = await client.query(
-        `INSERT INTO products (name, description, category, base_price, image, barcode)
+        `INSERT INTO products (name, description, category, base_price_cents, image, barcode)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
           product.name,
           product.description,
           product.category,
-          product.basePrice,
+          toCents(Number(product.basePrice)),
           product.image,
           product.barcode,
         ]
@@ -773,22 +777,22 @@ export class PostgresAdapter {
         for (const variant of product.variants) {
           const variantResult = await client.query(
             `INSERT INTO product_variants 
-             (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled)
+             (product_id, size, color, price_override_cents, price_delta_cents, sku, barcode, stock, enabled)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING *`,
             [
               newProduct.id,
               variant.size,
               variant.color,
-              variant.priceOverride,
-              variant.priceDelta,
+              toCentsOrNull(variant.priceOverride),
+              toCentsOrNull(variant.priceDelta),
               variant.sku,
               variant.barcode,
               variant.stock || 0,
               variant.enabled !== false,
             ]
           );
-          variants.push(variantResult.rows[0]);
+          variants.push(mapVariantRow(variantResult.rows[0]));
         }
       }
 
@@ -799,7 +803,7 @@ export class PostgresAdapter {
         name: newProduct.name,
         description: newProduct.description,
         category: newProduct.category,
-        basePrice: parseFloat(newProduct.base_price),
+        basePrice: centsToDollars(newProduct.base_price_cents),
         image: newProduct.image,
         barcode: newProduct.barcode,
         variants,
@@ -827,7 +831,7 @@ export class PostgresAdapter {
          SET name = COALESCE($1, name),
              description = COALESCE($2, description),
              category = COALESCE($3, category),
-             base_price = COALESCE($4, base_price),
+             base_price_cents = COALESCE($4, base_price_cents),
              image = COALESCE($5, image),
              barcode = COALESCE($6, barcode),
              updated_at = CURRENT_TIMESTAMP
@@ -837,7 +841,7 @@ export class PostgresAdapter {
           product.name ?? null,
           product.description ?? null,
           product.category ?? null,
-          product.basePrice ?? null,
+          toCentsOrNull(product.basePrice),
           product.image ?? null,
           product.barcode ?? null,
           id,
@@ -854,7 +858,7 @@ export class PostgresAdapter {
         name: row.name,
         description: row.description,
         category: row.category,
-        basePrice: parseFloat(row.base_price),
+        basePrice: centsToDollars(row.base_price_cents),
         image: row.image,
         barcode: row.barcode,
         createdAt: new Date(row.created_at).getTime(),
@@ -1078,14 +1082,14 @@ export class PostgresAdapter {
 
       // Insert order
       const orderResult = await client.query(
-        `INSERT INTO orders (subtotal, discount_total, tax_total, total, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, card_receipt, amount_tendered, change_given, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
+        `INSERT INTO orders (subtotal_cents, discount_total_cents, tax_total_cents, total_cents, payment_method, customer_email, customer_phone, card_transaction_id, card_auth_code, card_receipt, amount_tendered_cents, change_given_cents, register_id, cashier_user_id, drawer_session_id, override_by_user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
-          order.subtotal,
-          order.discountTotal || 0,
-          order.taxTotal || 0,
-          order.total,
+          toCents(Number(order.subtotal)),
+          toCents(Number(order.discountTotal || 0)),
+          toCents(Number(order.taxTotal || 0)),
+          toCents(Number(order.total)),
           order.paymentMethod,
           order.customerEmail,
           order.customerPhone,
@@ -1094,8 +1098,8 @@ export class PostgresAdapter {
           order.cardReceipt === undefined || order.cardReceipt === null
             ? null
             : JSON.stringify(order.cardReceipt),
-          order.amountTendered ?? null,
-          order.changeGiven ?? null,
+          toCentsOrNull(order.amountTendered),
+          toCentsOrNull(order.changeGiven),
           order.registerId ?? null,
           order.cashierUserId ?? null,
           order.drawerSessionId ?? null,
@@ -1111,7 +1115,7 @@ export class PostgresAdapter {
         for (const item of order.items) {
           const itemResult = await client.query(
             `INSERT INTO order_items 
-             (order_id, product_id, variant_id, name_snapshot, size, color, quantity, unit_price, line_discount, line_total, notes)
+             (order_id, product_id, variant_id, name_snapshot, size, color, quantity, unit_price_cents, line_discount_cents, line_total_cents, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING *`,
             [
@@ -1122,9 +1126,9 @@ export class PostgresAdapter {
               item.size,
               item.color,
               item.quantity,
-              item.unitPrice,
-              item.lineDiscount || 0,
-              item.lineTotal,
+              toCents(Number(item.unitPrice)),
+              toCents(Number(item.lineDiscount || 0)),
+              toCents(Number(item.lineTotal)),
               item.notes,
             ]
           );
@@ -1189,13 +1193,13 @@ export class PostgresAdapter {
           }
 
           const inserted = await client.query(
-            `INSERT INTO payments (order_id, method, amount, reference, register_id)
+            `INSERT INTO payments (order_id, method, amount_cents, reference, register_id)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
             [
               newOrder.id,
               payment.method,
-              payment.amount,
+              toCents(Number(payment.amount)),
               payment.reference ?? null,
               order.registerId ?? null,
             ]
@@ -1684,7 +1688,7 @@ export class PostgresAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active,
         createdAt: new Date(s.created_at).getTime(),
@@ -1713,7 +1717,7 @@ export class PostgresAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active,
         createdAt: new Date(s.created_at).getTime(),
@@ -1728,14 +1732,14 @@ export class PostgresAdapter {
   async createService(service: Record<string, unknown>): Promise<Record<string, unknown>> {
     try {
       const result = await this.pool.query(
-        `INSERT INTO services (name, category, description, base_price, unit_type, is_active)
+        `INSERT INTO services (name, category, description, base_price_cents, unit_type, is_active)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
         [
           service.name,
           service.category,
           service.description,
-          service.basePrice,
+          toCentsOrNull(service.basePrice),
           service.unitType || 'flat',
           service.isActive !== false,
         ]
@@ -1747,7 +1751,7 @@ export class PostgresAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active,
         createdAt: new Date(s.created_at).getTime(),
@@ -1766,7 +1770,7 @@ export class PostgresAdapter {
          SET name = COALESCE($1, name),
              category = COALESCE($2, category),
              description = COALESCE($3, description),
-             base_price = COALESCE($4, base_price),
+             base_price_cents = COALESCE($4, base_price_cents),
              unit_type = COALESCE($5, unit_type),
              is_active = COALESCE($6, is_active),
              updated_at = CURRENT_TIMESTAMP
@@ -1776,7 +1780,7 @@ export class PostgresAdapter {
           service.name,
           service.category,
           service.description,
-          service.basePrice,
+          toCentsOrNull(service.basePrice),
           service.unitType,
           service.isActive,
           id,
@@ -1793,7 +1797,7 @@ export class PostgresAdapter {
         name: s.name,
         category: s.category,
         description: s.description,
-        basePrice: s.base_price ? parseFloat(s.base_price) : null,
+        basePrice: centsToDollarsOrNull(s.base_price_cents),
         unitType: s.unit_type,
         isActive: s.is_active,
         createdAt: new Date(s.created_at).getTime(),
@@ -2574,8 +2578,8 @@ export class PostgresAdapter {
               item.serviceId,
               item.description,
               item.quantity,
-              item.unitPrice,
-              item.lineTotal,
+              toCents(Number(item.unitPrice)),
+              toCents(Number(item.lineTotal)),
             ]
           );
           items.push({
@@ -2950,7 +2954,7 @@ export class PostgresAdapter {
     try {
       let query = `
         SELECT r.*, 
-               o.total as original_order_total,
+               o.total_cents / 100.0 as original_order_total,
                u.name as created_by_name,
                c.name as customer_name
         FROM returns r
@@ -2994,7 +2998,7 @@ export class PostgresAdapter {
     try {
       const returnResult = await this.pool.query(
         `SELECT r.*, 
-                o.total as original_order_total,
+                o.total_cents / 100.0 as original_order_total,
                 u.name as created_by_name,
                 a.name as approved_by_name,
                 c.name as customer_name
@@ -3133,7 +3137,7 @@ export class PostgresAdapter {
   async getReturnsByCustomer(customerId: string): Promise<DbRow[]> {
     try {
       const result = await this.pool.query(
-        `SELECT r.*, o.total as original_order_total
+        `SELECT r.*, o.total_cents / 100.0 as original_order_total
          FROM returns r
          LEFT JOIN orders o ON r.original_order_id = o.id
          WHERE r.customer_id = $1
@@ -3676,12 +3680,12 @@ export class PostgresAdapter {
         params.push(filters.customerEmail);
       }
       if (filters.minAmount !== undefined) {
-        query += ` AND o.total >= $${paramIndex++}`;
-        params.push(filters.minAmount);
+        query += ` AND o.total_cents >= $${paramIndex++}`;
+        params.push(toCents(Number(filters.minAmount)));
       }
       if (filters.maxAmount !== undefined) {
-        query += ` AND o.total <= $${paramIndex++}`;
-        params.push(filters.maxAmount);
+        query += ` AND o.total_cents <= $${paramIndex++}`;
+        params.push(toCents(Number(filters.maxAmount)));
       }
       if (filters.paymentMethod) {
         query += ` AND o.payment_method = $${paramIndex++}`;
@@ -4376,10 +4380,10 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `SELECT
            COUNT(*) as order_count,
-           COALESCE(SUM(subtotal), 0) as gross,
-           COALESCE(SUM(discount_total), 0) as discounts,
-           COALESCE(SUM(tax_total), 0) as tax,
-           COALESCE(SUM(total), 0) as net
+           COALESCE(SUM(subtotal_cents), 0) as gross,
+           COALESCE(SUM(discount_total_cents), 0) as discounts,
+           COALESCE(SUM(tax_total_cents), 0) as tax,
+           COALESCE(SUM(total_cents), 0) as net
          FROM orders
          WHERE created_at >= to_timestamp($1 / 1000.0)
            AND created_at <= to_timestamp($2 / 1000.0)${clause}`,
@@ -4389,10 +4393,10 @@ export class PostgresAdapter {
       const row = result.rows[0];
       return {
         orderCount: parseInt(row.order_count, 10),
-        gross: parseFloat(row.gross),
-        discounts: parseFloat(row.discounts),
-        tax: parseFloat(row.tax),
-        net: parseFloat(row.net),
+        gross: centsToDollars(row.gross),
+        discounts: centsToDollars(row.discounts),
+        tax: centsToDollars(row.tax),
+        net: centsToDollars(row.net),
       };
     } catch (error) {
       logger.error('Error getting sales totals:', error);
@@ -4412,8 +4416,8 @@ export class PostgresAdapter {
         `SELECT
            to_char(created_at, 'YYYY-MM-DD') as date,
            COUNT(*) as order_count,
-           COALESCE(SUM(subtotal), 0) as gross,
-           COALESCE(SUM(total), 0) as net
+           COALESCE(SUM(subtotal_cents), 0) as gross,
+           COALESCE(SUM(total_cents), 0) as net
          FROM orders
          WHERE created_at >= to_timestamp($1 / 1000.0)
            AND created_at <= to_timestamp($2 / 1000.0)${clause}
@@ -4425,8 +4429,8 @@ export class PostgresAdapter {
       return result.rows.map((row) => ({
         date: row.date as string,
         orderCount: parseInt(row.order_count, 10),
-        gross: parseFloat(row.gross),
-        net: parseFloat(row.net),
+        gross: centsToDollars(row.gross),
+        net: centsToDollars(row.net),
       }));
     } catch (error) {
       logger.error('Error getting sales by day:', error);
@@ -4455,7 +4459,7 @@ export class PostgresAdapter {
            oi.product_id,
            MIN(oi.name_snapshot) as name,
            COALESCE(SUM(oi.quantity), 0) as quantity,
-           COALESCE(SUM(oi.line_total), 0) as revenue
+           COALESCE(SUM(oi.line_total_cents), 0) as revenue
          FROM order_items oi
          JOIN orders o ON o.id = oi.order_id
          WHERE o.created_at >= to_timestamp($1 / 1000.0)
@@ -4470,7 +4474,7 @@ export class PostgresAdapter {
         productId: row.product_id as string,
         name: row.name as string,
         quantity: parseInt(row.quantity, 10),
-        revenue: parseFloat(row.revenue),
+        revenue: centsToDollars(row.revenue),
       }));
     } catch (error) {
       logger.error('Error getting top products:', error);
@@ -4500,13 +4504,13 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `SELECT method, COUNT(*) as count, COALESCE(SUM(amount), 0) as amount
          FROM (
-           SELECT LOWER(p.method) as method, p.amount as amount
+           SELECT LOWER(p.method) as method, p.amount_cents as amount
            FROM payments p
            JOIN orders o ON o.id = p.order_id
            WHERE o.created_at >= to_timestamp($1 / 1000.0)
              AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
            UNION ALL
-           SELECT LOWER(o.payment_method) as method, o.total as amount
+           SELECT LOWER(o.payment_method) as method, o.total_cents as amount
            FROM orders o
            WHERE o.created_at >= to_timestamp($1 / 1000.0)
              AND o.created_at <= to_timestamp($2 / 1000.0)${clause}
@@ -4520,7 +4524,7 @@ export class PostgresAdapter {
       return result.rows.map((row) => ({
         method: row.method as string,
         count: parseInt(row.count, 10),
-        amount: parseFloat(row.amount),
+        amount: centsToDollars(row.amount),
       }));
     } catch (error) {
       logger.error('Error getting payment mix:', error);
@@ -4636,10 +4640,10 @@ export class PostgresAdapter {
            r.has_cash_drawer as has_cash_drawer,
            r.status as status,
            COUNT(o.id) as order_count,
-           COALESCE(SUM(o.subtotal), 0) as gross,
-           COALESCE(SUM(o.discount_total), 0) as discounts,
-           COALESCE(SUM(o.tax_total), 0) as tax,
-           COALESCE(SUM(o.total), 0) as net
+           COALESCE(SUM(o.subtotal_cents), 0) as gross,
+           COALESCE(SUM(o.discount_total_cents), 0) as discounts,
+           COALESCE(SUM(o.tax_total_cents), 0) as tax,
+           COALESCE(SUM(o.total_cents), 0) as net
          FROM registers r
          JOIN locations l ON l.id = r.location_id
          JOIN orders o ON o.register_id = r.id
@@ -4661,10 +4665,10 @@ export class PostgresAdapter {
         hasCashDrawer: Boolean(row.has_cash_drawer),
         status: row.status as string,
         orderCount: parseInt(row.order_count, 10),
-        gross: parseFloat(row.gross),
-        discounts: parseFloat(row.discounts),
-        tax: parseFloat(row.tax),
-        net: parseFloat(row.net),
+        gross: centsToDollars(row.gross),
+        discounts: centsToDollars(row.discounts),
+        tax: centsToDollars(row.tax),
+        net: centsToDollars(row.net),
       }));
     } catch (error) {
       logger.error('Error getting sales by register:', error);
@@ -4697,8 +4701,8 @@ export class PostgresAdapter {
            COALESCE(o.cashier_user_id::text, 'unknown') as cashier_user_id,
            COALESCE(u.name, 'Unknown') as cashier_name,
            COUNT(*) as order_count,
-           COALESCE(SUM(o.subtotal), 0) as gross,
-           COALESCE(SUM(o.total), 0) as net
+           COALESCE(SUM(o.subtotal_cents), 0) as gross,
+           COALESCE(SUM(o.total_cents), 0) as net
          FROM orders o
          LEFT JOIN users u ON u.id = o.cashier_user_id
          WHERE o.created_at >= to_timestamp($1 / 1000.0)
@@ -4712,8 +4716,8 @@ export class PostgresAdapter {
         cashierUserId: row.cashier_user_id as string,
         cashierName: row.cashier_name as string,
         orderCount: parseInt(row.order_count, 10),
-        gross: parseFloat(row.gross),
-        net: parseFloat(row.net),
+        gross: centsToDollars(row.gross),
+        net: centsToDollars(row.net),
       }));
     } catch (error) {
       logger.error('Error getting sales by cashier:', error);
@@ -4756,7 +4760,7 @@ export class PostgresAdapter {
            l.name as location_name,
            COUNT(DISTINCT o.register_id) as register_count,
            COUNT(o.id) as order_count,
-           COALESCE(SUM(o.total), 0) as net
+           COALESCE(SUM(o.total_cents), 0) as net
          FROM locations l
          JOIN registers r ON r.location_id = l.id
          JOIN orders o ON o.register_id = r.id
@@ -4773,7 +4777,7 @@ export class PostgresAdapter {
         locationName: row.location_name as string,
         registerCount: parseInt(row.register_count, 10),
         orderCount: parseInt(row.order_count, 10),
-        net: parseFloat(row.net),
+        net: centsToDollars(row.net),
       }));
     } catch (error) {
       logger.error('Error getting sales by location:', error);
@@ -4923,7 +4927,7 @@ export class PostgresAdapter {
       );
 
       const ordersResult = await this.pool.query(
-        `SELECT EXTRACT(EPOCH FROM created_at) * 1000 as created_at_ms, total
+        `SELECT EXTRACT(EPOCH FROM created_at) * 1000 as created_at_ms, total_cents
          FROM orders
          WHERE register_id = $1
            AND created_at >= to_timestamp($2 / 1000.0)
@@ -4938,7 +4942,7 @@ export class PostgresAdapter {
       return bucketOrdersByLocalHour(
         ordersResult.rows.map((row) => ({
           createdAt: Math.round(parseFloat(row.created_at_ms)),
-          total: parseFloat(row.total),
+          total: centsToDollars(row.total_cents),
         })),
         timezone
       );
@@ -5249,7 +5253,7 @@ export class PostgresAdapter {
       const result = await this.pool.query(
         `SELECT
            s.opening_float
-             + COALESCE(SUM(COALESCE(o.amount_tendered, o.total) - COALESCE(o.change_given, 0)), 0)
+             + COALESCE(SUM(COALESCE(o.amount_tendered_cents, o.total_cents) - COALESCE(o.change_given_cents, 0)), 0) / 100.0
              AS expected
          FROM cash_drawer_sessions s
          LEFT JOIN orders o
@@ -5345,7 +5349,7 @@ export class PostgresAdapter {
 
       const result = await this.pool.query(
         `INSERT INTO product_variants
-         (product_id, size, color, price_override, price_delta, sku, barcode, stock, enabled,
+         (product_id, size, color, price_override_cents, price_delta_cents, sku, barcode, stock, enabled,
           low_stock_threshold)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
@@ -5353,8 +5357,8 @@ export class PostgresAdapter {
           productId,
           variant.size ?? null,
           variant.color ?? null,
-          variant.priceOverride ?? null,
-          variant.priceDelta ?? null,
+          toCentsOrNull(variant.priceOverride),
+          toCentsOrNull(variant.priceDelta),
           variant.sku ?? null,
           variant.barcode ?? null,
           variant.stock ?? 0,
@@ -5387,8 +5391,8 @@ export class PostgresAdapter {
         `UPDATE product_variants
          SET size = COALESCE($3, size),
              color = COALESCE($4, color),
-             price_override = COALESCE($5, price_override),
-             price_delta = COALESCE($6, price_delta),
+             price_override_cents = COALESCE($5, price_override_cents),
+             price_delta_cents = COALESCE($6, price_delta_cents),
              sku = COALESCE($7, sku),
              barcode = COALESCE($8, barcode),
              stock = COALESCE($9, stock),
@@ -5407,8 +5411,8 @@ export class PostgresAdapter {
           productId,
           variant.size ?? null,
           variant.color ?? null,
-          variant.priceOverride ?? null,
-          variant.priceDelta ?? null,
+          toCentsOrNull(variant.priceOverride),
+          toCentsOrNull(variant.priceDelta),
           variant.sku ?? null,
           variant.barcode ?? null,
           variant.stock ?? null,
