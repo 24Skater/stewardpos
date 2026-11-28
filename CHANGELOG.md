@@ -16,6 +16,9 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Inbound webhooks go through a provider registry.** `POST /api/webhooks/:provider`
+  verifies, deduplicates and dispatches to a registered handler; Stripe is the first,
+  with no change in behavior.
 - **The receipt dialog no longer pretends to send.** Email now goes through the server and says so when email is not set up; the SMS option is removed until SMS sending exists.
 - **Object storage is now Versity S3 Gateway instead of MinIO.** MinIO stopped
   publishing images anyone can pull: `quay.io/minio/*` and Docker Hub's
