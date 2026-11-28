@@ -3442,6 +3442,43 @@ export class SQLiteAdapter {
     }
   }
 
+  // SMS consent
+  async getSmsConsent(phone: string): Promise<'opted_in' | 'opted_out' | null> {
+    try {
+      const row = this.db.prepare('SELECT status FROM sms_consent WHERE phone = ?').get(phone) as
+        | { status: 'opted_in' | 'opted_out' }
+        | undefined;
+      return row?.status ?? null;
+    } catch (error) {
+      logger.error('Error getting SMS consent:', error);
+      throw new DatabaseError('Failed to get SMS consent');
+    }
+  }
+
+  async listSmsConsent(): Promise<Array<{ phone: string; status: 'opted_in' | 'opted_out' }>> {
+    try {
+      return this.db.prepare('SELECT phone, status FROM sms_consent').all() as Array<{
+        phone: string;
+        status: 'opted_in' | 'opted_out';
+      }>;
+    } catch (error) {
+      logger.error('Error listing SMS consent:', error);
+      throw new DatabaseError('Failed to list SMS consent');
+    }
+  }
+
+  async setSmsConsent(phone: string, status: 'opted_in' | 'opted_out', source: string): Promise<void> {
+    try {
+      this.db.prepare(
+        `INSERT INTO sms_consent (id, phone, status, source, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (org_id, phone) DO UPDATE SET status = excluded.status, source = excluded.source, updated_at = excluded.updated_at`
+      ).run(crypto.randomUUID(), phone, status, source, Date.now());
+    } catch (error) {
+      logger.error('Error setting SMS consent:', error);
+      throw new DatabaseError('Failed to set SMS consent');
+    }
+  }
+
   async logReceiptEmail(data: any): Promise<any> {
     try {
       const id = crypto.randomUUID();

@@ -163,7 +163,7 @@ app.use('/api/registers/pair', pairLimiter);
  * not — and every event is rejected. Ordering here is the whole mechanism, so
  * it must stay above the parser below.
  */
-app.use('/api/webhooks', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
+app.use('/api/webhooks', express.raw({ type: () => true, limit: '1mb' }), webhookRoutes);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

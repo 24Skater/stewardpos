@@ -4,6 +4,7 @@ import logger from '../../utils/logger';
 import { getHandler, registerHandler } from '../../webhooks/registry';
 import type { InboundEvent } from '../../webhooks/registry';
 import { stripeHandler } from '../../webhooks/stripeHandler';
+import { twilioHandler } from '../../webhooks/twilioHandler';
 
 /**
  * Providers' own account of what happened, delivered rather than asked for.
@@ -22,6 +23,7 @@ import { stripeHandler } from '../../webhooks/stripeHandler';
 const router = Router();
 
 registerHandler(stripeHandler);
+registerHandler(twilioHandler);
 
 router.post('/:provider', async (req: Request, res: Response) => {
   const provider = String(req.params.provider);

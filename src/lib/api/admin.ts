@@ -83,6 +83,12 @@ export interface EmailTestResult {
   messageId?: string;
 }
 
+export interface SmsTestResult {
+  status: 'sent' | 'failed' | 'suppressed';
+  detail: string;
+  messageId?: string;
+}
+
 export interface MessageLogEntry {
   id: string;
   channel: 'email' | 'sms';
@@ -160,6 +166,11 @@ export const adminApi = {
     /** Sends through the saved provider; resolves with the real outcome, including `failed`. */
     test: (to: string) =>
       apiClient.post<EmailTestResult>('/api/admin/email/test', { to }),
+  },
+
+  sms: {
+    /** The number must have opted in; `suppressed` is a normal outcome, not an error. */
+    test: (to: string) => apiClient.post<SmsTestResult>('/api/admin/sms/test', { to }),
   },
 
   /** The delivery log, newest first. */

@@ -32,6 +32,7 @@ interface Customer {
   country?: string;
   notes?: string;
   tags: string[];
+  smsConsent?: boolean;
   lifetimeValue: number;
   lastOrderAt?: number;
   createdAt: number;
@@ -213,6 +214,7 @@ export default function AdminCustomers() {
         zip: editingCustomer.zip || undefined,
         country: editingCustomer.country || undefined,
         notes: editingCustomer.notes || undefined,
+        smsConsent: editingCustomer.smsConsent ?? false,
       };
 
       if (isNewCustomer) {
@@ -495,6 +497,17 @@ export default function AdminCustomers() {
                       value={editingCustomer.phone || ''}
                       onChange={(phone) => setEditingCustomer({ ...editingCustomer, phone })}
                     />
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        id="sms-consent"
+                        type="checkbox"
+                        checked={editingCustomer.smsConsent ?? false}
+                        onChange={(e) => setEditingCustomer({ ...editingCustomer, smsConsent: e.target.checked })}
+                      />
+                      <Label htmlFor="sms-consent" className="font-normal">
+                        Customer agreed to receive text messages
+                      </Label>
+                    </div>
                   </div>
                 </div>
 

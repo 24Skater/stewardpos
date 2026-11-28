@@ -21,3 +21,20 @@ log because no provider is configured; it was not delivered.
 provider's message id or the error). Each attempt is one row in the `message_log` table.
 
 Check your local rules on when you may email customers, and keep consent records accordingly.
+
+## SMS
+
+Choose the provider under **Admin > Settings > SMS**: Off, Twilio, or an HTTP gateway (any service
+that accepts `{"to", "body"}` as JSON with a bearer token). Credentials are stored encrypted, like email.
+
+- **Consent first.** A text is sent only to a number marked opted in. Tick "Customer agreed to receive
+  text messages" on the customer form. Anything else is recorded as `suppressed` in Admin > Messages.
+- **STOP and START.** Point your Twilio number's incoming-message webhook at
+  `https://<your-host>/api/webhooks/twilio`. STOP, UNSUBSCRIBE and similar replies opt the number out;
+  START opts it back in. Requests are checked against `X-Twilio-Signature` using the auth token.
+- **Quiet hours.** Set a start and end time; texts inside the window (in the store time zone, and it may
+  cross midnight) are `suppressed`, not delayed.
+- **Off** means unavailable: attempts are logged as `failed` with "SMS is off".
+- **Test send** goes through the same rules, so the number must already have opted in.
+
+Consent rules vary by state and country; check yours.
