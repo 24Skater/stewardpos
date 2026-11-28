@@ -54,8 +54,8 @@ describeSqlite('migration 037 (quotes, discounts, archive money to integer cents
 
     db.prepare(
       `INSERT INTO discount_types (id, name, code, discount_type, discount_value, min_purchase, max_discount, approval_threshold)
-       VALUES ('d-pct', 'Senior', 'SENIOR', 'percentage', 12.5, 0, 5.25, 40.1),
-              ('d-fix', 'Five off', 'FIVE', 'fixed', 5, 20, NULL, NULL)`
+       VALUES ('d-pct', 'Golden pct', 'GOLDPCT', 'percentage', 12.5, 0, 5.25, 40.1),
+              ('d-fix', 'Golden fix', 'GOLDFIX', 'fixed', 5, 20, NULL, NULL)`
     ).run();
     db.prepare(
       `INSERT INTO promo_codes (id, code, name, discount_type, discount_value, min_purchase, max_discount, starts_at)
