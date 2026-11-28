@@ -8,6 +8,8 @@ import { escapeLike } from './like';
 import {
   DbRow,
   asRows,
+  mapMessageLogRow,
+  type MessageLogEntry,
   type PaymentAttempt,
   type PaymentAttemptCreate,
   type PaymentAttemptUpdate,
@@ -3169,6 +3171,39 @@ export class SQLiteAdapter {
   }
 
   // Receipt email logging
+  async createMessageLog(entry: MessageLogEntry): Promise<void> {
+    try {
+      this.db.prepare(
+        `INSERT INTO message_log (id, channel, template, recipient, status, provider_message_id, error, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        crypto.randomUUID(),
+        entry.channel,
+        entry.template,
+        entry.recipient,
+        entry.status,
+        entry.providerMessageId ?? null,
+        entry.error ?? null,
+        Date.now()
+      );
+    } catch (error) {
+      logger.error('Error writing message log:', error);
+      throw new DatabaseError('Failed to write message log');
+    }
+  }
+
+  async getMessageLogs(limit: number, offset: number): Promise<DbRow[]> {
+    try {
+      const rows = this.db
+        .prepare('SELECT * FROM message_log ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?')
+        .all(limit, offset) as DbRow[];
+      return rows.map(mapMessageLogRow);
+    } catch (error) {
+      logger.error('Error getting message logs:', error);
+      throw new DatabaseError('Failed to get message logs');
+    }
+  }
+
   async logReceiptEmail(data: any): Promise<any> {
     try {
       const id = crypto.randomUUID();

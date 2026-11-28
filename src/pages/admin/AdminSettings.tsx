@@ -18,6 +18,7 @@ import type {
 import { Save, Store, Shield, Database, RefreshCw, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import BrandingSettings from '@/components/settings/BrandingSettings';
+import EmailSettings from '@/components/settings/EmailSettings';
 import { useToast } from '@/hooks/use-toast';
 import { getErrorMessage } from '@/lib/errors';
 import { FEATURES } from '@/lib/features';
@@ -238,6 +239,7 @@ export default function AdminSettings() {
             <TabsTrigger value="branding">Branding</TabsTrigger>
             <TabsTrigger value="features">Features</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
+            <TabsTrigger value="email">Email</TabsTrigger>
             <TabsTrigger value="auth">Authentication</TabsTrigger>
             <TabsTrigger value="database">Database</TabsTrigger>
           </TabsList>
@@ -245,6 +247,13 @@ export default function AdminSettings() {
           {/* Branding: colour, marks, and receipt wording. */}
           <TabsContent value="branding" className="space-y-4">
             <BrandingSettings
+              settings={settings}
+              onChange={(patch) => setSettings({ ...settings, ...patch })}
+            />
+          </TabsContent>
+
+          <TabsContent value="email" className="space-y-4">
+            <EmailSettings
               settings={settings}
               onChange={(patch) => setSettings({ ...settings, ...patch })}
             />

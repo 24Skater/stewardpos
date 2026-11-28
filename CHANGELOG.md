@@ -12,6 +12,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Feature switches and provider settings (all off by default) with a Features tab in Settings.
+- Email provider (SMTP or Resend) chosen in Settings with a test send, and a Messages page logging every send attempt.
 
 ### Changed
 

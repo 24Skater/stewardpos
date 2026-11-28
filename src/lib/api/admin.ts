@@ -77,6 +77,24 @@ export interface RoleInput {
   permissions: RolePermissions;
 }
 
+export interface EmailTestResult {
+  status: 'sent' | 'failed' | 'logged';
+  detail: string;
+  messageId?: string;
+}
+
+export interface MessageLogEntry {
+  id: string;
+  channel: 'email' | 'sms';
+  template: string;
+  recipient: string;
+  status: 'sent' | 'failed' | 'logged' | 'suppressed';
+  providerMessageId: string | null;
+  error: string | null;
+  /** Epoch milliseconds. */
+  createdAt: number;
+}
+
 export interface AuditQuery {
   limit?: number;
   offset?: number;
@@ -137,6 +155,16 @@ export const adminApi = {
     get: () => apiClient.get<Settings>('/api/admin/settings'),
     update: (body: UpdateSettingsRequest) => apiClient.put<Settings>('/api/admin/settings', body),
   },
+
+  email: {
+    /** Sends through the saved provider; resolves with the real outcome, including `failed`. */
+    test: (to: string) =>
+      apiClient.post<EmailTestResult>('/api/admin/email/test', { to }),
+  },
+
+  /** The delivery log, newest first. */
+  messages: (query?: { limit?: number; offset?: number }) =>
+    apiClient.get<MessageLogEntry[]>(`/api/admin/messages${qs(query)}`),
 
   /**
    * Audit log, filtered and paged by the server.

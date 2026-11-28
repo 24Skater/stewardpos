@@ -5,8 +5,15 @@ const createTransport = vi.fn(() => ({ sendMail }));
 
 vi.mock('nodemailer', () => ({ default: { createTransport }, createTransport }));
 
+const getSettings = vi.fn();
+const createMessageLog = vi.fn();
+vi.mock('../database', () => ({
+  default: { getAdapter: () => ({ getSettings, createMessageLog }) },
+}));
+
 const { default: config } = await import('../../config');
 const { sendEmail, resetEmailTransport } = await import('../email');
+const { encryptCredentials } = await import('../credentialCrypto');
 
 const MESSAGE = { to: 'buyer@example.com', subject: 'Receipt', text: 'Total $10.80' };
 
@@ -16,6 +23,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetEmailTransport();
   sendMail.mockResolvedValue({ messageId: 'm1' });
+  getSettings.mockReset();
+  getSettings.mockResolvedValue(null);
+  createMessageLog.mockReset();
+  createMessageLog.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -120,5 +131,82 @@ describe('the Resend adapter', () => {
     config.email.resendApiKey = undefined;
 
     expect((await sendEmail(MESSAGE)).status).toBe('failed');
+  });
+});
+
+describe('provider chosen in Settings', () => {
+  const settingsWith = (providers: Record<string, unknown>) => ({ providers });
+
+  it('returns failed "Email is off", never sent, when the provider is off', async () => {
+    getSettings.mockResolvedValue(settingsWith({ email: 'off' }));
+    config.email.adapter = 'smtp';
+    config.email.smtp = { host: 'mail.example.com' };
+
+    const result = await sendEmail(MESSAGE);
+
+    expect(result).toEqual({ status: 'failed', detail: 'Email is off' });
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the environment adapter when no provider is set', async () => {
+    getSettings.mockResolvedValue(settingsWith({}));
+    config.email.adapter = 'smtp';
+    config.email.smtp = { host: 'env.example.com' };
+
+    expect((await sendEmail(MESSAGE)).status).toBe('sent');
+    expect(createTransport.mock.calls[0][0]).toMatchObject({ host: 'env.example.com' });
+  });
+
+  it('uses credentials stored encrypted in Settings', async () => {
+    process.env.CREDENTIALS_KEY = 'test-credentials-key-0123456789abcdef';
+    const credentials = encryptCredentials({ host: 'db.example.com', password: 'hunter2', user: 'u' });
+    expect(credentials.password).toMatch(/^enc:v1:/);
+    getSettings.mockResolvedValue(settingsWith({ email: { provider: 'smtp', credentials } }));
+
+    const result = await sendEmail(MESSAGE);
+
+    expect(result.status).toBe('sent');
+    expect(createTransport.mock.calls[0][0]).toMatchObject({
+      host: 'db.example.com',
+      auth: { user: 'u', pass: 'hunter2' },
+    });
+  });
+});
+
+describe('the message log', () => {
+  it('writes one row per attempt with the outcome and provider id', async () => {
+    config.email.adapter = 'smtp';
+    config.email.smtp = { host: 'mail.example.com' };
+
+    await sendEmail({ ...MESSAGE, template: 'receipt' });
+
+    expect(createMessageLog).toHaveBeenCalledTimes(1);
+    expect(createMessageLog).toHaveBeenCalledWith({
+      channel: 'email',
+      template: 'receipt',
+      recipient: 'buyer@example.com',
+      status: 'sent',
+      providerMessageId: 'm1',
+      error: undefined,
+    });
+  });
+
+  it('records the reason on a failure and keeps logged distinct from sent', async () => {
+    config.email.adapter = 'smtp';
+    config.email.smtp = { host: 'mail.example.com' };
+    sendMail.mockRejectedValue(new Error('mailbox full'));
+    await sendEmail(MESSAGE);
+    config.email.adapter = 'console';
+    await sendEmail(MESSAGE);
+
+    expect(createMessageLog.mock.calls[0][0]).toMatchObject({ status: 'failed', error: 'mailbox full' });
+    expect(createMessageLog.mock.calls[1][0]).toMatchObject({ status: 'logged', template: 'custom' });
+  });
+
+  it('does not fail the send when the log cannot be written', async () => {
+    config.email.adapter = 'console';
+    createMessageLog.mockRejectedValue(new Error('db down'));
+
+    expect((await sendEmail(MESSAGE)).status).toBe('logged');
   });
 });
