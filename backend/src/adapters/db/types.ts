@@ -32,6 +32,29 @@ export function asRows(value: unknown): DbRow[] {
   return Array.isArray(value) ? value : [];
 }
 
+export interface MessageLogEntry {
+  channel: 'email' | 'sms';
+  template: string;
+  recipient: string;
+  status: 'sent' | 'failed' | 'logged' | 'suppressed';
+  providerMessageId?: string;
+  error?: string;
+}
+
+/** `created_at` is a Date on Postgres and epoch ms on SQLite; the API publishes epoch ms. */
+export function mapMessageLogRow(row: DbRow): DbRow {
+  return {
+    id: row.id,
+    channel: row.channel,
+    template: row.template,
+    recipient: row.recipient,
+    status: row.status,
+    providerMessageId: row.provider_message_id ?? null,
+    error: row.error ?? null,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
 /**
  * What the till is about to charge, recorded before the card is presented.
  *

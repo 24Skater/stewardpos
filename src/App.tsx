@@ -37,6 +37,7 @@ const AdminServices = lazy(() => import("./pages/admin/AdminServices"));
 const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
 const AdminRoles = lazy(() => import("./pages/admin/AdminRoles"));
 const AdminAudit = lazy(() => import("./pages/admin/AdminAudit"));
+const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const AdminComponents = lazy(() => import("./pages/admin/AdminComponents"));
 const AdminQuotes = lazy(() => import("./pages/admin/AdminQuotes"));
 const AdminApiKeys = lazy(() => import("./pages/admin/AdminApiKeys"));
@@ -90,7 +91,8 @@ const App = () => (
               <Route path="/admin/quotes" element={<RequireAuth permission={{ domain: "services", action: "read" }}><AdminQuotes /></RequireAuth>} />
               <Route path="/admin/settings" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminSettings /></RequireAuth>} />
               <Route path="/admin/roles" element={<RequireAuth permission={{ domain: "users", action: "read" }}><AdminRoles /></RequireAuth>} />
-              <Route path="/admin/audit" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminAudit /></RequireAuth>} />
+              <Route path="/admin/messages" element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminMessages /></RequireAuth>} />
+              <Route path="/admin/audit"element={<RequireAuth permission={{ domain: "settings", action: "read" }}><AdminAudit /></RequireAuth>} />
               <Route path="/admin/components" element={<RequireAuth permission={{ domain: "settings", action: "write" }}><AdminComponents /></RequireAuth>} />
               {/* Admin-only, not settings:write — the server guards every /api/admin/api-keys
                   route with authorize(['admin']). A custom role holding settings:write used to

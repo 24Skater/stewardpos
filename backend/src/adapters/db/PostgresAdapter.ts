@@ -5,6 +5,8 @@ import { DatabaseError, ValidationError } from '../../utils/errors';
 import {
   DbRow,
   asRows,
+  mapMessageLogRow,
+  type MessageLogEntry,
   type PaymentAttempt,
   type PaymentAttemptCreate,
   type PaymentAttemptUpdate,
@@ -3361,6 +3363,32 @@ export class PostgresAdapter {
   }
 
   // Receipt email logging
+  async createMessageLog(entry: MessageLogEntry): Promise<void> {
+    try {
+      await this.pool.query(
+        `INSERT INTO message_log (channel, template, recipient, status, provider_message_id, error)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [entry.channel, entry.template, entry.recipient, entry.status, entry.providerMessageId ?? null, entry.error ?? null]
+      );
+    } catch (error) {
+      logger.error('Error writing message log:', error);
+      throw new DatabaseError('Failed to write message log');
+    }
+  }
+
+  async getMessageLogs(limit: number, offset: number): Promise<DbRow[]> {
+    try {
+      const result = await this.pool.query(
+        'SELECT * FROM message_log ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        [limit, offset]
+      );
+      return result.rows.map(mapMessageLogRow);
+    } catch (error) {
+      logger.error('Error getting message logs:', error);
+      throw new DatabaseError('Failed to get message logs');
+    }
+  }
+
   async logReceiptEmail(data: any): Promise<any> {
     try {
       const result = await this.pool.query(
