@@ -15,6 +15,7 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Email provider (SMTP or Resend) chosen in Settings with a test send, and a Messages page logging every send attempt.
 - SMS (Twilio or HTTP gateway) with consent tracking, STOP/START handling, quiet hours and a test send.
 - Transactional outbox and signed webhook delivery with retries (`order.created`, `order.refunded`, `customer.created`).
+- Webhooks admin screen with secret rotation (old secret valid 24 h), a delivery log with redeliver, and an SSRF guard that refuses private addresses unless allow-listed.
 
 ### Changed
 

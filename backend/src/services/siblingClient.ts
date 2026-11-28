@@ -4,6 +4,8 @@ export interface SiblingRequest {
   method: string;
   body?: unknown;
   headers?: Record<string, string>;
+  /** A 3xx is returned as a failure instead of being followed to an unchecked host. */
+  noRedirect?: boolean;
 }
 
 export type SiblingResult =
@@ -23,6 +25,7 @@ export async function callSibling(req: SiblingRequest): Promise<SiblingResult> {
       headers,
       body: req.body === undefined ? undefined : JSON.stringify(req.body),
       signal: AbortSignal.timeout(SIBLING_TIMEOUT_MS),
+      redirect: req.noRedirect ? 'manual' : 'follow',
     });
     if (!res.ok) return { ok: false, status: res.status, error: `HTTP ${res.status}` };
     const text = await res.text();
